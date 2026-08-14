@@ -1,0 +1,70 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# egg-related
+build/
+.eggs/
+dist/
+*.egg-info/
+
+.pytest_cache/
+
+# pyenv
+.python-version
+
+# dotenv
+.env
+
+# virtualenv
+.venv/
+venv/
+ENV/
+
+# uv
+uv.lock
+
+# Coverage tests
+.coverage*
+.cache/
+htmlcov/
+coverage.xml
+
+# sphinx
+docs/_build/
+docs/modules.rst
+docs/damlforge.rst
+docs/damlforge.*.rst
+
+# IDEs
+.idea/
+.vscode/
+
+.tox/
+.mypy_cache/
+.hypothesis/
+
+# damlforge
+forge/version.py
+forge/damlforge_git_version.txt
+forge/damlforge_git_commithash.txt
+*.spec
+
+# mac
+.DS_Store
+
+# dev scratch stuff
+CLAUDE.local.md
+.agents/
+scratch/
+tmp/
+trees/
+worktrees/
+repros/
+.agent-files/
+.sandbox
+
+# used by fmt_commit_msg.py
+commitmsg.txt
+.agent-files/
