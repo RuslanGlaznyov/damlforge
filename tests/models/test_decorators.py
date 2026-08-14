@@ -1,6 +1,6 @@
 import pytest
 
-from forge.models import choice, ledger_effect, view
+from forge.models import Consuming, choice, ledger_effect, view
 
 
 def test_choice_preserves_function_behavior():
@@ -17,7 +17,44 @@ def test_choice_attaches_inspectable_metadata():
         pass
 
     assert archive_holding.__choice__.controller == "owner"
-    assert archive_holding.__choice__.consuming is False
+    assert archive_holding.__choice__.consuming is Consuming.NON_CONSUMING
+
+
+@pytest.mark.parametrize(
+    "consuming,expected",
+    [
+        (True, Consuming.CONSUMING),
+        (False, Consuming.NON_CONSUMING),
+        ("consuming", Consuming.CONSUMING),
+        ("nonconsuming", Consuming.NON_CONSUMING),
+        ("preconsuming", Consuming.PRE_CONSUMING),
+        ("postconsuming", Consuming.POST_CONSUMING),
+        (Consuming.PRE_CONSUMING, Consuming.PRE_CONSUMING),
+        (Consuming.POST_CONSUMING, Consuming.POST_CONSUMING),
+    ],
+)
+def test_choice_accepts_all_four_daml_consuming_modes(consuming, expected):
+    @choice(controller="owner", consuming=consuming)
+    def transfer(new_owner):
+        pass
+
+    assert transfer.__choice__.consuming is expected
+
+
+def test_choice_accepts_optional_observer():
+    @choice(controller="owner", consuming=True, observer="issuer")
+    def transfer(new_owner):
+        pass
+
+    assert transfer.__choice__.observer == "issuer"
+
+
+def test_choice_observer_defaults_to_none():
+    @choice(controller="owner", consuming=True)
+    def transfer(new_owner):
+        pass
+
+    assert transfer.__choice__.observer is None
 
 
 @pytest.mark.parametrize(
@@ -28,7 +65,7 @@ def test_choice_attaches_inspectable_metadata():
         {"controller": "owner"},
     ],
 )
-def test_choice_rejects_non_bool_or_missing_consuming(kwargs):
+def test_choice_rejects_invalid_or_missing_consuming(kwargs):
     with pytest.raises(TypeError):
         choice(**kwargs)
 

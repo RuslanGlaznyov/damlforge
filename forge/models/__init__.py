@@ -1,4 +1,16 @@
-from forge.models.decorators import ChoiceMeta, choice, ledger_effect, view
+from forge.models.decorators import (
+    ChoiceMeta,
+    Consuming,
+    InstanceMeta,
+    InterfaceMeta,
+    choice,
+    exception,
+    instance,
+    interface,
+    ledger_effect,
+    template,
+    view,
+)
 from forge.models.types import (
     ContractId,
     Date,
@@ -15,7 +27,14 @@ __all__ = [
     "choice",
     "ledger_effect",
     "view",
+    "template",
+    "interface",
+    "instance",
+    "exception",
     "ChoiceMeta",
+    "Consuming",
+    "InterfaceMeta",
+    "InstanceMeta",
     "Party",
     "Text",
     "Int",

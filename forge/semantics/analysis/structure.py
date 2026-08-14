@@ -1,3 +1,5 @@
+from typing import Optional
+
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 
@@ -6,6 +8,13 @@ LEDGER_EFFECT_DECORATOR = "ledger_effect"
 VIEW_DECORATOR = "view"
 
 LEDGER_EFFECT_BUILTINS = {"create", "fetch", "exercise", "archive", "lookup"}
+
+# mirrors Daml's `Consuming` LF-AST type: PreConsuming | Consuming | NonConsuming | PostConsuming
+CONSUMING_VARIANTS = {"preconsuming", "consuming", "nonconsuming", "postconsuming"}
+# preconsuming/postconsuming are template-only; not supported on interface choices
+# (compiler/damlc/daml-lf-conversion/src/DA/Daml/LFConversion.hs, "Preconsuming/Postconsuming
+# choice for interface" is an unsupported-operation error there)
+TEMPLATE_ONLY_CONSUMING_VARIANTS = {"preconsuming", "postconsuming"}
 
 
 def _choice_calls(fn: vy_ast.FunctionDef):
@@ -16,8 +25,12 @@ def _choice_calls(fn: vy_ast.FunctionDef):
             yield dec
 
 
-def _is_bool_literal(node) -> bool:
-    return isinstance(node, vy_ast.NameConstant) and isinstance(node.value, bool)
+def _consuming_variant(node) -> Optional[str]:
+    if isinstance(node, vy_ast.NameConstant) and isinstance(node.value, bool):
+        return "consuming" if node.value else "nonconsuming"
+    if isinstance(node, vy_ast.Str) and node.value in CONSUMING_VARIANTS:
+        return node.value
+    return None
 
 
 def _has_decorator(fn: vy_ast.FunctionDef, name: str) -> bool:
@@ -69,13 +82,36 @@ def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -
                 )
 
             consuming = kwargs.get("consuming")
-            if consuming is None or not _is_bool_literal(consuming):
+            variant = None if consuming is None else _consuming_variant(consuming)
+            if variant is None:
                 errors.append(
                     DamlForgeException(
-                        f"Choice `{qualified_name}` must explicitly declare "
-                        "`consuming=True` or `consuming=False`",
+                        f"Choice `{qualified_name}` must explicitly declare `consuming` as "
+                        f"True/False or one of {sorted(CONSUMING_VARIANTS)!r}",
                         fn,
                         code="DF1203",
+                    )
+                )
+
+
+def check_consuming_variant_scope(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    for fn in container.body:
+        if not isinstance(fn, vy_ast.FunctionDef):
+            continue
+
+        for call in _choice_calls(fn):
+            kwargs = {kw.arg: kw.value for kw in call.keywords}
+            consuming = kwargs.get("consuming")
+            variant = None if consuming is None else _consuming_variant(consuming)
+
+            if variant in TEMPLATE_ONLY_CONSUMING_VARIANTS:
+                errors.append(
+                    DamlForgeException(
+                        f"Choice `{container.name}.{fn.name}` declares "
+                        f"`consuming=\"{variant}\"`, which is not supported on "
+                        "interface/instance choices — only `consuming`/`nonconsuming` are",
+                        fn,
+                        code="DF1208",
                     )
                 )
 
@@ -152,6 +188,7 @@ def check_container(node: vy_ast.TopLevel, errors: ExceptionList) -> None:
         check_view_outside_interface(node, errors)
     elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.InstanceDef)):
         check_choice_decorators(node, errors)
+        check_consuming_variant_scope(node, errors)
         check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)
         check_view_decorator(node, errors)

@@ -43,3 +43,28 @@ def test_interface_keyword_captures_view_keyword_argument():
 def test_bare_class_keyword_still_rejected():
     with pytest.raises(SyntaxException):
         _parse("class Asset:\n    pass\n")
+
+
+def test_interface_keyword_captures_requires_base_interfaces():
+    source = (
+        "interface MyInterface:\n    pass\n"
+        "interface YourInterface:\n    pass\n"
+        "interface OurInterface(MyInterface, YourInterface, view=EmptyView):\n    pass\n"
+    )
+    module = _parse(source)
+
+    our_interface = module.body[2]
+
+    assert isinstance(our_interface, InterfaceDef)
+    assert [base.id for base in our_interface.bases] == ["MyInterface", "YourInterface"]
+    assert [kw.arg for kw in our_interface.keywords] == ["view"]
+
+
+def test_interface_method_declaration_parses_as_bare_annotation():
+    module = _parse("interface Holding(view=HoldingView):\n    method1: Party\n")
+
+    holding = module.body[0]
+    method_decl = holding.body[0]
+
+    assert method_decl.target.id == "method1"
+    assert method_decl.value is None

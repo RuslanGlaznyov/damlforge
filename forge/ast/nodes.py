@@ -755,7 +755,7 @@ class ErrorDef(TopLevel):
 
 
 class InterfaceDef(TopLevel):
-    __slots__ = ("name", "body", "keywords")
+    __slots__ = ("name", "body", "keywords", "bases")
 
 
 class StructDef(TopLevel):

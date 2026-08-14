@@ -143,13 +143,59 @@ interface Holding(view=HoldingView):
 """
 
 
+def _choice_template(consuming_literal, observer_clause=""):
+    return f"""
+template Asset:
+    owner: Party
+    issuer: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming={consuming_literal}{observer_clause})
+    def transfer(new_owner: Party) -> bool:
+        pass
+"""
+
+
+CHOICE_PRECONSUMING_ON_TEMPLATE_IS_ALLOWED = _choice_template('"preconsuming"')
+CHOICE_POSTCONSUMING_ON_TEMPLATE_IS_ALLOWED = _choice_template('"postconsuming"')
+CHOICE_STRING_CONSUMING_ON_TEMPLATE_IS_ALLOWED = _choice_template('"consuming"')
+CHOICE_WITH_OBSERVER_IS_ALLOWED = _choice_template("True", ", observer=issuer")
+
+
+CHOICE_PRECONSUMING_ON_INTERFACE = """
+interface Holding(view=HoldingView):
+    @choice(controller=owner, consuming="preconsuming")
+    def archive_holding() -> bool:
+        pass
+"""
+
+
+CHOICE_POSTCONSUMING_ON_INSTANCE = """
+interface Holding(view=HoldingView):
+    pass
+instance AssetHoldingInstance(Holding):
+    @choice(controller=owner, consuming="postconsuming")
+    def archive_holding() -> bool:
+        pass
+"""
+
+
 def test_valid_template_passes():
     _analyze(VALID_TEMPLATE)
 
 
 @pytest.mark.parametrize(
     "source",
-    [LEDGER_EFFECT_MARKED_IS_ALLOWED, CHOICE_BODY_LEDGER_EFFECT_IS_ALLOWED, VIEW_IN_INTERFACE_IS_ALLOWED],
+    [
+        LEDGER_EFFECT_MARKED_IS_ALLOWED,
+        CHOICE_BODY_LEDGER_EFFECT_IS_ALLOWED,
+        VIEW_IN_INTERFACE_IS_ALLOWED,
+        CHOICE_PRECONSUMING_ON_TEMPLATE_IS_ALLOWED,
+        CHOICE_POSTCONSUMING_ON_TEMPLATE_IS_ALLOWED,
+        CHOICE_STRING_CONSUMING_ON_TEMPLATE_IS_ALLOWED,
+        CHOICE_WITH_OBSERVER_IS_ALLOWED,
+    ],
 )
 def test_valid_decorator_usage_passes(source):
     _analyze(source)
@@ -166,6 +212,8 @@ def test_valid_decorator_usage_passes(source):
         (HIDDEN_LEDGER_EFFECT, "DF1205"),
         (VIEW_WITH_ARGS, "DF1206"),
         (VIEW_IN_TEMPLATE, "DF1207"),
+        (CHOICE_PRECONSUMING_ON_INTERFACE, "DF1208"),
+        (CHOICE_POSTCONSUMING_ON_INSTANCE, "DF1208"),
     ],
 )
 def test_invalid_template_raises(source, expected_code):
