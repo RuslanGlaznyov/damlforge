@@ -1,6 +1,6 @@
 import pytest
 
-from forge.ast.nodes import InstanceDef, InterfaceDef, TemplateDef
+from forge.ast.nodes import InstanceDef, InterfaceDef, NameConstant, TemplateDef
 from forge.ast.parse import parse_to_ast
 from forge.exceptions import SyntaxException
 
@@ -68,3 +68,13 @@ def test_interface_method_declaration_parses_as_bare_annotation():
 
     assert method_decl.target.id == "method1"
     assert method_decl.value is None
+
+
+def test_none_literal_is_accepted_for_optional_fields():
+    module = _parse("template Asset:\n    lock: Optional[Party] = None\n")
+
+    template = module.body[0]
+    assigned_value = template.body[0].value
+
+    assert isinstance(assigned_value, NameConstant)
+    assert assigned_value.value is None

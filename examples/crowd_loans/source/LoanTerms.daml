@@ -1,0 +1,399 @@
+module LoanTerms where
+
+import qualified Splice.Amulet as Amulet
+import Splice.AmuletRules (AppTransferContext(..), Transfer(..), TransferInput(..), TransferOutput(..), exerciseAppTransfer, createdAmuletToHolding)
+import qualified Splice.Api.Token.HoldingV1 as Holding
+
+data RepaymentMilestone = RepaymentMilestone
+  with
+    dueDate : Time
+    amount : Decimal
+    paid : Bool
+    paidDate : Optional Time
+  deriving (Eq, Show)
+
+data RepaymentSchedule = RepaymentSchedule
+  with
+    milestones : [RepaymentMilestone]
+  deriving (Eq, Show)
+
+data PeriodPaymentStatus = PeriodPending | PeriodPaid
+  deriving (Eq, Show)
+
+data PeriodPayment = PeriodPayment
+  with
+    periodNumber : Int
+    amount : Decimal
+    status : PeriodPaymentStatus
+    paidDate : Optional Time
+  deriving (Eq, Show)
+
+data LoanTerms = LoanTerms
+  with
+    loanRewards: Optional LoanRewards
+    performanceRewards : Optional PerformanceRewards
+  deriving (Eq, Show)
+
+data LoanRewards = LoanRewards
+  with
+    multiplier : Decimal
+    repaymentSchedule : RepaymentSchedule
+    numberOfPeriods : Int
+    periodPayments : [PeriodPayment]
+  deriving (Eq, Show)
+
+data PerformanceRewards = PerformanceRewards
+  with
+    interestRate : Decimal
+    interestLenMonths : Decimal
+  deriving (Eq, Show)
+
+data RepaymentDistribution = RepaymentDistribution
+  with
+    investor : Party
+    amount : Decimal
+    distributedAt : Time
+  deriving (Eq, Show)
+
+data RepaymentClaimStatus = ClaimPending | ClaimAccepted | ClaimExpired
+  deriving (Eq, Show)
+
+data RepaymentClaimView = RepaymentClaimView
+  with
+    platform : Party
+    developer : Party
+    investor : Party
+    dso : Party
+    campaignExternalId : Text
+    amount : Decimal
+    status : RepaymentClaimStatus
+    claimBefore : Time
+  deriving (Eq, Show)
+
+data LoanTrackerView = LoanTrackerView
+  with
+    platform : Party
+    developer : Party
+    dso : Party
+    campaignExternalId : Text
+    loanTerms : LoanTerms
+    totalRepaid : Decimal
+    balance : Decimal
+  deriving (Eq, Show)
+
+template LoanTracker
+  with
+    platform : Party
+    developer : Party
+    dso : Party
+    campaignExternalId : Text
+    loanTerms : LoanTerms
+    totalRepaid : Decimal
+    repaymentHistory : [RepaymentDistribution]
+    investments : [(Party, Decimal)]
+    totalRaised : Decimal
+    balance : Decimal
+    holdingCids : [ContractId Holding.Holding]
+  where
+    signatory platform, developer
+    observer map fst investments
+
+    ensure
+      totalRepaid >= 0.0 &&
+      totalRaised > 0.0 &&
+      balance >= 0.0
+
+    choice LoanTracker_Deposit : ContractId LoanTracker
+      with
+        inputs : [ContractId Amulet.Amulet]
+        amount : Decimal
+        appTransferContext : AppTransferContext
+      controller platform, developer
+      do
+        assertMsg "Deposit amount must be positive" (amount > 0.0)
+
+        inputAmount <- verifyAmulets dso inputs
+        assertMsg "Insufficient funds for deposit" (inputAmount >= amount)
+
+        let platformOutput = TransferOutput with
+              receiver = platform
+              receiverFeeRatio = 0.0
+              amount = amount
+              lock = None
+
+        let transfer = Transfer with
+              sender = developer
+              provider = platform
+              inputs = map InputAmulet inputs
+              outputs = [platformOutput]
+              beneficiaries = None
+
+        transferResult <- exerciseAppTransfer dso appTransferContext transfer
+        let newHoldings = map createdAmuletToHolding transferResult.createdAmulets
+
+        create this with
+          balance = balance + amount
+          holdingCids = holdingCids <> newHoldings
+
+    choice LoanTracker_Repay : (ContractId LoanTracker, [ContractId RepaymentClaim])
+      with
+        repayAmount : Decimal
+        currentTime : Time
+        claimBefore : Time
+      controller platform
+      do
+        assertMsg "Repayment amount must be positive" (repayAmount > 0.0)
+        assertMsg "Must have investors to distribute to" (not $ null investments)
+        assertMsg "Claim deadline must be in the future" (claimBefore > currentTime)
+        assertMsg "Insufficient balance for repayment" (balance >= repayAmount)
+        assertMsg "No holdings available for repayment" (not $ null holdingCids)
+
+        let investorDistributions = map (\(inv, amt) ->
+              let share = amt / totalRaised
+                  distribution = repayAmount * share
+              in (inv, distribution)
+              ) investments
+
+        let numHoldingsNeeded = calculateNumHoldingsForAmount holdingCids repayAmount
+        let (repaymentHoldings, remainingHoldings) = splitAt numHoldingsNeeded holdingCids
+
+        claimCids <- forA investorDistributions $ \(inv, distAmount) -> do
+          create RepaymentClaim with
+            platform
+            developer
+            investor = inv
+            dso
+            campaignExternalId
+            amount = distAmount
+            status = ClaimPending
+            claimBefore
+            holdingCids = repaymentHoldings
+
+        let newDistributions = map (\(inv, distAmount) ->
+              RepaymentDistribution with
+                investor = inv
+                amount = distAmount
+                distributedAt = currentTime
+              ) investorDistributions
+
+        let updatedLoanTerms = case loanTerms.loanRewards of
+              None -> loanTerms
+              Some rewards ->
+                let updatedMilestones = map (updateMilestoneIfDue repayAmount) rewards.repaymentSchedule.milestones
+                    updatedSchedule = rewards.repaymentSchedule with milestones = updatedMilestones
+                    updatedRewards = rewards with repaymentSchedule = updatedSchedule
+                in loanTerms with loanRewards = Some updatedRewards
+
+        newTracker <- create this with
+          totalRepaid = totalRepaid + repayAmount
+          balance = balance - repayAmount
+          repaymentHistory = repaymentHistory <> newDistributions
+          loanTerms = updatedLoanTerms
+          holdingCids = remainingHoldings
+
+        return (newTracker, claimCids)
+
+    nonconsuming choice LoanTracker_CheckDefault : Bool
+      with
+        currentTime : Time
+      controller platform
+      do
+        let hasDefault = case loanTerms.loanRewards of
+              None -> False
+              Some rewards -> any (\m -> not m.paid && currentTime > m.dueDate) rewards.repaymentSchedule.milestones
+        return hasDefault
+
+    choice LoanTracker_LoanRewardsRepay : (ContractId LoanTracker, [ContractId RepaymentClaim])
+      with
+        repayAmount : Decimal
+        currentTime : Time
+        claimBefore : Time
+      controller platform
+      do
+        assertMsg "Repayment amount must be positive" (repayAmount > 0.0)
+        assertMsg "Must have investors to distribute to" (not $ null investments)
+        assertMsg "Claim deadline must be in the future" (claimBefore > currentTime)
+        assertMsg "Insufficient balance for repayment" (balance >= repayAmount)
+        assertMsg "No holdings available for repayment" (not $ null holdingCids)
+
+        case loanTerms.loanRewards of
+          None -> error "No loan rewards defined"
+          Some rewards -> do
+            assertMsg "Multiplier must be positive" (rewards.multiplier > 0.0)
+            assertMsg "Number of periods must be positive" (rewards.numberOfPeriods > 0)
+            assertMsg "Total raised must be positive" (totalRaised > 0.0)
+
+            let totalToRepay = totalRaised * rewards.multiplier
+            assertMsg "Total repayment amount overflow - multiplier too large" (totalToRepay > 0.0 && totalToRepay < 1000000000.0)
+
+            let amountPerPeriod = totalToRepay / intToDecimal rewards.numberOfPeriods
+            assertMsg "Period amount must be positive" (amountPerPeriod > 0.0)
+
+            let paidPeriods = filter (\p -> p.status == PeriodPaid) rewards.periodPayments
+            let nextPeriodNumber = length paidPeriods + 1
+
+            assertMsg ("All " <> show rewards.numberOfPeriods <> " periods already paid") (nextPeriodNumber <= rewards.numberOfPeriods)
+            assertMsg ("Payment amount " <> show repayAmount <> " must be at least " <> show amountPerPeriod) (repayAmount >= amountPerPeriod)
+
+            let investorDistributions = map (\(inv, amt) ->
+                  let share = amt / totalRaised
+                      distribution = amountPerPeriod * share
+                  in (inv, distribution)
+                  ) investments
+
+            let totalDistributed = sum (map snd investorDistributions)
+            assertMsg ("Distribution total " <> show totalDistributed <> " must equal period amount " <> show amountPerPeriod)
+              (abs (totalDistributed - amountPerPeriod) < 0.01)
+
+            let numHoldingsNeeded = calculateNumHoldingsForAmount holdingCids amountPerPeriod
+            assertMsg ("Not enough holdings: need " <> show numHoldingsNeeded <> ", have " <> show (length holdingCids))
+              (numHoldingsNeeded <= length holdingCids)
+            let (repaymentHoldings, remainingHoldings) = splitAt numHoldingsNeeded holdingCids
+
+            claimCids <- forA investorDistributions $ \(inv, distAmount) -> do
+              create RepaymentClaim with
+                platform
+                developer
+                investor = inv
+                dso
+                campaignExternalId
+                amount = distAmount
+                status = ClaimPending
+                claimBefore
+                holdingCids = repaymentHoldings
+
+            let newDistributions = map (\(inv, distAmount) ->
+                  RepaymentDistribution with
+                    investor = inv
+                    amount = distAmount
+                    distributedAt = currentTime
+                  ) investorDistributions
+
+            let newPeriodPayment = PeriodPayment with
+                  periodNumber = nextPeriodNumber
+                  amount = amountPerPeriod
+                  status = PeriodPaid
+                  paidDate = Some currentTime
+
+            let updatedPeriodPayments = rewards.periodPayments <> [newPeriodPayment]
+            let updatedRewards = rewards with periodPayments = updatedPeriodPayments
+            let updatedLoanTerms = loanTerms with loanRewards = Some updatedRewards
+
+            newTracker <- create this with
+              totalRepaid = totalRepaid + amountPerPeriod
+              balance = balance - amountPerPeriod
+              repaymentHistory = repaymentHistory <> newDistributions
+              loanTerms = updatedLoanTerms
+              holdingCids = remainingHoldings
+
+            return (newTracker, claimCids)
+
+    nonconsuming choice LoanTracker_GetLoanRewardsSchedule : [PeriodPayment]
+      controller platform
+      do
+        case loanTerms.loanRewards of
+          None -> return []
+          Some rewards -> do
+            let existingPayments = rewards.periodPayments
+            let existingPeriods = map (\p -> p.periodNumber) existingPayments
+            let totalToRepay = totalRaised * rewards.multiplier
+            let amountPerPeriod = totalToRepay / intToDecimal rewards.numberOfPeriods
+
+            let allPeriods = [1..rewards.numberOfPeriods]
+            let pendingPeriods = filter (\p -> not $ elem p existingPeriods) allPeriods
+
+            let pendingPayments = map (\periodNum ->
+                  PeriodPayment with
+                    periodNumber = periodNum
+                    amount = amountPerPeriod
+                    status = PeriodPending
+                    paidDate = None
+                  ) pendingPeriods
+
+            return (existingPayments <> pendingPayments)
+
+    nonconsuming choice LoanTracker_GetLoanRewardsHistory : [PeriodPayment]
+      controller platform
+      do
+        case loanTerms.loanRewards of
+          None -> return []
+          Some rewards -> return rewards.periodPayments
+
+template RepaymentClaim
+  with
+    platform : Party
+    developer : Party
+    investor : Party
+    dso : Party
+    campaignExternalId : Text
+    amount : Decimal
+    status : RepaymentClaimStatus
+    claimBefore : Time
+    holdingCids : [ContractId Holding.Holding]
+  where
+    signatory platform, developer
+    observer investor
+
+    ensure
+      amount > 0.0 &&
+      not (null holdingCids)
+
+    choice RepaymentClaim_Accept : [ContractId Holding.Holding]
+      with
+        currentTime : Time
+        appTransferContext : AppTransferContext
+      controller investor, platform
+      do
+        assertMsg "Claim must be Pending" (status == ClaimPending)
+        assertMsg "Claim deadline has passed" (currentTime < claimBefore)
+
+        totalAmount <- do
+          amounts <- forA holdingCids $ \holdingCid -> do
+            let amuletCid = fromInterfaceContractId @Amulet.Amulet holdingCid
+            amulet <- fetch amuletCid
+            return amulet.amount.initialAmount
+          return (sum amounts)
+
+        let investorOutput = TransferOutput with
+              receiver = investor
+              receiverFeeRatio = 1.0
+              amount = totalAmount
+              lock = None
+
+        let transfer = Transfer with
+              sender = platform
+              provider = platform
+              inputs = map (InputAmulet . fromInterfaceContractId) holdingCids
+              outputs = [investorOutput]
+              beneficiaries = None
+
+        transferResult <- exerciseAppTransfer dso appTransferContext transfer
+        return (map createdAmuletToHolding transferResult.createdAmulets)
+
+    choice RepaymentClaim_Expire : ()
+      with
+        currentTime : Time
+      controller platform
+      do
+        assertMsg "Claim must be Pending" (status == ClaimPending)
+        assertMsg "Cannot expire before deadline" (currentTime >= claimBefore)
+        return ()
+
+updateMilestoneIfDue : Decimal -> RepaymentMilestone -> RepaymentMilestone
+updateMilestoneIfDue paidAmount milestone =
+  if milestone.paid || paidAmount < milestone.amount
+    then milestone
+    else milestone with paid = True
+
+verifyAmulets : Party -> [ContractId Amulet.Amulet] -> Update Decimal
+verifyAmulets dsoParty amulets = do
+  let verifyAmulet amuletCid = do
+        amulet <- fetch amuletCid
+        assertMsg "Amulet DSO must match" (amulet.dso == dsoParty)
+        pure amulet.amount.initialAmount
+  amounts <- mapA verifyAmulet amulets
+  pure $ sum amounts
+
+calculateNumHoldingsForAmount : [ContractId Holding.Holding] -> Decimal -> Int
+calculateNumHoldingsForAmount holdings _ =
+  length holdings

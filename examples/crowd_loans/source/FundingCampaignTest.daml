@@ -1,0 +1,1201 @@
+module FundingCampaignTest where
+
+import Daml.Script
+import DA.Time
+import DA.Date
+import DA.Action (void)
+import DA.Optional (fromOptional)
+import qualified DA.Set as Set
+import qualified Splice.Amulet as Amulet
+import Splice.Amulet (LockedAmulet, ValidatorRight(..), FeaturedAppRight(..))
+import qualified Splice.Api.Token.HoldingV1 as Holding
+import Splice.Fees
+import Splice.AmuletRules
+import Splice.Round
+import Splice.Schedule
+import Splice.Issuance
+import Splice.ValidatorLicense
+import Splice.AmuletConfig
+import Splice.DecentralizedSynchronizer
+import Splice.ExternalPartyAmuletRules
+import FundingCampaign
+import qualified FundingCampaign as FC
+import LoanTerms
+import qualified LoanTerms as LT
+
+defaultTransferConfig : TransferConfig USD
+defaultTransferConfig = TransferConfig with
+  createFee = FixedFee 0.0
+  holdingFee = RatePerRound 0.00002
+  lockHolderFee = FixedFee 0.0
+  transferFee = SteppedRate with
+    initialRate = 0.0
+    steps = []
+  extraFeaturedAppRewardAmount = 1.0
+  maxNumInputs = 100
+  maxNumOutputs = 100
+  maxNumLockHolders = 10
+
+defaultBaseRateTrafficLimits : BaseRateTrafficLimits
+defaultBaseRateTrafficLimits = BaseRateTrafficLimits with
+  burstAmount = 10 * 20 * 1000
+  burstWindow = minutes 10
+
+defaultSynchronizerFeesConfig : SynchronizerFeesConfig
+defaultSynchronizerFeesConfig = SynchronizerFeesConfig with
+  baseRateTrafficLimits = defaultBaseRateTrafficLimits
+  minTopupAmount = 1_000_000
+  extraTrafficPrice = 1.0
+  readVsWriteScalingFactor = 4
+
+defaultAmuletDecentralizedSynchronizerConfig : AmuletDecentralizedSynchronizerConfig
+defaultAmuletDecentralizedSynchronizerConfig = AmuletDecentralizedSynchronizerConfig with
+  requiredSynchronizers = Set.fromList ["decentralized-synchronizer-id-0"]
+  activeSynchronizer = "decentralized-synchronizer-id-0"
+  fees = defaultSynchronizerFeesConfig
+
+defaultIssuanceConfig : IssuanceConfig
+defaultIssuanceConfig = IssuanceConfig with
+  amuletToIssuePerYear = 40e9
+  validatorRewardPercentage = 0.05
+  appRewardPercentage = 0.15
+  validatorRewardCap = 0.2
+  featuredAppRewardCap = 100.0
+  unfeaturedAppRewardCap = 0.6
+  optValidatorFaucetCap = None
+  optDevelopmentFundPercentage = None
+
+defaultAmuletConfig : AmuletConfig USD
+defaultAmuletConfig = AmuletConfig with
+  transferConfig = defaultTransferConfig
+  issuanceCurve = Schedule with
+    initialValue = defaultIssuanceConfig
+    futureValues = []
+  decentralizedSynchronizer = defaultAmuletDecentralizedSynchronizerConfig
+  tickDuration = minutes 10
+  packageConfig = PackageConfig with
+    amulet = "0.1.0"
+    amuletNameService = "0.1.0"
+    dsoGovernance = "0.1.0"
+    validatorLifecycle = "0.1.0"
+    wallet = "0.1.0"
+    walletPayments = "0.1.0"
+  transferPreapprovalFee = Some 0.000019
+  featuredAppActivityMarkerAmount = Some 1.0
+  optDevelopmentFundManager = None
+  externalPartyConfigStateTickDuration = None
+  rewardConfig = None
+
+defaultAmuletConfigSchedule : Schedule Time (AmuletConfig USD)
+defaultAmuletConfigSchedule = Schedule with
+  initialValue = defaultAmuletConfig
+  futureValues = []
+
+data AmuletApp = AmuletApp with
+    dso : Party
+  deriving (Eq, Show)
+
+data TestParties = TestParties
+  with
+    app : AmuletApp
+    platform : Party
+    developer : Party
+    investor1 : Party
+    investor2 : Party
+    investor3 : Party
+
+demoTime : Time
+demoTime = time (DA.Date.date 2022 Jan 1) 0 0 0
+
+setupApp : Script AmuletApp
+setupApp = do
+  setTime demoTime
+  dso <- allocateParty "dso-party"
+
+  _ <- submit dso $ createCmd AmuletRules with
+    configSchedule = defaultAmuletConfigSchedule
+    isDevNet = True
+    contractStateSchemaVersion = None
+    ..
+
+  _ <- submit dso $ createCmd ExternalPartyAmuletRules with dso
+
+  return AmuletApp with dso
+
+bootstrapRounds : AmuletApp -> Script ()
+bootstrapRounds app = do
+  (amuletRulesCid, _) <- fetchAmuletRulesByKey app.dso
+  void $ submit app.dso $ exerciseCmd amuletRulesCid AmuletRules_Bootstrap_Rounds with
+    amuletPrice = 1.0
+    round0Duration = hours 24
+    initialRound = None
+
+setupParties : Script TestParties
+setupParties = do
+  app <- setupApp
+  bootstrapRounds app
+  passTime (days 1)
+
+  platform <- allocateParty "Platform"
+  developer <- allocateParty "Developer"
+  investor1 <- allocateParty "Investor1"
+  investor2 <- allocateParty "Investor2"
+  investor3 <- allocateParty "Investor3"
+
+  setupValidator app platform
+  setupValidator app developer
+  setupValidator app investor1
+  setupValidator app investor2
+  setupValidator app investor3
+
+  return TestParties with ..
+
+setupValidator : AmuletApp -> Party -> Script ()
+setupValidator app validatorParty = do
+  sponsorParty <- allocateParty (partyToText validatorParty <> "_sponsor")
+  now <- getTime
+  void $ submit (actAs [validatorParty, app.dso]) $ createCmd ValidatorLicense with
+    dso = app.dso
+    sponsor = sponsorParty
+    validator = validatorParty
+    faucetState = None
+    metadata = Some ValidatorLicenseMetadata with
+      version = "0.1.0"
+      contactPoint = partyToText validatorParty <> "@example.com"
+      lastUpdatedAt = now
+    lastActiveAt = Some now
+
+  void $ submit (actAs [validatorParty, app.dso]) $
+    createCmd ValidatorRight with dso = app.dso; validator = validatorParty; user = validatorParty
+
+fetchAmuletRulesByKey : Party -> Script (ContractId AmuletRules, AmuletRules)
+fetchAmuletRulesByKey dso = do
+  amuletRules <- query @AmuletRules dso
+  case amuletRules of
+    [] -> abort "No active AmuletRules contract"
+    [amuletRules] -> pure amuletRules
+    rules -> abort $ "Expected 0 or 1 AmuletRules contracts but got " <> show (length rules)
+
+getLatestActiveOpenRound : Party -> Script (ContractId OpenMiningRound, OpenMiningRound)
+getLatestActiveOpenRound dso = do
+  rounds <- query @OpenMiningRound dso
+  case rounds of
+    [] -> abort "No active open mining rounds"
+    (first :: rest) -> pure $ foldl (\acc x -> if (snd x).round > (snd acc).round then x else acc) first rest
+
+tap : AmuletApp -> Party -> Decimal -> Script (ContractId Amulet.Amulet)
+tap app owner amount = do
+  (openRoundCid, _) <- getLatestActiveOpenRound app.dso
+  (amuletRulesCid, _) <- fetchAmuletRulesByKey app.dso
+  result <- submit (actAs [owner] <> readAs [app.dso]) $ exerciseCmd amuletRulesCid AmuletRules_DevNet_Tap with
+    receiver = owner
+    amount
+    openRound = openRoundCid
+  return result.amuletSum.amulet
+
+getAppTransferContext : AmuletApp -> Party -> Script AppTransferContext
+getAppTransferContext app provider = do
+  (openMiningRoundCid, _) <- getLatestActiveOpenRound app.dso
+  (amuletRulesCid, _) <- fetchAmuletRulesByKey app.dso
+  featuredAppRight <- getFeaturedAppRight app provider
+  pure AppTransferContext with
+    amuletRules = amuletRulesCid
+    openMiningRound = openMiningRoundCid
+    featuredAppRight
+
+getFeaturedAppRight : AmuletApp -> Party -> Script (Optional (ContractId FeaturedAppRight))
+getFeaturedAppRight app provider = do
+  rights <- query @FeaturedAppRight provider
+  case [cid | (cid, r) <- rights, r.dso == app.dso] of
+    [] -> pure None
+    (cid :: _) -> pure (Some cid)
+
+termsAllOrNothing : FC.Terms
+termsAllOrNothing = FC.Terms with
+  platform_fees = 0.05
+  fund_mode = FC.AllOrNothing
+  cooldown_period_days = 7
+  flexible_funding_minimum = 0.0
+  cap_at_target = False
+  locked_party = None
+  unlocked_party = None
+
+termsFlexible : FC.Terms
+termsFlexible = FC.Terms with
+  platform_fees = 0.05
+  fund_mode = FC.Flexible
+  cooldown_period_days = 7
+  flexible_funding_minimum = 30000.0
+  cap_at_target = False
+  locked_party = None
+  unlocked_party = None
+
+createTestCampaign : TestParties -> Holding.InstrumentId -> FC.Terms -> Script (ContractId FundingCampaign)
+createTestCampaign parties instrumentId terms = do
+  now <- getTime
+  submit (actAs [parties.platform, parties.developer]) $ createCmd FundingCampaign with
+    platform = parties.platform
+    developer = parties.developer
+    dso = parties.app.dso
+    externalId = "test-campaign-001"
+    target = 100000.0
+    deadline = addRelTime now (days 30)
+    raised = 0.0
+    balance = 0.0
+    status = FC.Active
+    acceptedInstrumentId = instrumentId
+    terms = terms
+    investments = None
+    excessInvestments = None
+    excessHoldings = None
+    lockedHoldings = None
+    unlockedHoldings = None
+    refundedInvestors = None
+    loanTerms = None
+    finalizedAt = None
+
+createTestCampaignWithLoanTerms : TestParties -> Holding.InstrumentId -> FC.Terms -> LT.LoanTerms -> Script (ContractId FundingCampaign)
+createTestCampaignWithLoanTerms parties instrumentId terms loanTermsData = do
+  now <- getTime
+  submit (actAs [parties.platform, parties.developer]) $ createCmd FundingCampaign with
+    platform = parties.platform
+    developer = parties.developer
+    dso = parties.app.dso
+    externalId = "test-campaign-001"
+    target = 100000.0
+    deadline = addRelTime now (days 30)
+    raised = 0.0
+    balance = 0.0
+    status = FC.Active
+    acceptedInstrumentId = instrumentId
+    terms = terms
+    investments = None
+    excessInvestments = None
+    excessHoldings = None
+    lockedHoldings = None
+    unlockedHoldings = None
+    refundedInvestors = None
+    loanTerms = Some loanTermsData
+    finalizedAt = None
+
+testInvestSuccessAllOrNothing : Script ()
+testInvestSuccessAllOrNothing = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid <- tap parties.app parties.investor1 210000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  _ <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  campaigns <- query @FundingCampaign parties.platform
+  let [(_, c)] = campaigns
+
+  assert (c.raised == 100000.0)
+  assert (length (fromOptional [] c.investments) == 1)
+  assert (length (fromOptional [] c.lockedHoldings) == 1)
+  assert (c.status == FC.Active)
+
+  lockedAmulets <- query @LockedAmulet parties.app.dso
+  assert (length lockedAmulets == 1)
+
+  pure ()
+
+testInvestSuccessFlexible : Script ()
+testInvestSuccessFlexible = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsFlexible
+
+  amuletCid <- tap parties.app parties.investor1 60000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  _ <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 50000.0
+    appTransferContext
+
+  campaigns <- query @FundingCampaign parties.platform
+  let [(_, c)] = campaigns
+
+  assert (c.raised == 50000.0)
+  assert (length (fromOptional [] c.investments) == 1)
+  assert (length (fromOptional [] c.lockedHoldings) == 1)
+
+  pure ()
+
+testInvestMultipleInvestors : Script ()
+testInvestMultipleInvestors = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amulet1Cid <- tap parties.app parties.investor1 60000.0
+  appTransferContext1 <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amulet1Cid]
+    amount = 50000.0
+    appTransferContext = appTransferContext1
+
+  amulet2Cid <- tap parties.app parties.investor2 85000.0
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+
+  _ <- submit (actAs [parties.investor2, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid2 FundingCampaign_Invest with
+    investor = parties.investor2
+    inputs = [amulet2Cid]
+    amount = 75000.0
+    appTransferContext = appTransferContext2
+
+  campaigns <- query @FundingCampaign parties.platform
+  let [(_, c)] = campaigns
+
+  assert (c.raised == 125000.0)
+  assert (length (fromOptional [] c.investments) == 2)
+  assert (length (fromOptional [] c.lockedHoldings) == 2)
+
+  pure ()
+
+testFlexibleFundingSuccess : Script ()
+testFlexibleFundingSuccess = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsFlexible
+
+  amuletCid <- tap parties.app parties.investor1 45000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 35000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  _ <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  campaigns <- query @FundingCampaign parties.platform
+  let [(_, c)] = campaigns
+
+  assert (c.status == FC.Successful)
+
+  pure ()
+
+testInvestFailedFlexible : Script ()
+testInvestFailedFlexible = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsFlexible
+
+  amuletCid <- tap parties.app parties.investor1 30000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 20000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  _ <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  campaigns <- query @FundingCampaign parties.platform
+  let [(_, c)] = campaigns
+
+  assert (c.status == FC.Failed)
+
+  pure ()
+
+testInvestFailedNoFunds : Script ()
+testInvestFailedNoFunds = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid <- tap parties.app parties.investor1 60000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 50000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  _ <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  campaigns <- query @FundingCampaign parties.platform
+  let [(_, c)] = campaigns
+
+  assert (c.status == FC.Failed)
+
+  pure ()
+
+testCreateInstallments : Script ()
+testCreateInstallments = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid <- tap parties.app parties.investor1 120000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  campaignsCheck <- query @FundingCampaign parties.platform
+  let [(_, cCheck)] = campaignsCheck
+  assert (cCheck.status == FC.Successful)
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (installmentCids, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  assert (length installmentCids == 3)
+
+  campaignsAfter <- query @FundingCampaign parties.platform
+  let [(_, cAfter)] = campaignsAfter
+  assert (cAfter.status == FC.Completed)
+
+  pure ()
+
+testInstallmentRelease : Script ()
+testInstallmentRelease = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid <- tap parties.app parties.investor1 120000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (installmentCids, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  let [installment1Cid, _, _] = installmentCids
+
+  passTime (days 38)
+
+  now2 <- getTime
+  appTransferContext3 <- getAppTransferContext parties.app parties.platform
+  let acceptDeadline = addRelTime now2 (days 7)
+  (_, transferCid, platformHoldings) <- submit (actAs [parties.platform, parties.app.dso]) $ exerciseCmd installment1Cid FC.InstallmentRelease_Release with
+    currentTime = now2
+    acceptBefore = acceptDeadline
+
+  developerHoldings <- submit (actAs [parties.developer, parties.app.dso]) $ exerciseCmd transferCid FC.InstallmentTransfer_Accept with
+    currentTime = now2
+    appTransferContext = appTransferContext3
+
+  assert (length developerHoldings > 0 || length platformHoldings > 0)
+
+  pure ()
+
+testInstallmentTransferReject : Script ()
+testInstallmentTransferReject = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid <- tap parties.app parties.investor1 120000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (installmentCids, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  let [installment1Cid, _, _] = installmentCids
+
+  passTime (days 38)
+
+  now2 <- getTime
+  let acceptDeadline = addRelTime now2 (days 7)
+  (_, transferCid, _) <- submit (actAs [parties.platform, parties.app.dso]) $ exerciseCmd installment1Cid FC.InstallmentRelease_Release with
+    currentTime = now2
+    acceptBefore = acceptDeadline
+
+  submit (actAs [parties.developer, parties.app.dso]) $ exerciseCmd transferCid FC.InstallmentTransfer_Reject
+
+  transfersAfter <- query @FC.InstallmentTransfer parties.platform
+  assert (null transfersAfter)
+
+  pure ()
+
+testInstallmentTransferWithdraw : Script ()
+testInstallmentTransferWithdraw = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid <- tap parties.app parties.investor1 120000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (installmentCids, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  let [installment1Cid, _, _] = installmentCids
+
+  passTime (days 38)
+
+  now2 <- getTime
+  let acceptDeadline = addRelTime now2 (days 7)
+  (_, transferCid, _) <- submit (actAs [parties.platform, parties.app.dso]) $ exerciseCmd installment1Cid FC.InstallmentRelease_Release with
+    currentTime = now2
+    acceptBefore = acceptDeadline
+
+  passTime (days 8)
+
+  now3 <- getTime
+  submit parties.platform $ exerciseCmd transferCid FC.InstallmentTransfer_Withdraw with
+    currentTime = now3
+
+  transfersAfter <- query @FC.InstallmentTransfer parties.platform
+  assert (null transfersAfter)
+
+  pure ()
+
+testClaimRefund : Script ()
+testClaimRefund = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid <- tap parties.app parties.investor1 60000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 50000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now
+
+  campaignsCheck <- query @FundingCampaign parties.platform
+  let [(_, cCheck)] = campaignsCheck
+  assert (cCheck.status == FC.Failed)
+
+  investorAmuletsBefore <- query @Amulet.Amulet parties.investor1
+  let balanceBefore = sum [a.amount.initialAmount | (_, a) <- investorAmuletsBefore]
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (_, refundedHoldings) <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid3 FundingCampaign_ClaimRefund with
+    investor = parties.investor1
+    receiver = parties.investor1
+    appTransferContext = appTransferContext2
+
+  assert (length refundedHoldings == 1)
+
+  investorAmuletsAfter <- query @Amulet.Amulet parties.investor1
+  let balanceAfter = sum [a.amount.initialAmount | (_, a) <- investorAmuletsAfter]
+
+  assert (balanceAfter > balanceBefore)
+
+  pure ()
+
+testCancelAfterFirstInstallmentRelease : Script ()
+testCancelAfterFirstInstallmentRelease = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  campaignCid <- createTestCampaign parties instrumentId termsAllOrNothing
+
+  amuletCid1 <- tap parties.app parties.investor1 40000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid1]
+    amount = 35000.0
+    appTransferContext
+
+  amuletCid2 <- tap parties.app parties.investor2 40000.0
+  appTransferContext2a <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2b <- submit (actAs [parties.investor2, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid2 FundingCampaign_Invest with
+    investor = parties.investor2
+    inputs = [amuletCid2]
+    amount = 35000.0
+    appTransferContext = appTransferContext2a
+
+  amuletCid3 <- tap parties.app parties.investor3 40000.0
+  appTransferContext2b <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2c <- submit (actAs [parties.investor3, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid2b FundingCampaign_Invest with
+    investor = parties.investor3
+    inputs = [amuletCid3]
+    amount = 35000.0
+    appTransferContext = appTransferContext2b
+
+  passTime (days 31)
+
+  now <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2c FundingCampaign_Finalize with
+    currentTime = now
+
+  appTransferContext3 <- getAppTransferContext parties.app parties.platform
+  (installmentCids, campaignCid4) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext3
+
+  let [installment1Cid, _, _] = installmentCids
+
+  passTime (days 38)
+
+  now2 <- getTime
+  let acceptDeadline = addRelTime now2 (days 7)
+  _ <- submit (actAs [parties.platform, parties.app.dso]) $ exerciseCmd installment1Cid FC.InstallmentRelease_Release with
+    currentTime = now2
+    acceptBefore = acceptDeadline
+
+  void $ submit (actAs [parties.platform, parties.developer]) $ exerciseCmd campaignCid4 FundingCampaign_Cancel
+
+  campaignsAfter <- query @FundingCampaign parties.platform
+  let [(_, cAfter)] = campaignsAfter
+  assert (cAfter.status == FC.Cancelled)
+
+  pure ()
+
+testLoanRepaymentAutoDistribute : Script ()
+testLoanRepaymentAutoDistribute = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  now3 <- getTime
+  let milestone1 = LT.RepaymentMilestone with
+        dueDate = addRelTime now3 (days 90)
+        amount = 40000.0
+        paid = False
+        paidDate = None
+  let milestone2 = LT.RepaymentMilestone with
+        dueDate = addRelTime now3 (days 180)
+        amount = 40000.0
+        paid = False
+        paidDate = None
+  let milestone3 = LT.RepaymentMilestone with
+        dueDate = addRelTime now3 (days 270)
+        amount = 40000.0
+        paid = False
+        paidDate = None
+  let repaymentSchedule = LT.RepaymentSchedule with
+        milestones = [milestone1, milestone2, milestone3]
+  let loanRewards = LT.LoanRewards with
+        multiplier = 1.2
+        repaymentSchedule
+        numberOfPeriods = 4
+        periodPayments = []
+  let loanTermsData = LT.LoanTerms with
+        loanRewards = Some loanRewards
+        performanceRewards = None
+
+  campaignCid <- createTestCampaignWithLoanTerms parties instrumentId termsAllOrNothing loanTermsData
+
+  amuletCid <- tap parties.app parties.investor1 120000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now2 <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now2
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (_, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  loanTrackers <- query @LoanTracker parties.platform
+  assert (length loanTrackers == 1)
+  let [(loanTrackerCid, loanTrackerData)] = loanTrackers
+  assert (loanTrackerData.totalRaised == 100000.0)
+  assert (length loanTrackerData.investments == 1)
+
+  developerAmulet <- tap parties.app parties.developer 50000.0
+  appTransferContext3 <- getAppTransferContext parties.app parties.platform
+
+  loanTrackerCid2 <- submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid LoanTracker_Deposit with
+    inputs = [developerAmulet]
+    amount = 40000.0
+    appTransferContext = appTransferContext3
+
+  now4 <- getTime
+  let claimDeadline = addRelTime now4 (days 30)
+
+  void $ submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid2 LoanTracker_Repay with
+    repayAmount = 40000.0
+    currentTime = now4
+    claimBefore = claimDeadline
+
+  loanTrackers2 <- query @LoanTracker parties.platform
+  let [(_, lt)] = loanTrackers2
+  assert (lt.totalRepaid == 40000.0)
+  assert (length lt.repaymentHistory == 1)
+
+  let [distribution] = lt.repaymentHistory
+  assert (distribution.investor == parties.investor1)
+  assert (distribution.amount == 40000.0)
+
+  claims <- query @RepaymentClaim parties.platform
+  assert (length claims == 1)
+  let [(claimCid, claim)] = claims
+  assert (claim.investor == parties.investor1)
+  assert (claim.status == LT.ClaimPending)
+
+  appTransferContext4 <- getAppTransferContext parties.app parties.platform
+  now5 <- getTime
+  _ <- submit (actAs [parties.investor1, parties.app.dso]) $ exerciseCmd claimCid RepaymentClaim_Accept with
+    currentTime = now5
+    appTransferContext = appTransferContext4
+
+  claimsAfter <- query @RepaymentClaim parties.platform
+  assert (null claimsAfter)
+
+  pure ()
+
+testLoanCheckDefault : Script ()
+testLoanCheckDefault = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  now3 <- getTime
+  let defaultMilestone = LT.RepaymentMilestone with
+        dueDate = addRelTime now3 (days 10)
+        amount = 40000.0
+        paid = False
+        paidDate = None
+  let repaymentSchedule = LT.RepaymentSchedule with
+        milestones = [defaultMilestone]
+  let loanRewards = LT.LoanRewards with
+        multiplier = 1.2
+        repaymentSchedule
+        numberOfPeriods = 1
+        periodPayments = []
+  let loanTermsData = LT.LoanTerms with
+        loanRewards = Some loanRewards
+        performanceRewards = None
+
+  campaignCid <- createTestCampaignWithLoanTerms parties instrumentId termsAllOrNothing loanTermsData
+
+  amuletCid <- tap parties.app parties.investor1 120000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now2 <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now2
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (_, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  loanTrackers <- query @LoanTracker parties.platform
+  assert (length loanTrackers == 1)
+  let [(loanTrackerCid, _)] = loanTrackers
+
+  passTime (days 15)
+
+  now4 <- getTime
+  isDefault <- submit parties.platform $ exerciseCmd loanTrackerCid LoanTracker_CheckDefault with
+    currentTime = now4
+
+  assert isDefault
+
+  pure ()
+
+testLoanPeriodPaymentBlocking : Script ()
+testLoanPeriodPaymentBlocking = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  now3 <- getTime
+  let milestone1 = LT.RepaymentMilestone with
+        dueDate = addRelTime now3 (days 90)
+        amount = 40000.0
+        paid = False
+        paidDate = None
+  let repaymentSchedule = LT.RepaymentSchedule with
+        milestones = [milestone1]
+  let loanRewards = LT.LoanRewards with
+        multiplier = 1.1
+        repaymentSchedule
+        numberOfPeriods = 3
+        periodPayments = []
+  let loanTermsData = LT.LoanTerms with
+        loanRewards = Some loanRewards
+        performanceRewards = None
+
+  campaignCid <- createTestCampaignWithLoanTerms parties instrumentId termsAllOrNothing loanTermsData
+
+  amulet1Cid <- tap parties.app parties.investor1 40000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amulet1Cid]
+    amount = 35000.0
+    appTransferContext
+
+  amulet2Cid <- tap parties.app parties.investor1 40000.0
+  appTransferContext2a <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2b <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid2 FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amulet2Cid]
+    amount = 35000.0
+    appTransferContext = appTransferContext2a
+
+  amulet3Cid <- tap parties.app parties.investor1 40000.0
+  appTransferContext2b <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2c <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid2b FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amulet3Cid]
+    amount = 30000.0
+    appTransferContext = appTransferContext2b
+
+  passTime (days 31)
+
+  now2 <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2c FundingCampaign_Finalize with
+    currentTime = now2
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (installmentCids, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  loanTrackers <- query @LoanTracker parties.platform
+  assert (length loanTrackers == 1)
+  let [(loanTrackerCid, loanTrackerData)] = loanTrackers
+  assert (loanTrackerData.totalRaised == 100000.0)
+
+  let [installment1Cid, installment2Cid, _] = installmentCids
+
+  passTime (days 38)
+
+  now4 <- getTime
+  let acceptDeadline = addRelTime now4 (days 7)
+  void $ submit (actAs [parties.platform, parties.app.dso]) $ exerciseCmd installment1Cid FC.InstallmentRelease_Release with
+    currentTime = now4
+    acceptBefore = acceptDeadline
+
+  passTime (days 30)
+
+  campaigns <- query @FundingCampaign parties.platform
+  let [(campaignCid, _)] = campaigns
+
+  (updatedInstallment2Cid, _) <- submit (actAs [parties.platform, parties.app.dso]) $ exerciseCmd installment2Cid FC.InstallmentRelease_Escrow with
+    campaignCid = campaignCid
+
+  now5 <- getTime
+  let acceptDeadline2 = addRelTime now5 (days 7)
+
+  submitMustFail (actAs [parties.platform, parties.app.dso]) $ exerciseCmd updatedInstallment2Cid FC.InstallmentRelease_Release with
+    currentTime = now5
+    acceptBefore = acceptDeadline2
+
+  developerAmulet <- tap parties.app parties.developer 50000.0
+  appTransferContext3 <- getAppTransferContext parties.app parties.platform
+
+  loanTrackerCid2 <- submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid LoanTracker_Deposit with
+    inputs = [developerAmulet]
+    amount = 36667.0
+    appTransferContext = appTransferContext3
+
+  now6 <- getTime
+  let claimDeadline = addRelTime now6 (days 30)
+
+  (loanTrackerCid3, _) <- submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid2 LoanTracker_LoanRewardsRepay with
+    repayAmount = 36667.0
+    currentTime = now6
+    claimBefore = claimDeadline
+
+  paymentHistory <- submit parties.platform $ exerciseCmd loanTrackerCid3 LoanTracker_GetLoanRewardsHistory
+
+  let paidPeriods = filter (\p -> p.status == LT.PeriodPaid) paymentHistory
+  assert (length paidPeriods == 1)
+  let [period1] = paidPeriods
+  assert (period1.periodNumber == 1)
+  assert (period1.amount > 0.0)
+
+  pure ()
+
+testLoanRewardsOverflowProtection : Script ()
+testLoanRewardsOverflowProtection = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  let loanRewards = LT.LoanRewards with
+        multiplier = 500.0
+        repaymentSchedule = LT.RepaymentSchedule with milestones = []
+        numberOfPeriods = 2
+        periodPayments = []
+  let loanTermsData = LT.LoanTerms with
+        loanRewards = Some loanRewards
+        performanceRewards = None
+
+  campaignCid <- createTestCampaignWithLoanTerms parties instrumentId termsAllOrNothing loanTermsData
+
+  amuletCid <- tap parties.app parties.investor1 120000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amuletCid]
+    amount = 100000.0
+    appTransferContext
+
+  passTime (days 31)
+
+  now2 <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2 FundingCampaign_Finalize with
+    currentTime = now2
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (_, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  loanTrackers <- query @LoanTracker parties.platform
+  assert (length loanTrackers == 1)
+  let [(loanTrackerCid, _)] = loanTrackers
+
+  developerAmulet <- tap parties.app parties.developer 30000000.0
+  appTransferContext3 <- getAppTransferContext parties.app parties.platform
+
+  loanTrackerCid2 <- submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid LoanTracker_Deposit with
+    inputs = [developerAmulet]
+    amount = 25000000.0
+    appTransferContext = appTransferContext3
+
+  now4 <- getTime
+  let claimDeadline = addRelTime now4 (days 30)
+
+  (_, _) <- submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid2 LoanTracker_LoanRewardsRepay with
+    repayAmount = 25000000.0
+    currentTime = now4
+    claimBefore = claimDeadline
+
+  pure ()
+
+testLoanRewardsPrecisionHandling : Script ()
+testLoanRewardsPrecisionHandling = script do
+  parties <- setupParties
+
+  let instrumentId = Holding.InstrumentId with
+        admin = parties.app.dso
+        id = "Amulet"
+
+  let loanRewards = LT.LoanRewards with
+        multiplier = 1.333333
+        repaymentSchedule = LT.RepaymentSchedule with milestones = []
+        numberOfPeriods = 7
+        periodPayments = []
+  let loanTermsData = LT.LoanTerms with
+        loanRewards = Some loanRewards
+        performanceRewards = None
+
+  campaignCid <- createTestCampaignWithLoanTerms parties instrumentId termsAllOrNothing loanTermsData
+
+  amulet1Cid <- tap parties.app parties.investor1 40000.0
+  appTransferContext <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2 <- submit (actAs [parties.investor1, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid FundingCampaign_Invest with
+    investor = parties.investor1
+    inputs = [amulet1Cid]
+    amount = 33333.33
+    appTransferContext
+
+  amulet2Cid <- tap parties.app parties.investor2 40000.0
+  appTransferContext2a <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2b <- submit (actAs [parties.investor2, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid2 FundingCampaign_Invest with
+    investor = parties.investor2
+    inputs = [amulet2Cid]
+    amount = 33333.33
+    appTransferContext = appTransferContext2a
+
+  amulet3Cid <- tap parties.app parties.investor3 40000.0
+  appTransferContext2b <- getAppTransferContext parties.app parties.platform
+
+  campaignCid2c <- submit (actAs [parties.investor3, parties.app.dso] <> readAs [parties.platform]) $ exerciseCmd campaignCid2b FundingCampaign_Invest with
+    investor = parties.investor3
+    inputs = [amulet3Cid]
+    amount = 33333.34
+    appTransferContext = appTransferContext2b
+
+  passTime (days 31)
+
+  now2 <- getTime
+  campaignCid3 <- submit parties.platform $ exerciseCmd campaignCid2c FundingCampaign_Finalize with
+    currentTime = now2
+
+  appTransferContext2 <- getAppTransferContext parties.app parties.platform
+  (_, _) <- submit (actAs [parties.platform, parties.developer, parties.app.dso]) $ exerciseCmd campaignCid3 FundingCampaign_CreateInstallments with
+    appTransferContext = appTransferContext2
+
+  loanTrackers <- query @LoanTracker parties.platform
+  assert (length loanTrackers == 1)
+  let [(loanTrackerCid, loanTrackerData)] = loanTrackers
+  assert (loanTrackerData.totalRaised == 100000.0)
+
+  developerAmulet <- tap parties.app parties.developer 100000.0
+  appTransferContext3 <- getAppTransferContext parties.app parties.platform
+
+  loanTrackerCid2 <- submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid LoanTracker_Deposit with
+    inputs = [developerAmulet]
+    amount = 80000.0
+    appTransferContext = appTransferContext3
+
+  now4 <- getTime
+  let claimDeadline = addRelTime now4 (days 30)
+
+  let expectedPeriodAmount = 100000.0 * 1.333333 / 7.0
+
+  (_, claimCids) <- submit (actAs [parties.platform, parties.app.dso] <> readAs [parties.developer]) $ exerciseCmd loanTrackerCid2 LoanTracker_LoanRewardsRepay with
+    repayAmount = expectedPeriodAmount
+    currentTime = now4
+    claimBefore = claimDeadline
+
+  assert (length claimCids == 3)
+
+  loanTrackers2 <- query @LoanTracker parties.platform
+  assert (length loanTrackers2 == 1)
+  let [(_, loanTrackerData2)] = loanTrackers2
+  assert (loanTrackerData2.totalRepaid > 0.0)
+
+  pure ()
