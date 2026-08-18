@@ -1,0 +1,338 @@
+from forge.ast import nodes as vy_ast
+from forge.exceptions import CompilerPanic
+from forge.ir.nodes import (
+    Field,
+    IRAssert,
+    IRAssign,
+    IRAttribute,
+    IRBinOp,
+    IRBoolOp,
+    IRCall,
+    IRChoice,
+    IRCompare,
+    IRConstant,
+    IRDict,
+    IRExprStmt,
+    IRFlag,
+    IRFor,
+    IRFunction,
+    IRIf,
+    IRInstance,
+    IRInterface,
+    IRList,
+    IRModule,
+    IRName,
+    IRPass,
+    IRReturn,
+    IRStruct,
+    IRSubscript,
+    IRTemplate,
+    IRTuple,
+    IRUnaryOp,
+    TypeRef,
+)
+from forge.models.decorators import Consuming
+
+_BIN_OPS = {
+    "Add": "+",
+    "Sub": "-",
+    "Mult": "*",
+    "Div": "/",
+    "Mod": "%",
+    "Pow": "**",
+}
+
+_BOOL_OPS = {"And": "and", "Or": "or"}
+
+_UNARY_OPS = {"Not": "not", "USub": "-"}
+
+_COMPARE_OPS = {
+    "Eq": "==",
+    "NotEq": "!=",
+    "Lt": "<",
+    "LtE": "<=",
+    "Gt": ">",
+    "GtE": ">=",
+    "In": "in",
+    "NotIn": "not in",
+}
+
+CHOICE_DECORATOR = "choice"
+
+
+def lower_type(node: vy_ast.VyperNode) -> TypeRef:
+    if isinstance(node, vy_ast.Name):
+        return TypeRef(node.id)
+    if isinstance(node, vy_ast.Str):
+        return TypeRef(node.value)
+    if isinstance(node, vy_ast.NameConstant) and node.value is None:
+        return TypeRef("None")
+    if isinstance(node, vy_ast.Subscript):
+        base = lower_type(node.value)
+        if isinstance(node.slice, vy_ast.Tuple):
+            args = tuple(lower_type(e) for e in node.slice.elements)
+        else:
+            args = (lower_type(node.slice),)
+        return TypeRef(base.name, args)
+    raise CompilerPanic(f"lower_type: unsupported type expression {type(node).__name__}")
+
+
+def lower_expr(node: vy_ast.VyperNode):
+    if isinstance(node, vy_ast.Name):
+        return IRName(node.id)
+    if isinstance(node, vy_ast.Attribute):
+        return IRAttribute(lower_expr(node.value), node.attr)
+    if isinstance(node, vy_ast.Subscript):
+        return IRSubscript(lower_expr(node.value), lower_expr(node.slice))
+    if isinstance(node, vy_ast.Call):
+        args = tuple(lower_expr(a) for a in node.args)
+        keywords = tuple((kw.arg, lower_expr(kw.value)) for kw in node.keywords)
+        return IRCall(lower_expr(node.func), args, keywords)
+    if isinstance(node, vy_ast.NameConstant):
+        return IRConstant(node.value)
+    if isinstance(node, (vy_ast.Int, vy_ast.Decimal, vy_ast.Str)):
+        return IRConstant(node.value)
+    if isinstance(node, vy_ast.List):
+        return IRList(tuple(lower_expr(e) for e in node.elements))
+    if isinstance(node, vy_ast.Tuple):
+        return IRTuple(tuple(lower_expr(e) for e in node.elements))
+    if isinstance(node, vy_ast.Dict):
+        keys = tuple(lower_expr(k) for k in node.keys)
+        values = tuple(lower_expr(v) for v in node.values)
+        return IRDict(keys, values)
+    if isinstance(node, vy_ast.BinOp):
+        op = _BIN_OPS[type(node.op).__name__]
+        return IRBinOp(op, lower_expr(node.left), lower_expr(node.right))
+    if isinstance(node, vy_ast.BoolOp):
+        op = _BOOL_OPS[type(node.op).__name__]
+        return IRBoolOp(op, tuple(lower_expr(v) for v in node.values))
+    if isinstance(node, vy_ast.UnaryOp):
+        op = _UNARY_OPS[type(node.op).__name__]
+        return IRUnaryOp(op, lower_expr(node.operand))
+    if isinstance(node, vy_ast.Compare):
+        op = _COMPARE_OPS[type(node.op).__name__]
+        return IRCompare(lower_expr(node.left), op, lower_expr(node.right))
+    raise CompilerPanic(f"lower_expr: unsupported expression node {type(node).__name__}")
+
+
+def lower_stmt(node: vy_ast.VyperNode):
+    if isinstance(node, vy_ast.Assert):
+        msg = lower_expr(node.msg) if node.msg is not None else None
+        return IRAssert(lower_expr(node.test), msg)
+    if isinstance(node, vy_ast.AnnAssign):
+        value = lower_expr(node.value) if node.value is not None else None
+        return IRAssign(lower_expr(node.target), value, lower_type(node.annotation))
+    if isinstance(node, vy_ast.Assign):
+        return IRAssign(lower_expr(node.target), lower_expr(node.value))
+    if isinstance(node, vy_ast.If):
+        body = tuple(lower_stmt(s) for s in node.body)
+        orelse = tuple(lower_stmt(s) for s in node.orelse)
+        return IRIf(lower_expr(node.test), body, orelse)
+    if isinstance(node, vy_ast.For):
+        target = node.target.target
+        target_type = lower_type(node.target.annotation) if node.target.annotation else None
+        body = tuple(lower_stmt(s) for s in node.body)
+        return IRFor(target.id, target_type, lower_expr(node.iter), body)
+    if isinstance(node, vy_ast.Return):
+        value = lower_expr(node.value) if node.value is not None else None
+        return IRReturn(value)
+    if isinstance(node, vy_ast.Pass):
+        return IRPass()
+    if isinstance(node, vy_ast.Expr):
+        return IRExprStmt(lower_expr(node.value))
+    raise CompilerPanic(f"lower_stmt: unsupported statement node {type(node).__name__}")
+
+
+def _lower_body(body) -> tuple:
+    return tuple(lower_stmt(s) for s in body if not isinstance(s, vy_ast.DocStr))
+
+
+def _lower_args(fn: vy_ast.FunctionDef) -> tuple:
+    fields = []
+    for a in fn.args.args:
+        if a.arg == "self":
+            continue
+        arg_type = lower_type(a.annotation) if a.annotation is not None else None
+        fields.append(Field(a.arg, arg_type))
+    return tuple(fields)
+
+
+def _decorator_names(fn: vy_ast.FunctionDef) -> tuple:
+    names = []
+    for dec in fn.decorator_list:
+        target = dec.func if isinstance(dec, vy_ast.Call) else dec
+        if isinstance(target, vy_ast.Name):
+            names.append(target.id)
+    return tuple(names)
+
+
+def _choice_call(fn: vy_ast.FunctionDef):
+    for dec in fn.decorator_list:
+        if not isinstance(dec, vy_ast.Call):
+            continue
+        if isinstance(dec.func, vy_ast.Name) and dec.func.id == CHOICE_DECORATOR:
+            return dec
+    return None
+
+
+def _lower_consuming(node) -> Consuming:
+    if isinstance(node, vy_ast.NameConstant) and isinstance(node.value, bool):
+        return Consuming.CONSUMING if node.value else Consuming.NON_CONSUMING
+    if isinstance(node, vy_ast.Str):
+        return Consuming(node.value)
+    raise CompilerPanic(f"lower_consuming: unsupported consuming literal {type(node).__name__}")
+
+
+def lower_function(fn: vy_ast.FunctionDef) -> IRFunction:
+    return_type = lower_type(fn.returns) if fn.returns is not None else None
+    return IRFunction(
+        name=fn.name,
+        args=_lower_args(fn),
+        return_type=return_type,
+        decorators=_decorator_names(fn),
+        body=_lower_body(fn.body),
+    )
+
+
+def lower_choice(fn: vy_ast.FunctionDef) -> IRChoice:
+    call = _choice_call(fn)
+    controller = None
+    consuming = None
+    observer = None
+    if call is not None:
+        kwargs = {kw.arg: kw.value for kw in call.keywords}
+        if "controller" in kwargs:
+            controller = lower_expr(kwargs["controller"])
+        if "consuming" in kwargs:
+            consuming = _lower_consuming(kwargs["consuming"])
+        if "observer" in kwargs:
+            observer = lower_expr(kwargs["observer"])
+
+    return_type = lower_type(fn.returns) if fn.returns is not None else None
+    return IRChoice(
+        name=fn.name,
+        controller=controller,
+        consuming=consuming,
+        observer=observer,
+        args=_lower_args(fn),
+        return_type=return_type,
+        body=_lower_body(fn.body),
+    )
+
+
+def _find_signatory(body) -> "IRExpr | None":
+    for stmt in body:
+        target = None
+        value = None
+        if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)):
+            target = stmt.target
+            value = stmt.value
+        if isinstance(target, vy_ast.Name) and target.id == "signatory" and value is not None:
+            return lower_expr(value)
+    return None
+
+
+def _find_observer(body):
+    for stmt in body:
+        target = None
+        value = None
+        if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)):
+            target = stmt.target
+            value = stmt.value
+        if isinstance(target, vy_ast.Name) and target.id == "observer" and value is not None:
+            return lower_expr(value)
+    return None
+
+
+def lower_struct(node: vy_ast.StructDef) -> IRStruct:
+    fields = tuple(
+        Field(stmt.target.id, lower_type(stmt.annotation))
+        for stmt in node.body
+        if isinstance(stmt, vy_ast.AnnAssign)
+    )
+    return IRStruct(node.name, fields)
+
+
+def lower_flag(node: vy_ast.FlagDef) -> IRFlag:
+    values = tuple(stmt.value.id for stmt in node.body if isinstance(stmt, vy_ast.Expr))
+    return IRFlag(node.name, values)
+
+
+def lower_interface(node: vy_ast.InterfaceDef) -> IRInterface:
+    view = None
+    keywords = []
+    for kw in node.keywords:
+        if kw.arg == "view":
+            view = lower_type(kw.value)
+        else:
+            keywords.append((kw.arg, lower_expr(kw.value)))
+
+    requires = tuple(base.id for base in node.bases)
+    choices = tuple(
+        lower_choice(stmt) for stmt in node.body if isinstance(stmt, vy_ast.FunctionDef)
+    )
+    return IRInterface(node.name, view, requires, tuple(keywords), choices)
+
+
+def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
+    fields = tuple(
+        Field(stmt.target.id, lower_type(stmt.annotation))
+        for stmt in node.body
+        if isinstance(stmt, vy_ast.AnnAssign)
+        and isinstance(stmt.target, vy_ast.Name)
+        and stmt.target.id not in ("signatory", "observer", "key", "maintainer")
+    )
+    signatory = _find_signatory(node.body)
+    observer = _find_observer(node.body)
+
+    init = None
+    choices = []
+    for stmt in node.body:
+        if not isinstance(stmt, vy_ast.FunctionDef):
+            continue
+        if stmt.name == "__init__":
+            init = lower_function(stmt)
+        elif _choice_call(stmt) is not None:
+            choices.append(lower_choice(stmt))
+
+    return IRTemplate(node.name, fields, signatory, observer, init, tuple(choices))
+
+
+def lower_instance(node: vy_ast.InstanceDef) -> IRInstance:
+    bases = tuple(base.id for base in node.bases)
+    choices = tuple(
+        lower_choice(stmt) for stmt in node.body if isinstance(stmt, vy_ast.FunctionDef)
+    )
+    return IRInstance(node.name, bases, choices)
+
+
+def lower_module(module: vy_ast.Module) -> IRModule:
+    structs = []
+    flags = []
+    interfaces = []
+    templates = []
+    instances = []
+    functions = []
+
+    for node in module.body:
+        if isinstance(node, vy_ast.StructDef):
+            structs.append(lower_struct(node))
+        elif isinstance(node, vy_ast.FlagDef):
+            flags.append(lower_flag(node))
+        elif isinstance(node, vy_ast.InterfaceDef):
+            interfaces.append(lower_interface(node))
+        elif isinstance(node, vy_ast.TemplateDef):
+            templates.append(lower_template(node))
+        elif isinstance(node, vy_ast.InstanceDef):
+            instances.append(lower_instance(node))
+        elif isinstance(node, vy_ast.FunctionDef):
+            functions.append(lower_function(node))
+
+    return IRModule(
+        structs=tuple(structs),
+        flags=tuple(flags),
+        interfaces=tuple(interfaces),
+        templates=tuple(templates),
+        instances=tuple(instances),
+        functions=tuple(functions),
+    )
