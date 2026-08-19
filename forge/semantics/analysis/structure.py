@@ -179,6 +179,40 @@ def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList
         )
     )
 
+
+def _has_reserved_declaration(template: vy_ast.TemplateDef, name: str) -> bool:
+    for stmt in template.body:
+        target = None
+        if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)):
+            target = stmt.target
+
+        if isinstance(target, vy_ast.Name) and target.id == name:
+            return True
+    return False
+
+
+def check_template_key_maintainer(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
+    has_key = _has_reserved_declaration(template, "key")
+    has_maintainer = _has_reserved_declaration(template, "maintainer")
+
+    if has_key and not has_maintainer:
+        errors.append(
+            DamlForgeException(
+                f"Template `{template.name}` declares `key` without a `maintainer`",
+                template,
+                code=ErrorCodes.DF1210.value,
+            )
+        )
+    elif has_maintainer and not has_key:
+        errors.append(
+            DamlForgeException(
+                f"Template `{template.name}` declares `maintainer` without a `key`",
+                template,
+                code=ErrorCodes.DF1211.value,
+            )
+        )
+
+
 def _module_names(module: vy_ast.Module) -> tuple[str, ...]:
     names = []
     for value in (getattr(module, "resolved_path", None), getattr(module, "path", None)):
@@ -451,6 +485,7 @@ def check_container(
 ) -> None:
     if isinstance(node, vy_ast.TemplateDef):
         check_template_signatory(node, errors)
+        check_template_key_maintainer(node, errors)
         check_choice_decorators(node, errors)
         check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)

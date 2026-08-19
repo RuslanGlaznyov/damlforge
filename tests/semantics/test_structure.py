@@ -205,6 +205,45 @@ instance AssetHoldingInstance(Holding):
 """
 
 
+TEMPLATE_KEY_WITHOUT_MAINTAINER = """
+template Asset:
+    owner: Party
+    asset_id: Text
+
+    signatory: list[Party] = [owner]
+    key: tuple[Party, Text] = (owner, asset_id)
+"""
+
+
+TEMPLATE_MAINTAINER_WITHOUT_KEY = """
+template Asset:
+    owner: Party
+    asset_id: Text
+
+    signatory: list[Party] = [owner]
+    maintainer: list[Party] = [owner]
+"""
+
+
+TEMPLATE_KEY_WITH_MAINTAINER_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    asset_id: Text
+
+    signatory: list[Party] = [owner]
+    key: tuple[Party, Text] = (owner, asset_id)
+    maintainer: list[Party] = [owner]
+"""
+
+
+TEMPLATE_WITHOUT_KEY_OR_MAINTAINER_IS_ALLOWED = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+"""
+
+
 def test_valid_template_passes():
     _analyze(VALID_TEMPLATE)
 
@@ -219,6 +258,8 @@ def test_valid_template_passes():
         CHOICE_POSTCONSUMING_ON_TEMPLATE_IS_ALLOWED,
         CHOICE_STRING_CONSUMING_ON_TEMPLATE_IS_ALLOWED,
         CHOICE_WITH_OBSERVER_IS_ALLOWED,
+        TEMPLATE_KEY_WITH_MAINTAINER_IS_ALLOWED,
+        TEMPLATE_WITHOUT_KEY_OR_MAINTAINER_IS_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -239,6 +280,8 @@ def test_valid_decorator_usage_passes(source):
         (CHOICE_PRECONSUMING_ON_INTERFACE, ErrorCodes.DF1208.value),
         (CHOICE_POSTCONSUMING_ON_INSTANCE, ErrorCodes.DF1208.value),
         (RECURSION_SINGLE_FUNC, ErrorCodes.DF1209.value),
+        (TEMPLATE_KEY_WITHOUT_MAINTAINER, ErrorCodes.DF1210.value),
+        (TEMPLATE_MAINTAINER_WITHOUT_KEY, ErrorCodes.DF1211.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):
