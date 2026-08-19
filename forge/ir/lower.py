@@ -244,6 +244,18 @@ def _find_observer(body):
     return None
 
 
+def _find_ensure(body):
+    for stmt in body:
+        target = None
+        value = None
+        if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)):
+            target = stmt.target
+            value = stmt.value
+        if isinstance(target, vy_ast.Name) and target.id == "ensure" and value is not None:
+            return lower_expr(value)
+    return None
+
+
 def lower_struct(node: vy_ast.StructDef) -> IRStruct:
     fields = tuple(
         Field(stmt.target.id, lower_type(stmt.annotation))
@@ -280,10 +292,11 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
         for stmt in node.body
         if isinstance(stmt, vy_ast.AnnAssign)
         and isinstance(stmt.target, vy_ast.Name)
-        and stmt.target.id not in ("signatory", "observer", "key", "maintainer")
+        and stmt.target.id not in ("signatory", "observer", "key", "maintainer", "ensure")
     )
     signatory = _find_signatory(node.body)
     observer = _find_observer(node.body)
+    ensure = _find_ensure(node.body)
 
     init = None
     choices = []
@@ -295,7 +308,7 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
         elif _choice_call(stmt) is not None:
             choices.append(lower_choice(stmt))
 
-    return IRTemplate(node.name, fields, signatory, observer, init, tuple(choices))
+    return IRTemplate(node.name, fields, signatory, observer, ensure, init, tuple(choices))
 
 
 def lower_instance(node: vy_ast.InstanceDef) -> IRInstance:

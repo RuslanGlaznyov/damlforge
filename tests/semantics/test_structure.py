@@ -244,6 +244,74 @@ template Asset:
 """
 
 
+TEMPLATE_ENSURE_COMPARE_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    amount: Decimal
+
+    signatory: list[Party] = [owner]
+    ensure: bool = amount > Decimal(0)
+"""
+
+
+TEMPLATE_ENSURE_BOOLOP_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    amount: Decimal
+    issuer: Party
+
+    signatory: list[Party] = [owner]
+    ensure: bool = amount > Decimal(0) and issuer != owner
+"""
+
+
+TEMPLATE_ENSURE_CALL_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    amount: Decimal
+
+    signatory: list[Party] = [owner]
+    ensure: bool = is_valid(amount)
+"""
+
+
+TEMPLATE_WITHOUT_ENSURE_IS_ALLOWED = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+"""
+
+
+TEMPLATE_ENSURE_NON_BOOLEAN_LITERAL = """
+template Asset:
+    owner: Party
+    amount: Decimal
+
+    signatory: list[Party] = [owner]
+    ensure: Decimal = amount
+"""
+
+
+TEMPLATE_ENSURE_ARITHMETIC_EXPRESSION = """
+template Asset:
+    owner: Party
+    amount: Decimal
+
+    signatory: list[Party] = [owner]
+    ensure: Decimal = amount + Decimal(0)
+"""
+
+
+TEMPLATE_ENSURE_WITHOUT_VALUE = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+    ensure: bool
+"""
+
+
 def test_valid_template_passes():
     _analyze(VALID_TEMPLATE)
 
@@ -260,6 +328,10 @@ def test_valid_template_passes():
         CHOICE_WITH_OBSERVER_IS_ALLOWED,
         TEMPLATE_KEY_WITH_MAINTAINER_IS_ALLOWED,
         TEMPLATE_WITHOUT_KEY_OR_MAINTAINER_IS_ALLOWED,
+        TEMPLATE_ENSURE_COMPARE_IS_ALLOWED,
+        TEMPLATE_ENSURE_BOOLOP_IS_ALLOWED,
+        TEMPLATE_ENSURE_CALL_IS_ALLOWED,
+        TEMPLATE_WITHOUT_ENSURE_IS_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -282,6 +354,9 @@ def test_valid_decorator_usage_passes(source):
         (RECURSION_SINGLE_FUNC, ErrorCodes.DF1209.value),
         (TEMPLATE_KEY_WITHOUT_MAINTAINER, ErrorCodes.DF1210.value),
         (TEMPLATE_MAINTAINER_WITHOUT_KEY, ErrorCodes.DF1211.value),
+        (TEMPLATE_ENSURE_NON_BOOLEAN_LITERAL, ErrorCodes.DF1212.value),
+        (TEMPLATE_ENSURE_ARITHMETIC_EXPRESSION, ErrorCodes.DF1212.value),
+        (TEMPLATE_ENSURE_WITHOUT_VALUE, ErrorCodes.DF1212.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

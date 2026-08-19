@@ -108,6 +108,30 @@ def test_template_without_signatory_lowers_to_none():
     assert asset.signatory is None
 
 
+def test_template_lowers_ensure_and_excludes_it_from_fields():
+    ir = _lower(
+        "template Asset:\n"
+        "    owner: Party\n"
+        "    amount: Decimal\n"
+        "    signatory: list[Party] = [owner]\n"
+        "    ensure: bool = amount > Decimal(0)\n"
+    )
+
+    (asset,) = ir.templates
+    assert asset.ensure == IRCompare(IRName("amount"), ">", IRCall(IRName("Decimal"), (IRConstant(0),)))
+    assert asset.fields == (
+        Field("owner", TypeRef("Party")),
+        Field("amount", TypeRef("Decimal")),
+    )
+
+
+def test_template_without_ensure_lowers_to_none():
+    ir = _lower("template Asset:\n    owner: Party\n    signatory: list[Party] = [owner]\n")
+
+    (asset,) = ir.templates
+    assert asset.ensure is None
+
+
 def test_choice_lowers_controller_consuming_and_observer():
     ir = _lower(
         "template Asset:\n"

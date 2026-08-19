@@ -207,6 +207,7 @@ class IRTemplate:
     fields: tuple[Field, ...]
     signatory: Optional[IRExpr]
     observer: Optional[IRExpr]
+    ensure: Optional[IRExpr]
     init: Optional[IRFunction]
     choices: tuple[IRChoice, ...]
 

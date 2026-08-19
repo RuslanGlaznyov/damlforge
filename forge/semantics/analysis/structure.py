@@ -180,15 +180,65 @@ def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList
     )
 
 
-def _has_reserved_declaration(template: vy_ast.TemplateDef, name: str) -> bool:
+def _find_reserved_declaration(template: vy_ast.TemplateDef, name: str):
     for stmt in template.body:
         target = None
         if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)):
             target = stmt.target
 
         if isinstance(target, vy_ast.Name) and target.id == name:
-            return True
-    return False
+            return stmt
+    return None
+
+
+def _has_reserved_declaration(template: vy_ast.TemplateDef, name: str) -> bool:
+    return _find_reserved_declaration(template, name) is not None
+
+
+NON_BOOLEAN_EXPRESSION_TYPES = (
+    vy_ast.Int,
+    vy_ast.Decimal,
+    vy_ast.Str,
+    vy_ast.List,
+    vy_ast.Tuple,
+    vy_ast.Dict,
+    vy_ast.BinOp,
+)
+
+
+def _is_boolean_shaped(node) -> bool:
+    if node is None:
+        return False
+    if isinstance(node, vy_ast.NameConstant):
+        return isinstance(node.value, bool)
+    if isinstance(node, NON_BOOLEAN_EXPRESSION_TYPES):
+        return False
+    return True
+
+
+def _declared_annotation_rejects_bool(stmt) -> bool:
+    if not isinstance(stmt, vy_ast.AnnAssign):
+        return False
+    annotation = stmt.annotation
+    return not (isinstance(annotation, vy_ast.Name) and annotation.id == "bool")
+
+
+def check_template_ensure(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
+    stmt = _find_reserved_declaration(template, "ensure")
+    if stmt is None:
+        return
+
+    value = stmt.value if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)) else None
+    invalid = not _is_boolean_shaped(value) or _declared_annotation_rejects_bool(stmt)
+    if invalid:
+        errors.append(
+            DamlForgeException(
+                f"Template `{template.name}` declares `ensure` with a value that isn't "
+                "a boolean-shaped expression (comparison, boolean operator, `not`, or a call)",
+                stmt,
+                code=ErrorCodes.DF1212.value,
+            )
+        )
 
 
 def check_template_key_maintainer(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
@@ -486,6 +536,7 @@ def check_container(
     if isinstance(node, vy_ast.TemplateDef):
         check_template_signatory(node, errors)
         check_template_key_maintainer(node, errors)
+        check_template_ensure(node, errors)
         check_choice_decorators(node, errors)
         check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)
