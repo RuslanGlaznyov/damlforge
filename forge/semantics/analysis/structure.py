@@ -79,7 +79,7 @@ def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -
                     DamlForgeException(
                         f"Choice `{qualified_name}` must declare an explicit `controller`",
                         fn,
-                        code="DF1202",
+                        code=ErrorCodes.DF1203.value,
                     )
                 )
 
@@ -91,7 +91,7 @@ def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -
                         f"Choice `{qualified_name}` must explicitly declare `consuming` as "
                         f"True/False or one of {sorted(CONSUMING_VARIANTS)!r}",
                         fn,
-                        code="DF1203",
+                        code=ErrorCodes.DF1203.value,
                     )
                 )
 
@@ -137,13 +137,13 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
                         f"`{container.name}.{fn.name}` calls `{call.func.id}` but is not "
                         f"decorated `@{LEDGER_EFFECT_DECORATOR}` and is not a `@{CHOICE_DECORATOR}`",
                         call,
-                        code="DF1205",
+                        code=ErrorCodes.DF1205.value,
                     )
                 )
 
 
 def check_view_decorator(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    _check_bare_marker_decorator(container, VIEW_DECORATOR, "DF1206", errors)
+    _check_bare_marker_decorator(container, VIEW_DECORATOR, ErrorCodes.DF1206.value, errors)
 
 
 def check_view_outside_interface(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
@@ -157,7 +157,7 @@ def check_view_outside_interface(container: vy_ast.TopLevel, errors: ExceptionLi
                     f"`@{VIEW_DECORATOR}` on `{container.name}.{fn.name}` is only valid "
                     "inside `interface`/`instance`, not `template`",
                     fn,
-                    code="DF1207",
+                    code=ErrorCodes.DF1207.value,
                 )
             )
 
@@ -175,7 +175,7 @@ def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList
         DamlForgeException(
             f"Template `{template.name}` must declare an explicit `signatory`",
             template,
-            code="DF1201",
+            code=ErrorCodes.DF1201.value,
         )
     )
 

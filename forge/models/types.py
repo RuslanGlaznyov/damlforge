@@ -1,4 +1,3 @@
-from decimal import Decimal
 from typing import Generic, NewType, TypeVar
 
 Party = NewType("Party", str)

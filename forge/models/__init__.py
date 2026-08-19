@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from forge.models.decorators import (
     ChoiceMeta,
     Consuming,
@@ -14,7 +16,6 @@ from forge.models.decorators import (
 from forge.models.types import (
     ContractId,
     Date,
-    Decimal,
     GenMap,
     Int,
     Party,

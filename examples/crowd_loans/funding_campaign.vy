@@ -1,4 +1,6 @@
-from forge.models import ContractId, Decimal, Optional, Party, Text, Timestamp, choice, ledger_effect
+from decimal import Decimal
+from typing import Optional
+from forge.models import ContractId, Party, Text, Timestamp, choice, ledger_effect
 from loan_terms import LoanRewards, LoanTerms, LoanTracker, PeriodPayment, PeriodPaymentStatus
 
 flag CampaignStatus:

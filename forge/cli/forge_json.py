@@ -6,6 +6,7 @@ import sys
 import warnings
 from pathlib import Path, PurePath
 from typing import Any, Callable, Hashable, Optional
+from forge.semantics import analyze_module
 from forge.ast.parse import parse_to_ast
 
 def _parse_cli_args():
@@ -64,10 +65,13 @@ def _parse_args(argv):
     else:
         print(output_json)
 
+
 def compile_json(
     input_vy: str,
 ) -> dict:
     ast = parse_to_ast(input_vy)
+    analyze_module(ast)
+    
     return ast.to_dict()
 
 
