@@ -3,6 +3,7 @@ import pytest
 from forge.ast.parse import parse_to_ast
 from forge.exceptions import DamlForgeException
 from forge.semantics import analyze_module
+from forge.models.error_codes import ErrorCodes
 
 
 def _analyze(source):
@@ -142,6 +143,29 @@ interface Holding(view=HoldingView):
         pass
 """
 
+RECURSION_SINGLE_FUNC = """
+template RecursionTemplate:
+    platform: Party
+    developer: Party
+    dso: Party
+
+    signatory: list[Party] = [platform]
+
+    def __init__(
+        self,
+        platform: Party,
+        developer: Party,
+        dso: Party
+    ):
+        self.platform = platform
+        self.developer = developer
+        self.dso = dso
+    
+    @choice(controller=[developer, platform], consuming=True)
+    def recursion(self) -> bool:
+        return self.recursion()
+"""
+
 
 def _choice_template(consuming_literal, observer_clause=""):
     return f"""
@@ -204,16 +228,17 @@ def test_valid_decorator_usage_passes(source):
 @pytest.mark.parametrize(
     "source,expected_code",
     [
-        (TEMPLATE_MISSING_SIGNATORY, "DF1201"),
-        (CHOICE_MISSING_CONTROLLER, "DF1202"),
-        (CHOICE_MISSING_CONSUMING, "DF1203"),
-        (CHOICE_NON_LITERAL_CONSUMING, "DF1203"),
-        (LEDGER_EFFECT_WITH_ARGS, "DF1204"),
-        (HIDDEN_LEDGER_EFFECT, "DF1205"),
-        (VIEW_WITH_ARGS, "DF1206"),
-        (VIEW_IN_TEMPLATE, "DF1207"),
-        (CHOICE_PRECONSUMING_ON_INTERFACE, "DF1208"),
-        (CHOICE_POSTCONSUMING_ON_INSTANCE, "DF1208"),
+        (TEMPLATE_MISSING_SIGNATORY, ErrorCodes.DF1201.value),
+        (CHOICE_MISSING_CONTROLLER, ErrorCodes.DF1202.value),
+        (CHOICE_MISSING_CONSUMING, ErrorCodes.DF1203.value),
+        (CHOICE_NON_LITERAL_CONSUMING, ErrorCodes.DF1203.value),
+        (LEDGER_EFFECT_WITH_ARGS, ErrorCodes.DF1204.value),
+        (HIDDEN_LEDGER_EFFECT, ErrorCodes.DF1205.value),
+        (VIEW_WITH_ARGS, ErrorCodes.DF1206.value),
+        (VIEW_IN_TEMPLATE, ErrorCodes.DF1207.value),
+        (CHOICE_PRECONSUMING_ON_INTERFACE, ErrorCodes.DF1208.value),
+        (CHOICE_POSTCONSUMING_ON_INSTANCE, ErrorCodes.DF1208.value),
+        (RECURSION_SINGLE_FUNC, ErrorCodes.DF1209.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

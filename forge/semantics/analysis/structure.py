@@ -1,7 +1,9 @@
+from collections import defaultdict
 from typing import Optional
 
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
+from forge.models.error_codes import ErrorCodes
 
 CHOICE_DECORATOR = "choice"
 LEDGER_EFFECT_DECORATOR = "ledger_effect"
@@ -111,7 +113,7 @@ def check_consuming_variant_scope(container: vy_ast.TopLevel, errors: ExceptionL
                         f"`consuming=\"{variant}\"`, which is not supported on "
                         "interface/instance choices — only `consuming`/`nonconsuming` are",
                         fn,
-                        code="DF1208",
+                        code=ErrorCodes.DF1208.value,
                     )
                 )
 
@@ -177,8 +179,276 @@ def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList
         )
     )
 
+def _module_names(module: vy_ast.Module) -> tuple[str, ...]:
+    names = []
+    for value in (getattr(module, "resolved_path", None), getattr(module, "path", None)):
+        if not value:
+            continue
+        text = str(value)
+        names.append(text)
+        stem = text.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        names.append(stem)
+        names.append(text.rsplit(".", 1)[0].replace("/", "."))
+    return tuple(dict.fromkeys(names))
 
-def check_container(node: vy_ast.TopLevel, errors: ExceptionList) -> None:
+
+def _module_key(module: vy_ast.Module) -> str:
+    names = _module_names(module)
+    return names[0] if names else f"<module:{id(module)}>"
+
+
+def _function_scope(fn: vy_ast.FunctionDef) -> tuple[str, ...]:
+    parent = fn.parent
+    if isinstance(parent, vy_ast.Module):
+        return ()
+    if isinstance(parent, vy_ast.TopLevel):
+        return (parent.name,)
+    return ()
+
+
+def _function_key(fn: vy_ast.FunctionDef) -> tuple[str, tuple[str, ...], str]:
+    return (_module_key(fn.module_node), _function_scope(fn), fn.name)
+
+
+def _function_display(fn: vy_ast.FunctionDef) -> str:
+    parts = [*_function_scope(fn), fn.name]
+    module_names = _module_names(fn.module_node)
+    if module_names:
+        parts.insert(0, module_names[-1])
+    return ".".join(parts)
+
+
+def _iter_modules(modules) -> list[vy_ast.Module]:
+    if isinstance(modules, vy_ast.Module):
+        return [modules]
+    for attr in ("modules", "resolved_modules", "imported_modules"):
+        candidates = getattr(modules, attr, None)
+        if candidates is not None:
+            return _iter_modules(candidates)
+    if hasattr(modules, "values"):
+        candidates = modules.values()
+    else:
+        try:
+            candidates = iter(modules)
+        except TypeError:
+            return []
+    return [module for module in candidates if isinstance(module, vy_ast.Module)]
+
+
+def _target_module_from_import_info(info):
+    for attr in ("module", "module_ast", "ast", "resolved_module"):
+        module = getattr(info, attr, None)
+        if isinstance(module, vy_ast.Module):
+            return module
+    if isinstance(info, dict):
+        for attr in ("module", "module_ast", "ast", "resolved_module"):
+            module = info.get(attr)
+            if isinstance(module, vy_ast.Module):
+                return module
+    return None
+
+
+def _reachable_modules(modules) -> list[vy_ast.Module]:
+    seen = set()
+    ordered = []
+    stack = _iter_modules(modules)
+
+    while stack:
+        module = stack.pop()
+        marker = id(module)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        ordered.append(module)
+
+        for stmt in module.body:
+            if not isinstance(stmt, (vy_ast.Import, vy_ast.ImportFrom)):
+                continue
+            for info in stmt._metadata.get("import_infos", ()) or ():
+                imported_module = _target_module_from_import_info(info)
+                if imported_module is not None:
+                    stack.append(imported_module)
+
+    return ordered
+
+
+class _RecursionContext:
+    def __init__(self, modules) -> None:
+        self.modules = _reachable_modules(modules)
+        self.functions_by_key = {}
+        self.functions_by_module_name = {}
+        self.top_level_by_module = defaultdict(dict)
+        self.methods_by_scope = defaultdict(dict)
+        self.module_aliases = defaultdict(dict)
+        self.direct_imports = defaultdict(dict)
+        self.edges = defaultdict(list)
+        self._recursive_calls = None
+
+        self._index_modules()
+        self._index_imports()
+        self._index_edges()
+
+    def _index_modules(self) -> None:
+        for module in self.modules:
+            key = _module_key(module)
+            for name in _module_names(module):
+                self.functions_by_module_name[name] = key
+
+            for fn in module.get_descendants(vy_ast.FunctionDef):
+                fn_key = _function_key(fn)
+                self.functions_by_key[fn_key] = fn
+                if _function_scope(fn):
+                    self.methods_by_scope[(key, _function_scope(fn))][fn.name] = fn_key
+                else:
+                    self.top_level_by_module[key][fn.name] = fn_key
+
+    def _find_module_key(self, name: str) -> Optional[str]:
+        if name in self.functions_by_module_name:
+            return self.functions_by_module_name[name]
+        short_name = name.rsplit(".", 1)[-1]
+        return self.functions_by_module_name.get(short_name)
+
+    def _index_imports(self) -> None:
+        for module in self.modules:
+            module_key = _module_key(module)
+            for stmt in module.body:
+                if isinstance(stmt, vy_ast.Import):
+                    for alias in stmt.names:
+                        imported_key = self._find_module_key(alias.name)
+                        if imported_key is not None:
+                            self.module_aliases[module_key][alias.asname or alias.name] = imported_key
+                elif isinstance(stmt, vy_ast.ImportFrom):
+                    imported_key = self._find_module_key(stmt.module)
+                    if imported_key is None:
+                        continue
+                    for alias in stmt.names:
+                        imported_fn = self.top_level_by_module[imported_key].get(alias.name)
+                        if imported_fn is not None:
+                            self.direct_imports[module_key][alias.asname or alias.name] = imported_fn
+
+    def _resolve_call(
+        self, fn: vy_ast.FunctionDef, call: vy_ast.Call
+    ) -> Optional[tuple[str, tuple[str, ...], str]]:
+        module_key, scope, _ = _function_key(fn)
+        call_fn = call.func
+
+        if isinstance(call_fn, vy_ast.Name):
+            name = call_fn.id
+            if scope and (target := self.methods_by_scope[(module_key, scope)].get(name)):
+                return target
+            if target := self.top_level_by_module[module_key].get(name):
+                return target
+            return self.direct_imports[module_key].get(name)
+
+        if not isinstance(call_fn, vy_ast.Attribute):
+            return None
+
+        attr = call_fn.attr
+        value = call_fn.value
+        if isinstance(value, vy_ast.Name):
+            if value.id == "self" and scope:
+                return self.methods_by_scope[(module_key, scope)].get(attr)
+            if imported_key := self.module_aliases[module_key].get(value.id):
+                return self.top_level_by_module[imported_key].get(attr)
+
+        return None
+
+    def _index_edges(self) -> None:
+        for fn_key, fn in self.functions_by_key.items():
+            for call in fn.get_descendants(vy_ast.Call):
+                target = self._resolve_call(fn, call)
+                if target is not None:
+                    self.edges[fn_key].append((target, call))
+
+    def recursive_calls(self) -> list[tuple[vy_ast.FunctionDef, vy_ast.Call]]:
+        if self._recursive_calls is not None:
+            return self._recursive_calls
+
+        calls = []
+        index = 0
+        stack = []
+        indexes = {}
+        lowlinks = {}
+        on_stack = set()
+
+        def strongconnect(fn_key):
+            nonlocal index
+            indexes[fn_key] = index
+            lowlinks[fn_key] = index
+            index += 1
+            stack.append(fn_key)
+            on_stack.add(fn_key)
+
+            for target, _ in self.edges.get(fn_key, ()):
+                if target not in indexes:
+                    strongconnect(target)
+                    lowlinks[fn_key] = min(lowlinks[fn_key], lowlinks[target])
+                elif target in on_stack:
+                    lowlinks[fn_key] = min(lowlinks[fn_key], indexes[target])
+
+            if lowlinks[fn_key] != indexes[fn_key]:
+                return
+
+            component = set()
+            while True:
+                target = stack.pop()
+                on_stack.remove(target)
+                component.add(target)
+                if target == fn_key:
+                    break
+
+            if len(component) == 1:
+                only = next(iter(component))
+                for target, call in self.edges.get(only, ()):
+                    if target == only:
+                        calls.append((self.functions_by_key[only], call))
+                return
+
+            for source in component:
+                for target, call in self.edges.get(source, ()):
+                    if target in component:
+                        calls.append((self.functions_by_key[source], call))
+
+        for fn_key in self.functions_by_key:
+            if fn_key not in indexes:
+                strongconnect(fn_key)
+
+        self._recursive_calls = calls
+        return calls
+
+
+def _recursion_targets(node: vy_ast.TopLevel) -> set[tuple[str, tuple[str, ...], str]]:
+    if isinstance(node, vy_ast.FunctionDef):
+        return {_function_key(node)}
+    return {_function_key(fn) for fn in node.get_descendants(vy_ast.FunctionDef)}
+
+
+def check_recursion(
+    node: vy_ast.TopLevel, errors: ExceptionList, context: Optional[_RecursionContext] = None
+) -> None:
+    module = node if isinstance(node, vy_ast.Module) else node.module_node
+    context = context or _RecursionContext(module)
+    targets = _recursion_targets(node)
+    if not targets:
+        return
+
+    for fn, call in context.recursive_calls():
+        if _function_key(fn) not in targets:
+            continue
+        errors.append(
+            DamlForgeException(
+                f"Function `{_function_display(fn)}` is recursive, which is not supported",
+                call,
+                code=ErrorCodes.DF1209.value,
+            )
+        )
+
+
+def check_container(
+    node: vy_ast.TopLevel,
+    errors: ExceptionList,
+    recursion_context: Optional[_RecursionContext] = None,
+) -> None:
     if isinstance(node, vy_ast.TemplateDef):
         check_template_signatory(node, errors)
         check_choice_decorators(node, errors)
@@ -186,9 +456,13 @@ def check_container(node: vy_ast.TopLevel, errors: ExceptionList) -> None:
         check_hidden_ledger_effects(node, errors)
         check_view_decorator(node, errors)
         check_view_outside_interface(node, errors)
+        check_recursion(node, errors, recursion_context)
     elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.InstanceDef)):
         check_choice_decorators(node, errors)
         check_consuming_variant_scope(node, errors)
         check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)
         check_view_decorator(node, errors)
+        check_recursion(node, errors, recursion_context)
+    elif isinstance(node, vy_ast.FunctionDef):
+        check_recursion(node, errors, recursion_context)
