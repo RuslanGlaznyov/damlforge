@@ -1,4 +1,16 @@
 from forge.models import ContractId, Decimal, Optional, Party, Text, Timestamp, choice, ledger_effect
+from Splice.Amulet import Amulet
+from Splice.AmuletRules import (
+    AppTransferContext,
+    CreatedAmulet,
+    InputAmulet,
+    Transfer,
+    TransferInput,
+    TransferOutput,
+    created_amulet_to_holding,
+    exercise_app_transfer,
+)
+from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
 
 struct RepaymentMilestone:
     due_date: Timestamp

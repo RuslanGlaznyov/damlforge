@@ -1,6 +1,7 @@
 from forge.ast import nodes as vy_ast
 from forge.exceptions import ExceptionList
 from forge.semantics.analysis.structure import _RecursionContext, check_container
+from forge.semantics.analysis.types import check_container_type_annotations, known_type_names
 
 
 def _iter_modules(modules) -> list[vy_ast.Module]:
@@ -28,7 +29,9 @@ def analyze_modules(modules) -> None:
     module_list = _iter_modules(modules)
     errors = ExceptionList()
     recursion_context = _RecursionContext(module_list)
+    type_names = known_type_names(module_list)
     for module in module_list:
         for node in module.body:
             check_container(node, errors, recursion_context)
+            check_container_type_annotations(node, type_names, errors)
     errors.raise_if_not_empty()

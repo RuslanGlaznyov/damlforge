@@ -2,6 +2,19 @@ from decimal import Decimal
 from typing import Optional
 from forge.models import ContractId, Party, Text, Timestamp, choice, ledger_effect
 from loan_terms import LoanRewards, LoanTerms, LoanTracker, PeriodPayment, PeriodPaymentStatus
+from Splice.Amulet import Amulet, LockedAmulet, LockedAmulet_UnlockV2
+from Splice.AmuletRules import (
+    AppTransferContext,
+    CreatedAmulet,
+    InputAmulet,
+    Transfer,
+    TransferInput,
+    TransferOutput,
+    created_amulet_to_holding,
+    exercise_app_transfer,
+)
+from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
+from Splice.Expiry import TimeLock
 
 flag CampaignStatus:
     ACTIVE

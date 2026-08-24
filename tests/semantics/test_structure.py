@@ -117,6 +117,9 @@ template Asset:
 
 
 VIEW_WITH_ARGS = """
+struct HoldingView:
+    owner: Party
+
 interface Holding(view=HoldingView):
     @view(True)
     def get_view() -> bool:
@@ -137,6 +140,9 @@ template Asset:
 
 
 VIEW_IN_INTERFACE_IS_ALLOWED = """
+struct HoldingView:
+    owner: Party
+
 interface Holding(view=HoldingView):
     @view
     def get_view() -> bool:
@@ -188,6 +194,9 @@ CHOICE_WITH_OBSERVER_IS_ALLOWED = _choice_template("True", ", observer=issuer")
 
 
 CHOICE_PRECONSUMING_ON_INTERFACE = """
+struct HoldingView:
+    owner: Party
+
 interface Holding(view=HoldingView):
     @choice(controller=owner, consuming="preconsuming")
     def archive_holding() -> bool:
@@ -196,6 +205,9 @@ interface Holding(view=HoldingView):
 
 
 CHOICE_POSTCONSUMING_ON_INSTANCE = """
+struct HoldingView:
+    owner: Party
+
 interface Holding(view=HoldingView):
     pass
 instance AssetHoldingInstance(Holding):
