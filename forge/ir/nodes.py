@@ -7,6 +7,14 @@ from forge.models.decorators import Consuming
 
 
 @dataclass(frozen=True)
+class SourceSpan:
+    lineno: Optional[int]
+    col_offset: Optional[int]
+    end_lineno: Optional[int]
+    end_col_offset: Optional[int]
+
+
+@dataclass(frozen=True)
 class TypeRef:
     name: str
     args: tuple["TypeRef", ...] = ()
@@ -115,6 +123,7 @@ IRExpr = Union[
 class IRAssert:
     test: IRExpr
     msg: Optional[IRExpr] = None
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -122,6 +131,7 @@ class IRAssign:
     target: IRExpr
     value: IRExpr
     type: Optional[TypeRef] = None
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -129,6 +139,7 @@ class IRIf:
     test: IRExpr
     body: tuple["IRStmt", ...]
     orelse: tuple["IRStmt", ...] = ()
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -137,21 +148,24 @@ class IRFor:
     target_type: Optional[TypeRef]
     iter: IRExpr
     body: tuple["IRStmt", ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
 class IRReturn:
     value: Optional[IRExpr] = None
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
 class IRPass:
-    pass
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
 class IRExprStmt:
     value: IRExpr
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 IRStmt = Union[IRAssert, IRAssign, IRIf, IRFor, IRReturn, IRPass, IRExprStmt]
@@ -167,6 +181,7 @@ class IRFunction:
     return_type: Optional[TypeRef]
     decorators: tuple[str, ...]
     body: tuple[IRStmt, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -178,18 +193,21 @@ class IRChoice:
     args: tuple[Field, ...]
     return_type: Optional[TypeRef]
     body: tuple[IRStmt, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
 class IRStruct:
     name: str
     fields: tuple[Field, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
 class IRFlag:
     name: str
     values: tuple[str, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -199,6 +217,7 @@ class IRInterface:
     requires: tuple[str, ...]
     keywords: tuple[tuple[str, IRExpr], ...]
     choices: tuple[IRChoice, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -210,6 +229,7 @@ class IRTemplate:
     ensure: Optional[IRExpr]
     init: Optional[IRFunction]
     choices: tuple[IRChoice, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -217,6 +237,7 @@ class IRInstance:
     name: str
     bases: tuple[str, ...]
     choices: tuple[IRChoice, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)

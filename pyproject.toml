@@ -28,6 +28,7 @@ dependencies = [
     "lark>=1.0.0,<2",
     "wheel",
     "immutables",
+    "loguru",
 ]
 
 [tool.black]

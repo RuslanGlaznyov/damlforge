@@ -1,0 +1,223 @@
+import pytest
+
+from forge.codegen.emit import generate_daml, render_body, render_expr, render_stmt, render_type
+from forge.ir.nodes import (
+    Field,
+    IRAssert,
+    IRAssign,
+    IRAttribute,
+    IRBinOp,
+    IRBoolOp,
+    IRCall,
+    IRChoice,
+    IRCompare,
+    IRConstant,
+    IRExprStmt,
+    IRFlag,
+    IRFor,
+    IRIf,
+    IRInterface,
+    IRModule,
+    IRName,
+    IRPass,
+    IRReturn,
+    IRStruct,
+    IRSubscript,
+    IRTemplate,
+    IRTuple,
+    IRUnaryOp,
+    TypeRef,
+)
+from forge.models.decorators import Consuming
+
+
+@pytest.mark.parametrize(
+    "type_ref,expected",
+    [
+        (TypeRef("Party"), "Party"),
+        (TypeRef("Text"), "Text"),
+        (TypeRef("int"), "Int"),
+        (TypeRef("bool"), "Bool"),
+        (TypeRef("None"), "()"),
+        (TypeRef("list", (TypeRef("Party"),)), "[Party]"),
+        (TypeRef("Optional", (TypeRef("Party"),)), "Optional Party"),
+        (TypeRef("ContractId", (TypeRef("Asset"),)), "ContractId Asset"),
+        (
+            TypeRef("Optional", (TypeRef("ContractId", (TypeRef("Asset"),)),)),
+            "Optional (ContractId Asset)",
+        ),
+        (TypeRef("tuple", (TypeRef("Party"), TypeRef("Text"))), "(Party, Text)"),
+        (TypeRef("TextMap", (TypeRef("Text"),)), "TextMap Text"),
+        (TypeRef("GenMap", (TypeRef("Text"), TypeRef("int"))), "GenMap Text Int"),
+        (TypeRef("Asset"), "Asset"),
+    ],
+)
+def test_render_type(type_ref, expected):
+    assert render_type(type_ref) == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        (IRName("owner"), "owner"),
+        (IRAttribute(IRName("holding"), "amount"), "holding.amount"),
+        (IRConstant(True), "True"),
+        (IRConstant(None), "None"),
+        (IRConstant("hi"), '"hi"'),
+        (IRConstant(5), "5"),
+        (IRCompare(IRName("a"), "!=", IRName("b")), "a /= b"),
+        (IRCompare(IRName("a"), "==", IRName("b")), "a == b"),
+        (IRBoolOp("and", (IRName("a"), IRName("b"))), "a && b"),
+        (IRBoolOp("or", (IRName("a"), IRName("b"))), "a || b"),
+        (IRUnaryOp("not", IRName("a")), "not a"),
+        (IRBinOp("+", IRName("a"), IRName("b")), "a + b"),
+        (IRSubscript(IRName("entry"), IRConstant(0)), "entry._1"),
+        (IRSubscript(IRName("entry"), IRConstant(1)), "entry._2"),
+        (IRCall(IRName("create"), (IRName("x"),)), "create x"),
+        (
+            IRCall(IRName("Asset"), (), (("owner", IRName("o")), ("amount", IRName("a")))),
+            "Asset with owner = o, amount = a",
+        ),
+        (IRTuple((IRName("a"), IRName("b"))), "(a, b)"),
+    ],
+)
+def test_render_expr(expr, expected):
+    assert render_expr(expr) == expected
+
+
+def test_render_expr_nested_generic_type_parenthesized():
+    t = TypeRef("list", (TypeRef("tuple", (TypeRef("Party"), TypeRef("int"))),))
+    assert render_type(t) == "[(Party, Int)]"
+
+
+@pytest.mark.parametrize(
+    "stmt,expected_lines",
+    [
+        (IRAssert(IRName("cond"), None), ["assert (cond)", "pure ()"]),
+        (IRAssert(IRName("cond"), IRConstant("bad")), ['assertMsg "bad" (cond)', "pure ()"]),
+        (IRAssign(IRName("x"), IRName("y")), ["let x = y", "pure ()"]),
+        (IRReturn(IRName("x")), ["pure (x)"]),
+        (IRReturn(None), ["pure ()"]),
+        (IRPass(), ['error "damlforge: not implemented"', "pure ()"]),
+    ],
+)
+def test_render_stmt_simple(stmt, expected_lines):
+    # a lone non-terminal statement still needs "what happens next" - here, the
+    # implicit fall-off-the-end `pure ()` a real Daml `do`-block requires as its
+    # final expression. An explicit `return` (last two cases) already supplies
+    # that itself and needs no continuation appended.
+    assert render_stmt(stmt, indent=0) == expected_lines
+
+
+def test_render_stmt_if_else():
+    stmt = IRIf(
+        IRName("cond"),
+        (IRReturn(IRConstant(True)),),
+        (IRReturn(IRConstant(False)),),
+    )
+    lines = render_stmt(stmt, indent=0)
+    assert lines == [
+        "if cond",
+        "  then do",
+        "    pure (True)",
+        "  else do",
+        "    pure (False)",
+    ]
+
+
+def test_render_stmt_for_with_no_accumulators_recurses_via_helper():
+    stmt = IRFor("item", TypeRef("Party"), IRName("xs"), (IRPass(),))
+    lines = render_stmt(stmt, indent=0)
+    joined = "\n".join(lines)
+    assert "_damlforge_loop1 []" in joined
+    assert "_damlforge_loop1 (item : _damlforge_rest)" in joined
+    assert "_damlforge_loop1 xs" in joined
+
+
+def test_render_body_for_with_accumulator_threads_it_through_recursion():
+    # `total` must already be bound (here, as if it were a choice/function
+    # parameter) for a plain reassignment inside the loop to count as a real
+    # loop-carried accumulator rather than a fresh per-iteration local.
+    loop = IRFor(
+        "item",
+        TypeRef("Party"),
+        IRName("xs"),
+        (IRExprStmt(IRCall(IRAttribute(IRName("total"), "append"), (IRName("item"),))),),
+    )
+    lines = render_body([loop, IRReturn(IRName("total"))], indent=0, known={"total"})
+    joined = "\n".join(lines)
+    assert "let _damlforge_loop1 total [] = total" in joined
+    assert "let total = _damlforge_loop1 total xs" in joined
+    assert "pure (total)" in joined
+
+
+def test_generate_daml_struct():
+    module = IRModule(structs=(IRStruct("Point", (Field("x", TypeRef("Party")),)),))
+    source, _ = generate_daml(module)
+    assert "data Point = Point" in source
+    assert "x : Party" in source
+    assert "deriving (Eq, Show)" in source
+
+
+def test_generate_daml_flag():
+    module = IRModule(flags=(IRFlag("Status", ("PENDING", "DONE")),))
+    source, _ = generate_daml(module)
+    assert "data Status = PENDING | DONE" in source
+
+
+def test_generate_daml_template_with_choice_and_source_map():
+    choice = IRChoice(
+        name="transfer",
+        controller=IRName("owner"),
+        consuming=Consuming.CONSUMING,
+        observer=None,
+        args=(Field("new_owner", TypeRef("Party")),),
+        return_type=TypeRef("ContractId", (TypeRef("Asset"),)),
+        body=(IRReturn(IRName("new_owner")),),
+        src=None,
+    )
+    template = IRTemplate(
+        name="Asset",
+        fields=(Field("owner", TypeRef("Party")),),
+        signatory=IRName("owner"),
+        observer=None,
+        ensure=None,
+        init=None,
+        choices=(choice,),
+    )
+    module = IRModule(templates=(template,))
+    source, source_map = generate_daml(module)
+
+    assert "template Asset" in source
+    assert "signatory owner" in source
+    assert "choice transfer : ContractId Asset" in source
+    assert "controller owner" in source
+    assert "do" in source
+    assert "pure (new_owner)" in source
+    # no src was set on this hand-built fixture, so no mapping entries expected
+    assert source_map["mappings"] == []
+
+
+def test_generate_daml_interface_with_requires():
+    choice = IRChoice(
+        name="get_amount",
+        controller=IRName("actors"),
+        consuming=Consuming.NON_CONSUMING,
+        observer=None,
+        args=(),
+        return_type=TypeRef("Decimal"),
+        body=(IRPass(),),
+    )
+    interface = IRInterface(
+        name="Holding",
+        view=TypeRef("HoldingView"),
+        requires=("Base",),
+        keywords=(),
+        choices=(choice,),
+    )
+    module = IRModule(interfaces=(interface,))
+    source, _ = generate_daml(module)
+
+    assert "interface Holding requires Base where" in source
+    assert "viewtype HoldingView" in source
+    assert "nonconsuming choice get_amount : Decimal" in source

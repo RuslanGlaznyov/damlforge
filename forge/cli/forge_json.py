@@ -3,9 +3,7 @@
 import argparse
 import json
 import sys
-import warnings
-from pathlib import Path, PurePath
-from typing import Any, Callable, Hashable, Optional
+from pathlib import Path
 from forge.semantics import analyze_module
 from forge.ast.parse import parse_to_ast
 
