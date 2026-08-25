@@ -23,6 +23,7 @@ from forge.ir.nodes import (
     IRModule,
     IRName,
     IRPass,
+    IRRecordUpdate,
     IRReturn,
     IRStruct,
     IRSubscript,
@@ -37,7 +38,14 @@ from forge.codegen.loops import (
     LoopNamer,
     body_has_ledger_effect,
     collect_accumulators,
+    is_effect_call,
     rewrite_appends,
+)
+from forge.codegen.self_mutation import (
+    SELF,
+    body_mutates_self,
+    inject_self_create,
+    rewrite_self_stmts,
 )
 
 _PRIMITIVE_TYPE_MAP = {
@@ -179,6 +187,9 @@ def render_expr(e) -> str:
     if isinstance(e, IRCompare):
         op = _COMPARE_OP_MAP.get(e.op, e.op)
         return f"{_render_infix_operand(e.left)} {op} {_render_infix_operand(e.right)}"
+    if isinstance(e, IRRecordUpdate):
+        updates_str = ", ".join(f"{name} = {render_expr(v)}" for name, v in e.updates)
+        return f"{_render_atom_for_attr(e.base)} {{ {updates_str} }}"
     raise CompilerPanic(f"render_expr: unsupported IR expression {type(e).__name__}")
 
 
@@ -239,6 +250,10 @@ def _render_leaf(s, indent: int, monadic: bool) -> list:
             return [f"{pad}assertMsg {render_expr(s.msg)} ({render_expr(s.test)})"]
         return [f"{pad}assert ({render_expr(s.test)})"]
     if isinstance(s, IRAssign):
+        if monadic and is_effect_call(s.value):
+            # `create`/`fetch`/`exercise`/`archive`/`lookup` are `Update` actions,
+            # not pure values - binding their result needs `<-`, not `let =`.
+            return [f"{pad}{render_expr(s.target)} <- {render_expr(s.value)}"]
         binding = f"let {render_expr(s.target)} = {render_expr(s.value)}"
         return [f"{pad}{binding} in" if not monadic else f"{pad}{binding}"]
     if isinstance(s, IRPass):
@@ -287,7 +302,10 @@ def translate_sequence(stmts, indent: int, monadic: bool, make_tail, namer: Loop
         if first.value is None:
             return [f"{pad}pure ()"] if monadic else [f"{pad}()"]
         value_expr = render_expr(first.value)
-        return [f"{pad}pure ({value_expr})"] if monadic else [f"{pad}{value_expr}"]
+        # a tuple/unit value already renders its own parens - don't add a second pair
+        already_parenthesized = isinstance(first.value, IRTuple)
+        wrapped = value_expr if already_parenthesized else f"({value_expr})"
+        return [f"{pad}pure {wrapped}"] if monadic else [f"{pad}{value_expr}"]
 
     if isinstance(first, IRIf):
         branch_tail = make_tail
@@ -452,11 +470,24 @@ def emit_flag(em: Emitter, f: IRFlag) -> None:
     em.record(f.src, "flag", f.name, start)
 
 
-def emit_choice(em: Emitter, c: IRChoice, container_name: str, indent: int) -> None:
+def emit_choice(em: Emitter, c: IRChoice, container_name: str, indent: int, field_types=None) -> None:
     pad = "  " * indent
     start = len(em.lines) + 1
+    is_template_choice = field_types is not None
+    known = frozenset(a.name for a in c.args)
+
+    body = c.body
+    display_return_type = c.return_type
+    if is_template_choice:
+        body = rewrite_self_stmts(list(body), field_types)
+        known = known | {SELF}
+        if body_mutates_self(body):
+            body = inject_self_create(body)
+            original = c.return_type if c.return_type is not None else TypeRef("tuple", ())
+            display_return_type = TypeRef("tuple", (TypeRef("ContractId", (TypeRef(container_name),)), original))
+
     consuming_kw = _CONSUMING_KEYWORD.get(c.consuming, "")
-    return_type = render_type(c.return_type) if c.return_type is not None else "()"
+    return_type = render_type(display_return_type) if display_return_type is not None else "()"
     em.line(f"{pad}{consuming_kw}choice {c.name} : {return_type}")
     if c.args:
         em.line(f"{pad}  with")
@@ -468,7 +499,9 @@ def emit_choice(em: Emitter, c: IRChoice, container_name: str, indent: int) -> N
     if c.observer is not None:
         em.line(f"{pad}  observer {render_expr(c.observer)}")
     em.line(f"{pad}  do")
-    em.lines_block(render_body(c.body, indent + 2, known=frozenset(a.name for a in c.args)))
+    body_lines = [f"{pad}    let {SELF} = this"] if is_template_choice else []
+    body_lines.extend(render_body(body, indent + 2, known=known))
+    em.lines_block(body_lines)
     em.record(c.src, "choice", f"{container_name}.{c.name}", start)
 
 
@@ -497,11 +530,25 @@ def emit_template(em: Emitter, t: IRTemplate) -> None:
     em.line(f"    signatory {signatory_expr}")
     if t.observer is not None:
         em.line(f"    observer {render_expr(t.observer)}")
-    if t.ensure is not None:
-        em.line(f"    ensure {render_expr(t.ensure)}")
+
+    ensure_conditions = []
+    if t.init:
+        for b in t.init.body:
+            if (
+                isinstance(b, IRExprStmt)
+                and isinstance(b.value, IRCall)
+                and isinstance(b.value.func, IRName)
+                and b.value.func.id == "ensure"
+                and b.value.args
+            ):
+                ensure_conditions.append(render_expr(b.value.args[0]))
+    if ensure_conditions:
+        em.line("    ensure " + " && ".join(ensure_conditions))
+
+    field_types = {f.name: f.type for f in t.fields}
     for c in t.choices:
         em.line("")
-        emit_choice(em, c, t.name, indent=2)
+        emit_choice(em, c, t.name, indent=2, field_types=field_types)
     em.record(t.src, "template", t.name, start)
 
 
@@ -540,6 +587,25 @@ def generate_daml(module: IRModule):
         emit_template(em, t)
         em.line("")
 
-    source = "\n".join(em.lines).rstrip("\n") + "\n"
-    source_map = {"mappings": em.mappings}
+    body_source = "\n".join(em.lines).rstrip("\n") + "\n"
+    mappings = em.mappings
+    # a small, deliberate exception to "no import emission yet" (see codegen
+    # design doc): `Map.lookup`/`Map.member`/`Map.insert` (from dict-typed
+    # `self.field` operations) need `DA.Map` in scope to resolve at all.
+    header = ""
+    if "Map." in body_source:
+        header = "import DA.Map as Map\n\n"
+        offset = header.count("\n")
+        mappings = [
+            {
+                **m,
+                "generated": {
+                    "startLine": m["generated"]["startLine"] + offset,
+                    "endLine": m["generated"]["endLine"] + offset,
+                },
+            }
+            for m in mappings
+        ]
+    source = header + body_source
+    source_map = {"mappings": mappings}
     return source, source_map

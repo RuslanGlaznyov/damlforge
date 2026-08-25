@@ -322,22 +322,22 @@ template FundingCampaign:
         self.finalized_at = finalized_at
 
     @choice(controller=[investor, platform], consuming=True)
-    def invest(
+    def FundingCampaign_Invest(
         self,
         investor: Party,
         inputs: list[ContractId[Amulet]],
         amount: Decimal,
         app_transfer_context: AppTransferContext,
     ) -> ContractId["FundingCampaign"]:
-        assert FundingCampaign.status == CampaignStatus.ACTIVE, "campaign must be Active"
+        assert self.status == CampaignStatus.ACTIVE, "campaign must be Active"
         assert amount > Decimal(0), "investment amount must be positive"
 
-        input_amount = verify_amulets(FundingCampaign.dso, inputs)
+        input_amount = verify_amulets(self.dso, inputs)
         assert input_amount >= amount, "insufficient funds for investment"
 
         remaining = amount
-        if FundingCampaign.terms.cap_at_target:
-            headroom = FundingCampaign.target - FundingCampaign.raised
+        if self.terms.cap_at_target:
+            headroom = self.target - self.raised
             if headroom > Decimal(0):
                 remaining = headroom
             else:
@@ -351,13 +351,13 @@ template FundingCampaign:
         accepted_outputs: list[TransferOutput] = []
         if accepted_amount > Decimal(0):
             accepted_lock = TimeLock(
-                holders=[FundingCampaign.platform],
-                expires_at=FundingCampaign.deadline,
-                opt_context="Investment for campaign " + FundingCampaign.external_id,
+                holders=[self.platform],
+                expires_at=self.deadline,
+                opt_context="Investment for campaign " + self.external_id,
             )
             accepted_outputs.append(
                 TransferOutput(
-                    receiver=FundingCampaign.platform,
+                    receiver=self.platform,
                     receiver_fee_ratio=Decimal(0),
                     amount=accepted_amount,
                     lock=accepted_lock,
@@ -367,13 +367,13 @@ template FundingCampaign:
         excess_outputs: list[TransferOutput] = []
         if excess_amount > Decimal(0):
             excess_lock = TimeLock(
-                holders=[FundingCampaign.platform],
-                expires_at=FundingCampaign.deadline,
-                opt_context="Excess for campaign " + FundingCampaign.external_id,
+                holders=[self.platform],
+                expires_at=self.deadline,
+                opt_context="Excess for campaign " + self.external_id,
             )
             excess_outputs.append(
                 TransferOutput(
-                    receiver=FundingCampaign.platform,
+                    receiver=self.platform,
                     receiver_fee_ratio=Decimal(0),
                     amount=excess_amount,
                     lock=excess_lock,
@@ -391,14 +391,14 @@ template FundingCampaign:
             transfer_inputs.append(InputAmulet(input_cid))
 
         transfer = Transfer(
-            sender=FundingCampaign.platform,
-            provider=FundingCampaign.platform,
+            sender=self.platform,
+            provider=self.platform,
             inputs=transfer_inputs,
             outputs=combined_outputs,
             beneficiaries=None,
         )
 
-        transfer_result = exercise_app_transfer(FundingCampaign.dso, app_transfer_context, transfer)
+        transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         locked_cids: list[ContractId[LockedAmulet]] = []
         for created_amulet: CreatedAmulet in transfer_result.created_amulets:
@@ -422,10 +422,10 @@ template FundingCampaign:
             for locked_cid: ContractId[LockedAmulet] in locked_cids:
                 excess_cids.append(locked_cid)
 
-        current_investments = or_empty_party_amounts(FundingCampaign.investments)
-        current_locked_holdings = or_empty_locked_holdings(FundingCampaign.locked_holdings)
-        current_excess_investments = or_empty_party_amounts(FundingCampaign.excess_investments)
-        current_excess_holdings = or_empty_locked_holdings(FundingCampaign.excess_holdings)
+        current_investments = or_empty_party_amounts(self.investments)
+        current_locked_holdings = or_empty_locked_holdings(self.locked_holdings)
+        current_excess_investments = or_empty_party_amounts(self.excess_investments)
+        current_excess_holdings = or_empty_locked_holdings(self.excess_holdings)
 
         if accepted_amount > Decimal(0):
             new_investments = update_investments(investor, accepted_amount, current_investments)
@@ -449,68 +449,68 @@ template FundingCampaign:
         for entry: tuple[Party, ContractId[LockedAmulet]] in current_excess_holdings:
             new_excess_holdings.append(entry)
 
-        new_raised = FundingCampaign.raised + accepted_amount
-        new_balance = FundingCampaign.balance + accepted_amount
+        new_raised = self.raised + accepted_amount
+        new_balance = self.balance + accepted_amount
 
         return create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
                 raised=new_raised,
                 balance=new_balance,
-                status=FundingCampaign.status,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
+                status=self.status,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
                 investments=new_investments,
                 excess_investments=new_excess_investments,
                 excess_holdings=new_excess_holdings,
                 locked_holdings=new_locked_holdings,
-                unlocked_holdings=FundingCampaign.unlocked_holdings,
-                refunded_investors=FundingCampaign.refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
-                finalized_at=FundingCampaign.finalized_at,
+                unlocked_holdings=self.unlocked_holdings,
+                refunded_investors=self.refunded_investors,
+                loan_terms=self.loan_terms,
+                finalized_at=self.finalized_at,
             )
         )
 
     @choice(controller=platform, consuming=True)
     def finalize(self, current_time: Timestamp) -> ContractId["FundingCampaign"]:
-        assert FundingCampaign.status == CampaignStatus.ACTIVE, "Must be Active"
+        assert self.status == CampaignStatus.ACTIVE, "Must be Active"
 
-        if FundingCampaign.terms.fund_mode == FundMode.ALL_OR_NOTHING:
-            if FundingCampaign.raised >= FundingCampaign.target:
+        if self.terms.fund_mode == FundMode.ALL_OR_NOTHING:
+            if self.raised >= self.target:
                 new_status = CampaignStatus.SUCCESSFUL
             else:
                 new_status = CampaignStatus.FAILED
         else:
-            if FundingCampaign.raised >= FundingCampaign.terms.flexible_funding_minimum:
+            if self.raised >= self.terms.flexible_funding_minimum:
                 new_status = CampaignStatus.SUCCESSFUL
             else:
                 new_status = CampaignStatus.FAILED
 
         return create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
-                raised=FundingCampaign.raised,
-                balance=FundingCampaign.balance,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
+                raised=self.raised,
+                balance=self.balance,
                 status=new_status,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
-                investments=FundingCampaign.investments,
-                excess_investments=FundingCampaign.excess_investments,
-                excess_holdings=FundingCampaign.excess_holdings,
-                locked_holdings=FundingCampaign.locked_holdings,
-                unlocked_holdings=FundingCampaign.unlocked_holdings,
-                refunded_investors=FundingCampaign.refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
+                investments=self.investments,
+                excess_investments=self.excess_investments,
+                excess_holdings=self.excess_holdings,
+                locked_holdings=self.locked_holdings,
+                unlocked_holdings=self.unlocked_holdings,
+                refunded_investors=self.refunded_investors,
+                loan_terms=self.loan_terms,
                 finalized_at=current_time,
             )
         )
@@ -518,37 +518,37 @@ template FundingCampaign:
     @choice(controller=platform, consuming=True)
     def cancel(self) -> ContractId["FundingCampaign"]:
         assert (
-            FundingCampaign.status == CampaignStatus.SUCCESSFUL
-            or FundingCampaign.status == CampaignStatus.COMPLETED
+            self.status == CampaignStatus.SUCCESSFUL
+            or self.status == CampaignStatus.COMPLETED
         ), "Can only cancel Successful or Completed campaigns"
 
-        current_locked_holdings = or_empty_locked_holdings(FundingCampaign.locked_holdings)
-        current_unlocked_holdings = or_empty_holdings(FundingCampaign.unlocked_holdings)
+        current_locked_holdings = or_empty_locked_holdings(self.locked_holdings)
+        current_unlocked_holdings = or_empty_holdings(self.unlocked_holdings)
         assert len(current_locked_holdings) > 0 or len(current_unlocked_holdings) > 0, (
             "Must have remaining holdings to refund"
         )
 
         return create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
-                raised=FundingCampaign.raised,
-                balance=FundingCampaign.balance,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
+                raised=self.raised,
+                balance=self.balance,
                 status=CampaignStatus.CANCELLED,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
-                investments=FundingCampaign.investments,
-                excess_investments=FundingCampaign.excess_investments,
-                excess_holdings=FundingCampaign.excess_holdings,
-                locked_holdings=FundingCampaign.locked_holdings,
-                unlocked_holdings=FundingCampaign.unlocked_holdings,
-                refunded_investors=FundingCampaign.refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
-                finalized_at=FundingCampaign.finalized_at,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
+                investments=self.investments,
+                excess_investments=self.excess_investments,
+                excess_holdings=self.excess_holdings,
+                locked_holdings=self.locked_holdings,
+                unlocked_holdings=self.unlocked_holdings,
+                refunded_investors=self.refunded_investors,
+                loan_terms=self.loan_terms,
+                finalized_at=self.finalized_at,
             )
         )
 
@@ -556,11 +556,11 @@ template FundingCampaign:
     def create_installments(
         self, app_transfer_context: AppTransferContext
     ) -> tuple[list[ContractId[InstallmentRelease]], ContractId["FundingCampaign"]]:
-        assert FundingCampaign.status == CampaignStatus.SUCCESSFUL, "must be successful"
-        assert FundingCampaign.raised > Decimal(0), "must have funds to distribute"
+        assert self.status == CampaignStatus.SUCCESSFUL, "must be successful"
+        assert self.raised > Decimal(0), "must have funds to distribute"
 
-        current_locked_holdings = or_empty_locked_holdings(FundingCampaign.locked_holdings)
-        current_investments = or_empty_party_amounts(FundingCampaign.investments)
+        current_locked_holdings = or_empty_locked_holdings(self.locked_holdings)
+        current_investments = or_empty_party_amounts(self.investments)
 
         new_unlocked_holdings: list[tuple[Party, ContractId[Holding]]] = []
         for entry: tuple[Party, ContractId[LockedAmulet]] in current_locked_holdings:
@@ -571,25 +571,25 @@ template FundingCampaign:
             new_unlocked_holdings.append((investor, holding_cid))
 
         tracker_cid: Optional[ContractId[LoanTracker]] = None
-        if FundingCampaign.loan_terms != None:
-            lt: LoanTerms = FundingCampaign.loan_terms
+        if self.loan_terms != None:
+            lt: LoanTerms = self.loan_terms
             tracker_cid = create(
                 LoanTracker(
-                    platform=FundingCampaign.platform,
-                    developer=FundingCampaign.developer,
-                    dso=FundingCampaign.dso,
-                    campaign_external_id=FundingCampaign.external_id,
+                    platform=self.platform,
+                    developer=self.developer,
+                    dso=self.dso,
+                    campaign_external_id=self.external_id,
                     loan_terms=lt,
                     total_repaid=Decimal(0),
                     repayment_history=[],
                     investments=current_investments,
-                    total_raised=FundingCampaign.raised,
+                    total_raised=self.raised,
                     balance=Decimal(0),
                     holding_cids=[],
                 )
             )
 
-        installment_amounts = calculate_installments(FundingCampaign.raised)
+        installment_amounts = calculate_installments(self.raised)
 
         just_holdings: list[ContractId[Holding]] = []
         for entry: tuple[Party, ContractId[Holding]] in new_unlocked_holdings:
@@ -606,10 +606,10 @@ template FundingCampaign:
                     remaining_holdings_for_installments.append(holding_cid)
             tranche_index = tranche_index + 1
 
-        if FundingCampaign.finalized_at != None:
-            anchor_time: Timestamp = FundingCampaign.finalized_at
+        if self.finalized_at != None:
+            anchor_time: Timestamp = self.finalized_at
         else:
-            anchor_time: Timestamp = FundingCampaign.deadline
+            anchor_time: Timestamp = self.deadline
 
         first_installment_amount = installment_amounts[0]
 
@@ -617,16 +617,16 @@ template FundingCampaign:
         month = 1
         first_installment = create(
             InstallmentRelease(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
                 installment_number=month,
                 amount=first_installment_amount,
-                release_date=add_rel_time(anchor_time, days(FundingCampaign.terms.cooldown_period_days + 30 * month)),
+                release_date=add_rel_time(anchor_time, days(self.terms.cooldown_period_days + 30 * month)),
                 released=False,
                 escrowed=True,
-                platform_fees=FundingCampaign.terms.platform_fees,
+                platform_fees=self.terms.platform_fees,
                 holding_cids=first_installment_holdings,
                 paused=False,
                 loan_tracker_cid=tracker_cid,
@@ -639,18 +639,18 @@ template FundingCampaign:
             if other_month >= 2 and other_month <= 3:
                 other_installment = create(
                     InstallmentRelease(
-                        platform=FundingCampaign.platform,
-                        developer=FundingCampaign.developer,
-                        dso=FundingCampaign.dso,
-                        external_id=FundingCampaign.external_id,
+                        platform=self.platform,
+                        developer=self.developer,
+                        dso=self.dso,
+                        external_id=self.external_id,
                         installment_number=other_month,
                         amount=installment_amounts[other_month - 1],
                         release_date=add_rel_time(
-                            anchor_time, days(FundingCampaign.terms.cooldown_period_days + 30 * other_month)
+                            anchor_time, days(self.terms.cooldown_period_days + 30 * other_month)
                         ),
                         released=False,
                         escrowed=False,
-                        platform_fees=FundingCampaign.terms.platform_fees,
+                        platform_fees=self.terms.platform_fees,
                         holding_cids=[],
                         paused=False,
                         loan_tracker_cid=tracker_cid,
@@ -671,25 +671,25 @@ template FundingCampaign:
 
         updated_campaign = create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
-                raised=FundingCampaign.raised,
-                balance=FundingCampaign.balance - first_installment_amount,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
+                raised=self.raised,
+                balance=self.balance - first_installment_amount,
                 status=CampaignStatus.COMPLETED,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
-                investments=FundingCampaign.investments,
-                excess_investments=FundingCampaign.excess_investments,
-                excess_holdings=FundingCampaign.excess_holdings,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
+                investments=self.investments,
+                excess_investments=self.excess_investments,
+                excess_holdings=self.excess_holdings,
                 locked_holdings=[],
                 unlocked_holdings=remaining_unlocked_holdings_list,
-                refunded_investors=FundingCampaign.refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
-                finalized_at=FundingCampaign.finalized_at,
+                refunded_investors=self.refunded_investors,
+                loan_terms=self.loan_terms,
+                finalized_at=self.finalized_at,
             )
         )
 
@@ -700,13 +700,13 @@ template FundingCampaign:
         self, investor: Party, receiver: Party, app_transfer_context: AppTransferContext
     ) -> tuple[ContractId["FundingCampaign"], list[ContractId[Holding]]]:
         assert (
-            FundingCampaign.status == CampaignStatus.FAILED
-            or FundingCampaign.status == CampaignStatus.CANCELLED
+            self.status == CampaignStatus.FAILED
+            or self.status == CampaignStatus.CANCELLED
         ), "Campaign must be Failed or Cancelled"
 
-        current_refunded_investors = or_empty_parties(FundingCampaign.refunded_investors)
-        current_locked_holdings = or_empty_locked_holdings(FundingCampaign.locked_holdings)
-        current_investments = or_empty_party_amounts(FundingCampaign.investments)
+        current_refunded_investors = or_empty_parties(self.refunded_investors)
+        current_locked_holdings = or_empty_locked_holdings(self.locked_holdings)
+        current_investments = or_empty_party_amounts(self.investments)
 
         already_refunded = False
         for refunded: Party in current_refunded_investors:
@@ -774,14 +774,14 @@ template FundingCampaign:
             transfer_inputs.append(InputAmulet(amulet_cid))
 
         transfer = Transfer(
-            sender=FundingCampaign.platform,
-            provider=FundingCampaign.platform,
+            sender=self.platform,
+            provider=self.platform,
             inputs=transfer_inputs,
             outputs=[refund_output],
             beneficiaries=None,
         )
 
-        transfer_result = exercise_app_transfer(FundingCampaign.dso, app_transfer_context, transfer)
+        transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         refunded_holdings: list[ContractId[Holding]] = []
         for created_amulet: CreatedAmulet in transfer_result.created_amulets:
@@ -831,8 +831,8 @@ template FundingCampaign:
     def claim_excess(
         self, investor: Party, receiver: Party, app_transfer_context: AppTransferContext
     ) -> tuple[ContractId["FundingCampaign"], list[ContractId[Holding]]]:
-        current_excess_investments = or_empty_party_amounts(FundingCampaign.excess_investments)
-        current_excess_holdings = or_empty_locked_holdings(FundingCampaign.excess_holdings)
+        current_excess_investments = or_empty_party_amounts(self.excess_investments)
+        current_excess_holdings = or_empty_locked_holdings(self.excess_holdings)
 
         investor_excess = Decimal(0)
         for entry: tuple[Party, Decimal] in current_excess_investments:
@@ -866,14 +866,14 @@ template FundingCampaign:
             transfer_inputs.append(InputAmulet(amulet_cid))
 
         transfer = Transfer(
-            sender=FundingCampaign.platform,
-            provider=FundingCampaign.platform,
+            sender=self.platform,
+            provider=self.platform,
             inputs=transfer_inputs,
             outputs=[return_output],
             beneficiaries=None,
         )
 
-        transfer_result = exercise_app_transfer(FundingCampaign.dso, app_transfer_context, transfer)
+        transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         returned_holdings: list[ContractId[Holding]] = []
         for created_amulet: CreatedAmulet in transfer_result.created_amulets:
@@ -919,7 +919,7 @@ template FundingCampaign:
     def pause(
         self, installment_cids: list[ContractId[InstallmentRelease]]
     ) -> tuple[ContractId["FundingCampaign"], list[ContractId[InstallmentRelease]]]:
-        assert FundingCampaign.status == CampaignStatus.SUCCESSFUL, "Can only pause Successful campaigns"
+        assert self.status == CampaignStatus.SUCCESSFUL, "Can only pause Successful campaigns"
 
         paused_installments: list[ContractId[InstallmentRelease]] = []
         for installment_cid: ContractId[InstallmentRelease] in installment_cids:
@@ -950,25 +950,25 @@ template FundingCampaign:
 
         new_campaign = create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
-                raised=FundingCampaign.raised,
-                balance=FundingCampaign.balance,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
+                raised=self.raised,
+                balance=self.balance,
                 status=CampaignStatus.PAUSED,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
-                investments=FundingCampaign.investments,
-                excess_investments=FundingCampaign.excess_investments,
-                excess_holdings=FundingCampaign.excess_holdings,
-                locked_holdings=FundingCampaign.locked_holdings,
-                unlocked_holdings=FundingCampaign.unlocked_holdings,
-                refunded_investors=FundingCampaign.refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
-                finalized_at=FundingCampaign.finalized_at,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
+                investments=self.investments,
+                excess_investments=self.excess_investments,
+                excess_holdings=self.excess_holdings,
+                locked_holdings=self.locked_holdings,
+                unlocked_holdings=self.unlocked_holdings,
+                refunded_investors=self.refunded_investors,
+                loan_terms=self.loan_terms,
+                finalized_at=self.finalized_at,
             )
         )
 
@@ -978,7 +978,7 @@ template FundingCampaign:
     def resume(
         self, installment_cids: list[ContractId[InstallmentRelease]]
     ) -> tuple[ContractId["FundingCampaign"], list[ContractId[InstallmentRelease]]]:
-        assert FundingCampaign.status == CampaignStatus.PAUSED, "Campaign not paused"
+        assert self.status == CampaignStatus.PAUSED, "Campaign not paused"
 
         resumed_installments: list[ContractId[InstallmentRelease]] = []
         for installment_cid: ContractId[InstallmentRelease] in installment_cids:
@@ -1009,25 +1009,25 @@ template FundingCampaign:
 
         new_campaign = create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
-                raised=FundingCampaign.raised,
-                balance=FundingCampaign.balance,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
+                raised=self.raised,
+                balance=self.balance,
                 status=CampaignStatus.SUCCESSFUL,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
-                investments=FundingCampaign.investments,
-                excess_investments=FundingCampaign.excess_investments,
-                excess_holdings=FundingCampaign.excess_holdings,
-                locked_holdings=FundingCampaign.locked_holdings,
-                unlocked_holdings=FundingCampaign.unlocked_holdings,
-                refunded_investors=FundingCampaign.refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
-                finalized_at=FundingCampaign.finalized_at,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
+                investments=self.investments,
+                excess_investments=self.excess_investments,
+                excess_holdings=self.excess_holdings,
+                locked_holdings=self.locked_holdings,
+                unlocked_holdings=self.unlocked_holdings,
+                refunded_investors=self.refunded_investors,
+                loan_terms=self.loan_terms,
+                finalized_at=self.finalized_at,
             )
         )
 

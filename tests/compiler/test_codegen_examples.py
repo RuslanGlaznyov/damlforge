@@ -13,6 +13,7 @@ EXAMPLE_FILES = [
     EXAMPLES_ROOT / "token_standard" / "token_standard.vy",
     EXAMPLES_ROOT / "crowd_loans" / "loan_terms.vy",
     EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.vy",
+    EXAMPLES_ROOT / "basic" / "simple.vy",
 ]
 
 
@@ -63,6 +64,22 @@ def test_funding_campaign_example_translates_every_loop_for_real():
     assert "TODO(damlforge)" not in daml_source
     assert "for-loop translation not yet supported" not in daml_source
     assert "_damlforge_loop1" in daml_source
+
+
+def test_simple_example_mutates_self_via_create_and_dict_via_map():
+    path = EXAMPLES_ROOT / "basic" / "simple.vy"
+    daml_source, _ = _full_pipeline(path)
+
+    assert "TODO(damlforge)" not in daml_source
+    assert "import DA.Map as Map" in daml_source
+    assert "let self = this" in daml_source
+    assert "Map.member" in daml_source
+    assert "Map.insert" in daml_source
+    assert "`elem`" not in daml_source
+    assert "!!" not in daml_source
+    # `mint` mutates self - its real Daml return type must reflect the new contract
+    assert "choice mint : (ContractId SimpleTemplate, Bool)" in daml_source
+    assert "create self" in daml_source
 
 
 def test_decimal_calls_render_as_daml_numeric_literals():

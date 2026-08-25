@@ -78,17 +78,17 @@ def collect_accumulators(stmts, known, acc=None):
     return acc
 
 
-def _is_effect_call(expr) -> bool:
+def is_effect_call(expr) -> bool:
     return isinstance(expr, IRCall) and isinstance(expr.func, IRName) and expr.func.id in LEDGER_EFFECT_BUILTINS
 
 
 def body_has_ledger_effect(stmts) -> bool:
     for s in stmts:
-        if isinstance(s, IRExprStmt) and _is_effect_call(s.value):
+        if isinstance(s, IRExprStmt) and is_effect_call(s.value):
             return True
-        if isinstance(s, IRAssign) and _is_effect_call(s.value):
+        if isinstance(s, IRAssign) and is_effect_call(s.value):
             return True
-        if isinstance(s, IRReturn) and s.value is not None and _is_effect_call(s.value):
+        if isinstance(s, IRReturn) and s.value is not None and is_effect_call(s.value):
             return True
         if isinstance(s, IRIf) and (body_has_ledger_effect(s.body) or body_has_ledger_effect(s.orelse)):
             return True

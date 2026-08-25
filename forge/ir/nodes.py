@@ -100,6 +100,16 @@ class IRCompare:
     right: "IRExpr"
 
 
+@dataclass(frozen=True)
+class IRRecordUpdate:
+    """A Daml/Haskell record update: `base { f1 = v1, f2 = v2 }`. Daml records are
+    immutable - this is how `self.field = value` inside a choice body actually
+    compiles: not a mutation, but a new record value built from the old one."""
+
+    base: "IRExpr"
+    updates: tuple[tuple[str, "IRExpr"], ...]
+
+
 IRExpr = Union[
     IRName,
     IRAttribute,
@@ -113,6 +123,7 @@ IRExpr = Union[
     IRBoolOp,
     IRUnaryOp,
     IRCompare,
+    IRRecordUpdate,
 ]
 
 
