@@ -172,6 +172,42 @@ template RecursionTemplate:
         return self.recursion()
 """
 
+MISSING_IMPORT = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party, app_context: AppTransferContext) -> bool:
+        pass
+"""
+
+WILDCARD_MISSING_IMPORT_NOT_ALLOWED = """
+from Splice.AppTransferContext import *
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party, app_context: AppTransferContext) -> bool:
+        pass
+"""
+
+AS_IMPORT_NOT_ALLOWED = """
+from Splice.AppTransferContext import AppTransferContext as AppTContext
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party, app_context: AppTContext) -> bool:
+        pass
+"""
 
 def _choice_template(consuming_literal, observer_clause=""):
     return f"""
@@ -354,7 +390,7 @@ def test_valid_decorator_usage_passes(source):
     "source,expected_code",
     [
         (TEMPLATE_MISSING_SIGNATORY, ErrorCodes.DF1201.value),
-        (CHOICE_MISSING_CONTROLLER, ErrorCodes.DF1202.value),
+        (CHOICE_MISSING_CONTROLLER, ErrorCodes.DF1203.value),
         (CHOICE_MISSING_CONSUMING, ErrorCodes.DF1203.value),
         (CHOICE_NON_LITERAL_CONSUMING, ErrorCodes.DF1203.value),
         (LEDGER_EFFECT_WITH_ARGS, ErrorCodes.DF1204.value),
@@ -369,6 +405,9 @@ def test_valid_decorator_usage_passes(source):
         (TEMPLATE_ENSURE_NON_BOOLEAN_LITERAL, ErrorCodes.DF1212.value),
         (TEMPLATE_ENSURE_ARITHMETIC_EXPRESSION, ErrorCodes.DF1212.value),
         (TEMPLATE_ENSURE_WITHOUT_VALUE, ErrorCodes.DF1212.value),
+        (MISSING_IMPORT, ErrorCodes.DF1213.value),
+        (WILDCARD_MISSING_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
+        (AS_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

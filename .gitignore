@@ -69,3 +69,6 @@ repros/
 commitmsg.txt
 .agent-files/
 docs/*
+*/*/*.daml
+*/*/*.map.json
+*/*/*.json

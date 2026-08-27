@@ -1,4 +1,5 @@
 from forge.models import Party, choice, GenMap
+from Splice.AmuletRules import AppTransferContext
 
 template SimpleTemplate:
     platform: Party
@@ -6,6 +7,7 @@ template SimpleTemplate:
     dso: Party
     total_target: Decimal
     total_balance: Decimal
+    test_balance: int
 
     signatory: list[Party] = [platform]
     mint_receiver: list[Party] = [platform, developer, dso]
@@ -17,9 +19,13 @@ template SimpleTemplate:
         developer: Party,
         dso: Party,
         total_target: Decimal,
-        total_balance: Decimal
+        total_balance: Decimal,
+        test_balance: int
     ):
         ensure (total_target > Decimal(0) and total_balance >= Decimal(0))
+        assert total_target > Decimal(0), "total_target must be greater than 0"
+        assert total_balance >= Decimal(0), "total_balance must be a non-negative value"
+        assert test_balance > 0, "test_balance must be greater than 0"
 
         self.platform = platform
         self.developer = developer
@@ -28,7 +34,7 @@ template SimpleTemplate:
         self.total_balance = total_balance
 
     @choice(controller=[developer, platform], consuming=True)
-    def mint(self) -> bool:
+    def SimpleTemplate_Mint(self) -> ContractId[SimpleTemplate]:
         self.total_target = self.total_target + Decimal(1)
         self.total_balance = self.total_balance - Decimal(1)
 
@@ -39,4 +45,11 @@ template SimpleTemplate:
                 self.mint_balances[party] = Decimal(1)
 
         return True
-            
+    
+    @choice(controller=[platform], consuming=False)
+    def SimpleTemplate_CreateAppMarkers(
+        self, 
+        beneficiary: list[Party], 
+        amount: int,
+        app_transfer_context : AppTransferContext) -> bool:
+        return True

@@ -7,7 +7,7 @@ from pathlib import Path
 from forge.semantics import analyze_module
 from forge.ast.parse import parse_to_ast
 from forge.ir import lower_module
-from forge.codegen import generate_daml
+from forge.codegen import daml_module_name, generate_daml
 from loguru import logger
 
 def _parse_cli_args():
@@ -61,13 +61,14 @@ def _parse_args(argv):
           module = parse_to_ast(source, module_path=path.name, resolved_path=str(path))
           analyze_module(module)
           ir = lower_module(module)
-          daml_source, source_map = generate_daml(ir)
-          
-          output_file = output_dir / (path.stem + ".daml")
+          module_name = daml_module_name(path.stem)
+          daml_source, source_map = generate_daml(ir, module_name=module_name)
+
+          output_file = output_dir / (module_name + ".daml")
           with output_file.open("w") as fh:
               logger.info(f"writing DAML output to: {output_file}")
               fh.write(daml_source)
-          output_map_file = output_dir / (path.stem + ".map.json")
+          output_map_file = output_dir / (module_name + ".map.json")
           with output_map_file.open("w") as fh:
               logger.info(f"writing source map to: {output_map_file}")
               json.dump(source_map, fh, indent=2 if args.pretty_json else None, sort_keys=True, default=str)

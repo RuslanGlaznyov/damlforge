@@ -5,28 +5,108 @@ from forge.ir.nodes import TypeRef
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.analysis.structure import _reachable_modules
 
-PRIMITIVE_TYPES = {
-    "Party",
-    "Text",
-    "Int",
-    "int",
-    "float",
-    "Decimal",
-    "Date",
-    "Timestamp",
-    "bool",
-    "None",
-}
-GENERIC_TYPES = {"ContractId", "Optional", "list", "tuple", "TextMap", "GenMap"}
-BUILTIN_TYPE_NAMES = PRIMITIVE_TYPES | GENERIC_TYPES
 
-_LOCAL_DECLARATION_TYPES = (
-    vy_ast.StructDef,
-    vy_ast.FlagDef,
-    vy_ast.InterfaceDef,
-    vy_ast.TemplateDef,
-    vy_ast.InstanceDef,
-)
+class _PrimT:
+    """Base for a fixed, non-parametrized Daml primitive type - mirrors
+    Vyper's `_PrimT` (`vyper/semantics/types/primitives.py`), which wraps
+    even non-parametrized types like `BoolT`/`DecimalT`/`AddressT` as
+    classes rather than bare string literals."""
+
+    _id: str
+
+
+class PartyT(_PrimT):
+    _id = "Party"
+
+
+class TextT(_PrimT):
+    _id = "Text"
+
+
+class IntT(_PrimT):
+    _id = "Int"
+
+
+class PyIntT(_PrimT):
+    _id = "int"
+
+
+class PyFloatT(_PrimT):
+    _id = "float"
+
+
+class DecimalT(_PrimT):
+    _id = "Decimal"
+
+
+class DateT(_PrimT):
+    _id = "Date"
+
+
+class TimestampT(_PrimT):
+    _id = "Timestamp"
+
+
+class BoolT(_PrimT):
+    _id = "bool"
+
+
+class NoneT(_PrimT):
+    _id = "None"
+
+
+def _get_primitive_types() -> dict:
+    types = [
+        PartyT(),
+        TextT(),
+        IntT(),
+        PyIntT(),
+        PyFloatT(),
+        DecimalT(),
+        DateT(),
+        TimestampT(),
+        BoolT(),
+        NoneT(),
+    ]
+    return {t._id: t for t in types}
+
+
+class _GenericT:
+    """Base for a builtin generic/parametrized Daml type constructor -
+    mirrors Vyper's sequence types (`HashMapT`/`DArrayT`), which are also
+    registered by `_id` rather than a bare string in `GENERIC_TYPES`. Each
+    of these may grow its own construction/arity checks later."""
+
+    _id: str
+
+
+class ContractIdT(_GenericT):
+    _id = "ContractId"
+
+
+class OptionalT(_GenericT):
+    _id = "Optional"
+
+
+class ListT(_GenericT):
+    _id = "list"
+
+
+class TupleT(_GenericT):
+    _id = "tuple"
+
+
+class TextMapT(_GenericT):
+    _id = "TextMap"
+
+
+class GenMapT(_GenericT):
+    _id = "GenMap"
+
+
+def _get_generic_types() -> dict:
+    types = [ContractIdT(), OptionalT(), ListT(), TupleT(), TextMapT(), GenMapT()]
+    return {t._id: t for t in types}
 
 
 def _imported_names(module: vy_ast.Module) -> set:
@@ -41,12 +121,38 @@ def _imported_names(module: vy_ast.Module) -> set:
     return names
 
 
+def check_no_aliased_from_import(node, errors: ExceptionList) -> None:
+    if not isinstance(node, vy_ast.ImportFrom):
+        return
+
+    for alias in node.names:
+        if alias.asname and alias.name != "*":
+            errors.append(
+                DamlForgeException(
+                    f"Aliased imports (`{alias.name} as {alias.asname}`) are not "
+                    "supported - Daml has no per-symbol import alias; import "
+                    f"`{alias.name}` directly, or use `import {node.module} as ...` "
+                    "for whole-module qualified aliasing instead",
+                    node,
+                    code=ErrorCodes.DF1213.value,
+                )
+            )
+
+
 def known_type_names(modules) -> set:
-    names = set(BUILTIN_TYPE_NAMES)
+    local_dec_types = (
+        vy_ast.StructDef,
+        vy_ast.FlagDef,
+        vy_ast.InterfaceDef,
+        vy_ast.TemplateDef,
+        vy_ast.InstanceDef,
+    )
+    
+    names = set(_get_primitive_types()) | set(_get_generic_types())
     for module in _reachable_modules(modules):
         names |= _imported_names(module)
         for node in module.body:
-            if isinstance(node, _LOCAL_DECLARATION_TYPES):
+            if isinstance(node, local_dec_types):
                 names.add(node.name)
     return names
 
@@ -112,6 +218,103 @@ def check_interface_view_type_annotation(
     for kw in node.keywords:
         if kw.arg == "view":
             check_type_annotation(kw.value, known_names, f"`view=` of `{node.name}`", errors)
+
+
+def known_field_types(modules) -> dict:
+    """Registry of `{struct_or_template_name: {field_name: TypeRef}}`, built
+    from every struct/template field declaration across all reachable
+    modules. DamlForge does no general type inference or checking (IR is
+    structural, not typed - see the codegen design doc), but this narrow
+    registry is enough to catch one real, previously-undetected class of bug:
+    a field declared `Optional[T]` constructed with a value that is provably
+    NOT itself optional or `None` - real Daml's `Optional` is a genuine sum
+    type needing an explicit `Some(...)` wrapper, unlike Python's own
+    `Optional[T] = T | None` typing (which accepts a bare `T` with no wrapping
+    at all) - so this specific mismatch compiles fine as `.vy`/Python but
+    fails the real Daml compiler outright ("Couldn't match expected type
+    'Optional X' with actual type 'X'"), and nothing in this codebase caught
+    it before real `dpm build` validation started."""
+    registry = {}
+    for module in _reachable_modules(modules):
+        for node in module.body:
+            if not isinstance(node, (vy_ast.StructDef, vy_ast.TemplateDef)):
+                continue
+            fields = {}
+            for stmt in node.body:
+                if isinstance(stmt, vy_ast.AnnAssign) and isinstance(stmt.target, vy_ast.Name):
+                    fields[stmt.target.id] = lower_type(stmt.annotation)
+            registry[node.name] = fields
+    return registry
+
+
+def _local_value_types(fn: vy_ast.FunctionDef, field_types: dict) -> dict:
+    """Best-effort, non-flow-sensitive map of `{name: TypeRef}` for names
+    whose type can be determined from this function's own signature/body: an
+    explicit parameter annotation, an explicit `AnnAssign`, or - failing an
+    annotation - assignment from a call to a known struct/template
+    constructor (which always produces that exact, non-optional type). Not
+    real type inference - just enough to catch the shapes actually seen in
+    practice without false-positiving on anything more complex (a value
+    computed via a plain function call, attribute access, or unannotated
+    parameter is left unresolved and never flagged)."""
+    local_types = {}
+    for arg in fn.args.args:
+        if arg.arg == "self" or arg.annotation is None:
+            continue
+        local_types[arg.arg] = lower_type(arg.annotation)
+    for stmt in fn.get_descendants(vy_ast.AnnAssign):
+        if isinstance(stmt.target, vy_ast.Name):
+            local_types[stmt.target.id] = lower_type(stmt.annotation)
+    for stmt in fn.get_descendants(vy_ast.Assign):
+        if (
+            isinstance(stmt.target, vy_ast.Name)
+            and stmt.target.id not in local_types
+            and isinstance(stmt.value, vy_ast.Call)
+            and isinstance(stmt.value.func, vy_ast.Name)
+            and stmt.value.func.id in field_types
+        ):
+            local_types[stmt.target.id] = TypeRef(stmt.value.func.id)
+    return local_types
+
+
+def check_optional_field_construction(node: vy_ast.TopLevel, field_types: dict, errors: ExceptionList) -> None:
+    if isinstance(node, (vy_ast.TemplateDef, vy_ast.InterfaceDef, vy_ast.InstanceDef)):
+        functions = [n for n in node.body if isinstance(n, vy_ast.FunctionDef)]
+    elif isinstance(node, vy_ast.FunctionDef):
+        functions = [node]
+    else:
+        return
+
+    for fn in functions:
+        local_types = _local_value_types(fn, field_types)
+        for call in fn.get_descendants(vy_ast.Call):
+            if not (isinstance(call.func, vy_ast.Name) and call.func.id in field_types):
+                continue
+            fields = field_types[call.func.id]
+            for kw in call.keywords:
+                field_type = fields.get(kw.arg)
+                if field_type is None or field_type.name != "Optional":
+                    continue
+                
+                valid = False
+                if isinstance(kw.value, vy_ast.NameConstant) and kw.value.value is None:
+                    valid = False
+                if isinstance(kw.value, vy_ast.Call) and isinstance(kw.value.func, vy_ast.Name) and kw.value.func.id in field_types:
+                    # constructing another known struct/template directly always
+                    # produces that exact type, never `Optional` of it.
+                    valid = True
+                if isinstance(kw.value, vy_ast.Name) and kw.value.id in local_types:
+                    valid = local_types[kw.value.id].name != "Optional"
+                if valid:
+                    errors.append(
+                        DamlForgeException(
+                            f"`{call.func.id}.{kw.arg}` is declared `Optional[...]` but is "
+                            "constructed here with a value that is not itself optional or "
+                            f"`None` - wrap it, e.g. `Some({kw.arg})`",
+                            kw.value,
+                            code=ErrorCodes.DF1215.value,
+                        )
+                    )
 
 
 def check_container_type_annotations(node: vy_ast.TopLevel, known_names: set, errors: ExceptionList) -> None:
