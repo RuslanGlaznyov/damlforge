@@ -5,6 +5,7 @@ Text = NewType("Text", str)
 Int = NewType("Int", int)
 Date = NewType("Date", str)
 Timestamp = NewType("Timestamp", str)
+RelTime = NewType("RelTime", str)
 
 T = TypeVar("T")
 K = TypeVar("K")

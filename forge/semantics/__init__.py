@@ -3,6 +3,7 @@ from forge.exceptions import ExceptionList
 from forge.semantics.analysis.structure import _RecursionContext, check_container
 from forge.semantics.analysis.types import (
     check_container_type_annotations,
+    check_import_names_resolve,
     check_no_aliased_from_import,
     check_optional_field_construction,
     known_field_types,
@@ -41,6 +42,7 @@ def analyze_modules(modules) -> None:
         for node in module.body:
             check_container(node, errors, recursion_context)
             check_no_aliased_from_import(node, errors)
+            check_import_names_resolve(node, errors)
             check_container_type_annotations(node, type_names, errors)
             check_optional_field_construction(node, field_types, errors)
     errors.raise_if_not_empty()

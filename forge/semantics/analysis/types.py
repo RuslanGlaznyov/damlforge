@@ -1,9 +1,19 @@
+import importlib
+import sys
+
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.ir.lower import lower_type
 from forge.ir.nodes import TypeRef
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.analysis.structure import _reachable_modules
+
+# TODO make it more flexible and without hardcoding modules
+_DAMLFORGE_OWN_IMPORT_ROOT = "forge"
+
+
+def _is_annotation_only_root(root: str) -> bool:
+    return root == _DAMLFORGE_OWN_IMPORT_ROOT or root in sys.stdlib_module_names
 
 
 class _PrimT:
@@ -109,15 +119,112 @@ def _get_generic_types() -> dict:
     return {t._id: t for t in types}
 
 
+def daml_builtin_type_names() -> set:
+    """Every name Daml's own prelude always has in scope - a Python stand-in
+    for one of these (`forge.models.Party`, `decimal.Decimal`,
+    `typing.Optional`, ...) needs no corresponding Daml `import` at all,
+    unlike a genuine external Daml module reference (`Splice.*`, a sibling
+    `.vy` module)."""
+    return set(_get_primitive_types()) | set(_get_generic_types())
+
+
+def _root_of(module_path: str) -> str:
+    return module_path.split(".", 1)[0]
+
+
+def _is_daml_mirror_package(root: str) -> bool:
+    """Whether `root` positively identifies itself as a real Splice-Daml-
+    mirror package (`Splice/__init__.py`'s `__daml_mirror__` sentinel),
+    rather than merely being *some* Python module that happens to resolve
+    successfully - a stray same-named sibling `.vy` file, or an unrelated
+    third-party package on `sys.path`, must never be trusted as if it were
+    real Daml content just because `importlib` could load it."""
+    try:
+        root_mod = importlib.import_module(root)
+    except ImportError:
+        return False
+    return bool(getattr(root_mod, "__daml_mirror__", False))
+
+
+def _import_real_module(module_path: str):
+    root = _root_of(module_path)
+    if _is_annotation_only_root(root):
+        return importlib.import_module(module_path)
+    if not _is_daml_mirror_package(root):
+        return None
+    try:
+        return importlib.import_module(module_path)
+    except ImportError:
+        return None
+
+
+def check_import_names_resolve(node, errors: ExceptionList) -> None:
+    """Validates every `from X import name` actually exists on the real
+    module `X` - for an annotation-only root, `X` always resolves and is
+    always checked; for anything else, only checked when it happens to
+    resolve as real importable Python (`Splice.*`, when present). Mirrors
+    Vyper's hard failure on an import that doesn't resolve (`ModuleNotFound`)
+    instead of silently trusting whatever name string appears in the `.vy`
+    source."""
+    if not isinstance(node, vy_ast.ImportFrom):
+        return
+
+    mod = _import_real_module(node.module)
+    if mod is None:
+        return
+
+    for alias in node.names:
+        if alias.name == "*" or hasattr(mod, alias.name):
+            continue
+        errors.append(
+            DamlForgeException(
+                f"No name `{alias.name}` in module `{node.module}`",
+                node,
+                code=ErrorCodes.DF1213.value,
+            )
+        )
+
+
+def needs_daml_import(module_path: str, name: str) -> bool:
+    """Whether `name` imported from `module_path` needs a corresponding real
+    Daml `import` statement emitted - false for ANYTHING from an
+    annotation-only root (`forge.models`/`decimal`/`typing`), whether it's a
+    Python stand-in of a Daml builtin type (`Party`, `Decimal`) or a
+    DSL-only decorator/marker symbol (`choice`, `view`) - neither has a real
+    Daml module behind it at all. True for genuine external Daml content
+    (`Splice.*`, a sibling `.vy` module). Used by `forge/ir/lower.py`'s
+    `_lower_imports` (via a deferred import there, to avoid a module-load-
+    time circular import - this module already imports `lower_type` from
+    `forge.ir.lower`) as the single source of truth, instead of a separate,
+    disconnected root-name heuristic."""
+    if name == "*":
+        return True  # can't classify a wildcard - surface it rather than silently dropping it
+    return not _is_annotation_only_root(_root_of(module_path))
+
+
 def _imported_names(module: vy_ast.Module) -> set:
+    """Names this module's `import`/`from ... import` statements bind into
+    its own namespace that are genuinely valid Daml TYPE references - a
+    Daml builtin (for `decimal`/`typing`/`forge.*` DSL scaffolding), or any
+    real exported name (for `Splice.*`/other external Daml modules, where
+    everything exported is legitimately a type/choice). Excludes DSL-only
+    decorator/marker symbols like `forge.models.choice` - those are never
+    valid in a type-annotation position."""
     names = set()
+    builtins = daml_builtin_type_names()
     for stmt in module.body:
         if isinstance(stmt, vy_ast.Import):
             for alias in stmt.names:
                 names.add(alias.asname or alias.name)
         elif isinstance(stmt, vy_ast.ImportFrom):
+            root = _root_of(stmt.module)
             for alias in stmt.names:
-                names.add(alias.asname or alias.name)
+                if alias.name == "*":
+                    continue
+                bound = alias.asname or alias.name
+                if _is_annotation_only_root(root) and alias.name not in builtins:
+                    continue
+                names.add(bound)
     return names
 
 
@@ -148,7 +255,7 @@ def known_type_names(modules) -> set:
         vy_ast.InstanceDef,
     )
     
-    names = set(_get_primitive_types()) | set(_get_generic_types())
+    names = daml_builtin_type_names()
     for module in _reachable_modules(modules):
         names |= _imported_names(module)
         for node in module.body:

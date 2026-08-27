@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Optional
 
 from forge.models.decorators import (
     ChoiceMeta,
@@ -19,6 +20,7 @@ from forge.models.types import (
     GenMap,
     Int,
     Party,
+    RelTime,
     Text,
     TextMap,
     Timestamp,
@@ -40,8 +42,10 @@ __all__ = [
     "Text",
     "Int",
     "Decimal",
+    "Optional",
     "Date",
     "Timestamp",
+    "RelTime",
     "ContractId",
     "TextMap",
     "GenMap",
