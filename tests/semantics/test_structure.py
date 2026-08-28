@@ -209,6 +209,20 @@ template Asset:
         pass
 """
 
+DOUBLE_IMPORTS_NOT_ALLOWED = """
+from Splice.AppTransferContext import AppTransferContext
+from Splice.AppTransferContext import AppTransferContext
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party, app_context: AppTContext) -> bool:
+        pass
+"""
+
 def _choice_template(consuming_literal, observer_clause=""):
     return f"""
 template Asset:
@@ -408,6 +422,7 @@ def test_valid_decorator_usage_passes(source):
         (MISSING_IMPORT, ErrorCodes.DF1213.value),
         (WILDCARD_MISSING_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (AS_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
+        (DOUBLE_IMPORTS_NOT_ALLOWED, ErrorCodes.DF1213.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):
