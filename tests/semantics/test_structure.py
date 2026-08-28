@@ -3,6 +3,7 @@ import pytest
 from forge.ast.parse import parse_to_ast
 from forge.exceptions import DamlForgeException
 from forge.semantics import analyze_module
+from forge.semantics.analysis.imports import ImportsBuilder
 from forge.models.error_codes import ErrorCodes
 
 
@@ -430,6 +431,42 @@ def test_invalid_template_raises(source, expected_code):
         _analyze(source)
 
     assert exc_info.value.code == expected_code
+
+
+def test_integrity_sum_is_deterministic_for_identical_source():
+    module1 = parse_to_ast(VALID_TEMPLATE, module_path="test.vy", resolved_path="test.vy")
+    module2 = parse_to_ast(VALID_TEMPLATE, module_path="test.vy", resolved_path="test.vy")
+
+    assert ImportsBuilder().integrity_sum(module1) == ImportsBuilder().integrity_sum(module2)
+
+
+def test_integrity_sum_changes_when_source_changes():
+    module1 = parse_to_ast(VALID_TEMPLATE, module_path="test.vy", resolved_path="test.vy")
+    module2 = parse_to_ast(VALID_TEMPLATE + "\n", module_path="test.vy", resolved_path="test.vy")
+
+    assert ImportsBuilder().integrity_sum(module1) != ImportsBuilder().integrity_sum(module2)
+
+
+def test_integrity_sum_changes_when_sibling_import_changes(tmp_path):
+    sibling_path = tmp_path / "sibling.vy"
+    sibling_path.write_text("template Sibling:\n    owner: Party\n")
+
+    main_path = tmp_path / "main.vy"
+    main_path.write_text("from sibling import Sibling\n" + VALID_TEMPLATE)
+
+    def _main_integrity_sum():
+        module = parse_to_ast(
+            main_path.read_text(), module_path="main.vy", resolved_path=str(main_path)
+        )
+        builder = ImportsBuilder()
+        builder.resolve_sibling_imports(module)
+        return builder.integrity_sum(module)
+
+    before = _main_integrity_sum()
+    sibling_path.write_text("template Sibling:\n    owner: Party\n    extra: Text\n")
+    after = _main_integrity_sum()
+
+    assert before != after
 
 
 def test_multiple_violations_are_all_reported():

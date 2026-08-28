@@ -7,6 +7,7 @@ from forge.ast import nodes as vy_ast
 from forge.ast.parse import parse_to_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
+from forge.utils import sha256sum
 
 
 class ImportInfo:
@@ -24,6 +25,7 @@ class ImportInfo:
 class ImportsBuilder:
     def __init__(self) -> None:
         self._sibling_cache: dict = {}
+        self._integrity_cache: dict = {}
 
     @staticmethod
     def _root_of(module_path: str) -> str:
@@ -229,3 +231,21 @@ class ImportsBuilder:
                     code=ErrorCodes.DF1213.value,
                 )
             )
+
+    def integrity_sum(self, module: vy_ast.Module) -> str:
+        return self._calculate_integrity_sum_r(module)
+
+    def _calculate_integrity_sum_r(self, module: vy_ast.Module) -> str:
+        if id(module) in self._integrity_cache:
+            return self._integrity_cache[id(module)]
+
+        acc = [module.source_sha256sum]
+        for node in module.body:
+            if not isinstance(node, (vy_ast.Import, vy_ast.ImportFrom)):
+                continue
+            for info in node._metadata.get("import_infos", ()):
+                acc.append(self._calculate_integrity_sum_r(info.ast))
+
+        ret = sha256sum("".join(acc))
+        self._integrity_cache[id(module)] = ret
+        return ret
