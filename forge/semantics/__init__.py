@@ -1,10 +1,9 @@
 from forge.ast import nodes as vy_ast
 from forge.exceptions import ExceptionList
+from forge.semantics.analysis.imports import ImportsBuilder
 from forge.semantics.analysis.structure import _RecursionContext, check_container
 from forge.semantics.analysis.types import (
     check_container_type_annotations,
-    check_import_names_resolve,
-    check_no_aliased_from_import,
     check_optional_field_construction,
     known_field_types,
     known_type_names,
@@ -34,6 +33,10 @@ def analyze_module(module: vy_ast.Module) -> None:
 
 def analyze_modules(modules) -> None:
     module_list = _iter_modules(modules)
+    imports_builder = ImportsBuilder()
+    for module in module_list:
+        imports_builder.resolve_sibling_imports(module)
+
     errors = ExceptionList()
     recursion_context = _RecursionContext(module_list)
     type_names = known_type_names(module_list)
@@ -41,8 +44,9 @@ def analyze_modules(modules) -> None:
     for module in module_list:
         for node in module.body:
             check_container(node, errors, recursion_context)
-            check_no_aliased_from_import(node, errors)
-            check_import_names_resolve(node, errors)
+            imports_builder.check_no_aliased_from_import(node, errors)
+            imports_builder.check_import_names_resolve(node, errors)
+            imports_builder.check_sibling_import_names_resolve(node, errors)
             check_container_type_annotations(node, type_names, errors)
             check_optional_field_construction(node, field_types, errors)
     errors.raise_if_not_empty()

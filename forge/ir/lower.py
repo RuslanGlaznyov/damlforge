@@ -335,15 +335,18 @@ def lower_instance(node: vy_ast.InstanceDef) -> IRInstance:
 
 
 def _lower_imports(body) -> tuple:
-    # deferred import: `forge.semantics.analysis.types` already imports
-    # `lower_type` from this module, so importing it back at module-load
-    # time would be circular.
-    from forge.semantics.analysis.types import needs_daml_import
+    # deferred import: `forge.semantics.analysis.types` imports `lower_type`
+    # from this module (and `forge.semantics`'s package `__init__` imports
+    # `types` in turn), so importing anything under `forge.semantics` back at
+    # module-load time here would be circular.
+    from forge.semantics.analysis.imports import ImportsBuilder
 
     imports = []
     for node in body:
         if isinstance(node, vy_ast.ImportFrom):
-            names = tuple(a.name for a in node.names if needs_daml_import(node.module, a.name))
+            names = tuple(
+                a.name for a in node.names if ImportsBuilder.needs_daml_import(node.module, a.name)
+            )
             if names:
                 imports.append(IRImport(node.module, names))
         elif isinstance(node, vy_ast.Import):
