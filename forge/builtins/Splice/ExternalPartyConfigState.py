@@ -8,8 +8,8 @@ from decimal import Decimal
 from typing import Optional
 
 from forge.models.types import Party, Timestamp
-from Splice.AmuletConfig import USD, RewardVersion, TransferConfigV2
-from Splice.Types import Round
+from .AmuletConfig import USD, RewardVersion, TransferConfigV2
+from .Types import Round
 
 
 @dataclass(frozen=True)

@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from forge.models.types import Party, RelTime, Timestamp
-from Splice.Amulet.CryptoHash import Hash
-from Splice.Types import Round
+from ..Amulet.CryptoHash import Hash
+from ..Types import Round
 
 
 @dataclass(frozen=True)

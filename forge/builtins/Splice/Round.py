@@ -8,9 +8,9 @@ from decimal import Decimal
 from typing import Optional
 
 from forge.models.types import Party, RelTime, Timestamp
-from Splice.AmuletConfig import USD, RewardConfig, TransferConfig
-from Splice.Issuance import IssuanceConfig
-from Splice.Types import Round
+from .AmuletConfig import USD, RewardConfig, TransferConfig
+from .Issuance import IssuanceConfig
+from .Types import Round
 
 
 @dataclass(frozen=True)

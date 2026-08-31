@@ -4,12 +4,6 @@ from pathlib import Path as _Path
 
 from forge.compiler import compile_code, compile_from_file_input
 
-# Positively identifies this package as pure Python/DSL scaffolding with no
-# Daml module behind it at all - decorator/marker symbols (`choice`, `view`)
-# and Daml-builtin-type stand-ins (`Party`, `Decimal`) both live here, and
-# neither ever needs a Daml `import` emitted for them. Mirrors
-# `Splice/__init__.py`'s `__daml_mirror__` for the opposite case - see
-# `forge/semantics/analysis/types.py`'s `_is_annotation_only_root`.
 __daml_annotation_only__ = True
 
 _commit_hash_file = _Path(__file__).parent.joinpath("damlforge_git_commithash.txt")

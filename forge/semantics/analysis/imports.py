@@ -10,6 +10,9 @@ from forge.models.error_codes import ErrorCodes
 from forge.utils import sha256sum
 
 
+BUILTIN_MODULE_ROOTS = {"Splice": "forge.builtins.Splice"}
+
+
 class ImportInfo:
     __slots__ = ("alias", "qualified_module_name", "resolved_path", "ast")
 
@@ -64,22 +67,24 @@ class ImportsBuilder:
         return bool(getattr(root_mod, "__daml_annotation_only__", False))
 
     @staticmethod
-    def _is_daml_mirror_package(root: str) -> bool:
-        try:
-            root_mod = importlib.import_module(root)
-        except ImportError:
-            return False
-        return bool(getattr(root_mod, "__daml_mirror__", False))
+    def is_builtin_root(root: str) -> bool:
+        return root in BUILTIN_MODULE_ROOTS
+
+    @classmethod
+    def _remap_builtin(cls, module_path: str) -> str:
+        root = cls._root_of(module_path)
+        target_root = BUILTIN_MODULE_ROOTS[root]
+        return target_root + module_path[len(root):]
 
     @classmethod
     def _import_real_module(cls, module_path: str):
         root = cls._root_of(module_path)
         if cls.is_annotation_only_root(root):
             return importlib.import_module(module_path)
-        if not cls._is_daml_mirror_package(root):
+        if not cls.is_builtin_root(root):
             return None
         try:
-            return importlib.import_module(module_path)
+            return importlib.import_module(cls._remap_builtin(module_path))
         except ImportError:
             return None
 
@@ -179,7 +184,7 @@ class ImportsBuilder:
             return path
 
         root = cls._root_of(module_str)
-        if cls.is_annotation_only_root(root) or cls._is_daml_mirror_package(root):
+        if cls.is_annotation_only_root(root) or cls.is_builtin_root(root):
             return None
 
         raise DamlForgeException(

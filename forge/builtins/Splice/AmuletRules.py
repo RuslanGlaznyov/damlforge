@@ -20,7 +20,7 @@ from decimal import Decimal
 from typing import Optional
 
 from forge.models.types import ContractId, GenMap, Party, RelTime, Text, Timestamp
-from Splice.Amulet import (
+from .Amulet import (
     Amulet,
     AmuletCreateSummary,
     AppRewardCoupon,
@@ -35,21 +35,21 @@ from Splice.Amulet import (
     ValidatorRewardCoupon,
     ValidatorRight,
 )
-from Splice.Amulet.CryptoHash import Hash
-from Splice.Amulet.RewardAccountingV2 import CalculateRewardsV2, ProcessRewardsV2
-from Splice.AmuletConfig import USD, AmuletConfig
-from Splice.Api.FeaturedAppRightV1 import AppRewardBeneficiary
-from Splice.Api.Token.HoldingV1 import Holding
-from Splice.Api.Token.MetadataV1 import Metadata
-from Splice.Api.Token.TransferInstructionV1 import TransferInstruction, TransferInstructionResult
-from Splice.DecentralizedSynchronizer import MemberTraffic
-from Splice.Expiry import TimeLock
-from Splice.ExternalPartyConfigState import ExternalPartyConfigState
-from Splice.Issuance import OpenMiningRoundSummary
-from Splice.Round import ClosedMiningRound, IssuingMiningRound, OpenMiningRound, SummarizingMiningRound
-from Splice.Schedule import Schedule
-from Splice.Types import Round
-from Splice.ValidatorLicense import ValidatorFaucetCoupon, ValidatorLivenessActivityRecord
+from .Amulet.CryptoHash import Hash
+from .Amulet.RewardAccountingV2 import CalculateRewardsV2, ProcessRewardsV2
+from .AmuletConfig import USD, AmuletConfig
+from .Api.FeaturedAppRightV1 import AppRewardBeneficiary
+from .Api.Token.HoldingV1 import Holding
+from .Api.Token.MetadataV1 import Metadata
+from .Api.Token.TransferInstructionV1 import TransferInstruction, TransferInstructionResult
+from .DecentralizedSynchronizer import MemberTraffic
+from .Expiry import TimeLock
+from .ExternalPartyConfigState import ExternalPartyConfigState
+from .Issuance import OpenMiningRoundSummary
+from .Round import ClosedMiningRound, IssuingMiningRound, OpenMiningRound, SummarizingMiningRound
+from .Schedule import Schedule
+from .Types import Round
+from .ValidatorLicense import ValidatorFaucetCoupon, ValidatorLivenessActivityRecord
 
 __all__ = [
     "AmuletRules",

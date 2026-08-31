@@ -6,7 +6,7 @@ only, see `Splice/__init__.py`.
 from dataclasses import dataclass
 from decimal import Decimal
 
-from Splice.Types import Round
+from .Types import Round
 
 
 @dataclass(frozen=True)

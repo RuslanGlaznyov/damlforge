@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from forge.models.types import ContractId, Party, Text
-from Splice.Amulet import Amulet, LockedAmulet
-from Splice.AmuletRules import AppTransferContext
+from ..Amulet import Amulet, LockedAmulet
+from ..AmuletRules import AppTransferContext
 
 
 @dataclass(frozen=True)

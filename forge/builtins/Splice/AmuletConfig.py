@@ -9,10 +9,10 @@ from enum import Enum
 from typing import Generic, Optional, TypeVar
 
 from forge.models.types import RelTime, Text
-from Splice.DecentralizedSynchronizer import AmuletDecentralizedSynchronizerConfig
-from Splice.Fees import FixedFee, RatePerRound, SteppedRate
-from Splice.Issuance import IssuanceConfig
-from Splice.Schedule import Schedule
+from .DecentralizedSynchronizer import AmuletDecentralizedSynchronizerConfig
+from .Fees import FixedFee, RatePerRound, SteppedRate
+from .Issuance import IssuanceConfig
+from .Schedule import Schedule
 
 
 class USD:

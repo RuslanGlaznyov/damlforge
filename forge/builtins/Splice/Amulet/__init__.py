@@ -16,12 +16,12 @@ from decimal import Decimal
 from typing import Generic, Optional, TypeVar
 
 from forge.models.types import ContractId, Party, Text, Timestamp
-from Splice.Api.Token.MetadataV1 import Metadata
-from Splice.ExternalPartyConfigState import ExternalPartyConfigState
-from Splice.Expiry import TimeLock
-from Splice.Fees import ExpiringAmount
-from Splice.Round import ClosedMiningRound, OpenMiningRound
-from Splice.Types import Round
+from ..Api.Token.MetadataV1 import Metadata
+from ..ExternalPartyConfigState import ExternalPartyConfigState
+from ..Expiry import TimeLock
+from ..Fees import ExpiringAmount
+from ..Round import ClosedMiningRound, OpenMiningRound
+from ..Types import Round
 
 T = TypeVar("T")
 

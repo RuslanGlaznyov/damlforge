@@ -7,8 +7,8 @@ templates `AmuletRules_ClaimExpiredRewards` references by `ContractId`.
 from dataclasses import dataclass
 
 from forge.models.types import ContractId, Party
-from Splice.Round import ClosedMiningRound
-from Splice.Types import Round
+from .Round import ClosedMiningRound
+from .Types import Round
 
 
 @dataclass(frozen=True)

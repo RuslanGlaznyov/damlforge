@@ -59,8 +59,8 @@ def _parse_args(argv):
           path = Path(file).resolve()
           source = Path(file).read_text()
           module = parse_to_ast(source, module_path=path.name, resolved_path=str(path))
-          analyze_module(module)
-          ir = lower_module(module)
+          import_graph = analyze_module(module)
+          ir = lower_module(module, import_graph=import_graph)
           module_name = daml_module_name(path.stem)
           daml_source, source_map = generate_daml(ir, module_name=module_name)
 

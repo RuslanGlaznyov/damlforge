@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 from forge.models.types import ContractId
-from Splice.Api.Token.HoldingV1 import Holding
-from Splice.Api.Token.MetadataV1 import Metadata
+from ...Api.Token.HoldingV1 import Holding
+from ...Api.Token.MetadataV1 import Metadata
 
 
 class TransferInstruction:
