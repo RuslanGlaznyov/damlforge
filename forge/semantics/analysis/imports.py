@@ -150,6 +150,24 @@ class ImportsBuilder:
             return [alias.name for alias in node.names]
         return []
 
+    @classmethod
+    def _load_import(cls, module_str: str, search_base: Path, node) -> Optional[Path]:
+        path = cls._find_sibling_vy_file(module_str, search_base)
+        if path is not None:
+            return path
+
+        root = cls._root_of(module_str)
+        if cls.is_annotation_only_root(root) or cls._is_daml_mirror_package(root):
+            return None
+
+        raise DamlForgeException(
+            f"No module named `{module_str}` - no sibling `.vy` file "
+            f"`{cls._module_str_to_relpath(module_str)}.vy` found next to this file, and "
+            f"`{root}` is not an importable Daml-backed or annotation-only Python package",
+            node,
+            code=ErrorCodes.DF1213.value,
+        )
+
     def resolve_sibling_imports(self, module: vy_ast.Module, _stack: tuple = ()) -> None:
         search_base = self._search_base(module)
         resolved = getattr(module, "resolved_path", None) or getattr(module, "path", None)
@@ -163,7 +181,7 @@ class ImportsBuilder:
 
             infos = []
             for module_str in self._module_strs_for(node):
-                path = self._find_sibling_vy_file(module_str, search_base)
+                path = self._load_import(module_str, search_base, node)
                 if path is None:
                     continue
 

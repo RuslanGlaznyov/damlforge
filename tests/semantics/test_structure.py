@@ -224,6 +224,33 @@ template Asset:
         pass
 """
 
+UNRESOLVABLE_IMPORT_NOT_ALLOWED = """
+from totally_bogus_nonexistent_module import Something
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party) -> bool:
+        pass
+"""
+
+UNRESOLVABLE_BARE_IMPORT_NOT_ALLOWED = """
+import totally_bogus_nonexistent_module
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party) -> bool:
+        pass
+"""
+
+
 def _choice_template(consuming_literal, observer_clause=""):
     return f"""
 template Asset:
@@ -424,6 +451,8 @@ def test_valid_decorator_usage_passes(source):
         (WILDCARD_MISSING_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (AS_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (DOUBLE_IMPORTS_NOT_ALLOWED, ErrorCodes.DF1213.value),
+        (UNRESOLVABLE_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
+        (UNRESOLVABLE_BARE_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):
@@ -431,6 +460,24 @@ def test_invalid_template_raises(source, expected_code):
         _analyze(source)
 
     assert exc_info.value.code == expected_code
+
+
+def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
+    sibling_path = tmp_path / "loan_terms.vy"
+    sibling_path.write_text("template LoanTerms:\n    rate: int\n")
+
+    main_path = tmp_path / "main.vy"
+    main_path.write_text(
+        "from loan_terms import LoanTerms\n\n"
+        "template Asset:\n"
+        "    owner: Party\n\n"
+        "    signatory: list[Party] = [owner]\n"
+    )
+
+    module = parse_to_ast(
+        main_path.read_text(), module_path="main.vy", resolved_path=str(main_path)
+    )
+    analyze_module(module)
 
 
 def test_integrity_sum_is_deterministic_for_identical_source():
