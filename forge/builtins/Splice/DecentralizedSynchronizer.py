@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from forge.models.types import Party, RelTime, Text
+from typing import Annotated
+from .. import DamlName
 
 
 @dataclass(frozen=True)
@@ -20,8 +22,8 @@ class BaseRateTrafficLimits:
           deriving (Eq, Show)
     """
 
-    burst_amount: int
-    burst_window: RelTime
+    burst_amount: Annotated[int, DamlName("burstAmount")]
+    burst_window: Annotated[RelTime, DamlName("burstWindow")]
 
 
 @dataclass(frozen=True)
@@ -36,10 +38,10 @@ class SynchronizerFeesConfig:
             minTopupAmount: Int
     """
 
-    base_rate_traffic_limits: BaseRateTrafficLimits
-    extra_traffic_price: Decimal
-    read_vs_write_scaling_factor: int
-    min_topup_amount: int
+    base_rate_traffic_limits: Annotated[BaseRateTrafficLimits, DamlName("baseRateTrafficLimits")]
+    extra_traffic_price: Annotated[Decimal, DamlName("extraTrafficPrice")]
+    read_vs_write_scaling_factor: Annotated[int, DamlName("readVsWriteScalingFactor")]
+    min_topup_amount: Annotated[int, DamlName("minTopupAmount")]
 
 
 @dataclass(frozen=True)
@@ -55,8 +57,8 @@ class AmuletDecentralizedSynchronizerConfig:
           deriving (Eq, Show)
     """
 
-    required_synchronizers: frozenset[Text]
-    active_synchronizer: Text
+    required_synchronizers: Annotated[frozenset[Text], DamlName("requiredSynchronizers")]
+    active_synchronizer: Annotated[Text, DamlName("activeSynchronizer")]
     fees: SynchronizerFeesConfig
 
 
@@ -82,10 +84,10 @@ class MemberTraffic:
     """
 
     dso: Party
-    member_id: Text
-    synchronizer_id: Text
-    migration_id: int
-    total_purchased: int
-    num_purchases: int
-    amulet_spent: Decimal
-    usd_spent: Decimal
+    member_id: Annotated[Text, DamlName("memberId")]
+    synchronizer_id: Annotated[Text, DamlName("synchronizerId")]
+    migration_id: Annotated[int, DamlName("migrationId")]
+    total_purchased: Annotated[int, DamlName("totalPurchased")]
+    num_purchases: Annotated[int, DamlName("numPurchases")]
+    amulet_spent: Annotated[Decimal, DamlName("amuletSpent")]
+    usd_spent: Annotated[Decimal, DamlName("usdSpent")]

@@ -5,12 +5,13 @@ only, see `Splice/__init__.py`.
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
 
 from forge.models.types import Party, RelTime, Timestamp
 from .AmuletConfig import USD, RewardConfig, TransferConfig
 from .Issuance import IssuanceConfig
 from .Types import Round
+from .. import DamlName
 
 
 @dataclass(frozen=True)
@@ -39,15 +40,15 @@ class OpenMiningRound:
 
     dso: Party
     round: Round
-    amulet_price: Decimal
-    opens_at: Timestamp
-    target_closes_at: Timestamp
-    issuing_for: RelTime
-    transfer_config_usd: TransferConfig[USD]
-    issuance_config: IssuanceConfig
-    tick_duration: RelTime
-    traffic_price: Optional[Decimal] = None
-    reward_config: Optional[RewardConfig] = None
+    amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
+    opens_at: Annotated[Timestamp, DamlName("opensAt")]
+    target_closes_at: Annotated[Timestamp, DamlName("targetClosesAt")]
+    issuing_for: Annotated[RelTime, DamlName("issuingFor")]
+    transfer_config_usd: Annotated[TransferConfig[USD], DamlName("transferConfigUsd")]
+    issuance_config: Annotated[IssuanceConfig, DamlName("issuanceConfig")]
+    tick_duration: Annotated[RelTime, DamlName("tickDuration")]
+    traffic_price: Annotated[Optional[Decimal], DamlName("trafficPrice")] = None
+    reward_config: Annotated[Optional[RewardConfig], DamlName("rewardConfig")] = None
 
 
 @dataclass(frozen=True)
@@ -87,11 +88,11 @@ class SummarizingMiningRound:
 
     dso: Party
     round: Round
-    amulet_price: Decimal
-    issuance_config: IssuanceConfig
-    tick_duration: RelTime
-    traffic_price: Optional[Decimal] = None
-    reward_config: Optional[RewardConfig] = None
+    amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
+    issuance_config: Annotated[IssuanceConfig, DamlName("issuanceConfig")]
+    tick_duration: Annotated[RelTime, DamlName("tickDuration")]
+    traffic_price: Annotated[Optional[Decimal], DamlName("trafficPrice")] = None
+    reward_config: Annotated[Optional[RewardConfig], DamlName("rewardConfig")] = None
 
 
 @dataclass(frozen=True)
@@ -116,13 +117,13 @@ class IssuingMiningRound:
 
     dso: Party
     round: Round
-    issuance_per_validator_reward_coupon: Decimal
-    issuance_per_featured_app_reward_coupon: Decimal
-    issuance_per_unfeatured_app_reward_coupon: Decimal
-    issuance_per_sv_reward_coupon: Decimal
-    opens_at: Timestamp
-    target_closes_at: Timestamp
-    opt_issuance_per_validator_faucet_coupon: Optional[Decimal] = None
+    issuance_per_validator_reward_coupon: Annotated[Decimal, DamlName("issuancePerValidatorRewardCoupon")]
+    issuance_per_featured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerFeaturedAppRewardCoupon")]
+    issuance_per_unfeatured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerUnfeaturedAppRewardCoupon")]
+    issuance_per_sv_reward_coupon: Annotated[Decimal, DamlName("issuancePerSvRewardCoupon")]
+    opens_at: Annotated[Timestamp, DamlName("opensAt")]
+    target_closes_at: Annotated[Timestamp, DamlName("targetClosesAt")]
+    opt_issuance_per_validator_faucet_coupon: Annotated[Optional[Decimal], DamlName("optIssuancePerValidatorFaucetCoupon")] = None
 
 
 @dataclass(frozen=True)
@@ -146,8 +147,8 @@ class ClosedMiningRound:
 
     dso: Party
     round: Round
-    issuance_per_validator_reward_coupon: Decimal
-    issuance_per_featured_app_reward_coupon: Decimal
-    issuance_per_unfeatured_app_reward_coupon: Decimal
-    issuance_per_sv_reward_coupon: Decimal
-    opt_issuance_per_validator_faucet_coupon: Optional[Decimal] = None
+    issuance_per_validator_reward_coupon: Annotated[Decimal, DamlName("issuancePerValidatorRewardCoupon")]
+    issuance_per_featured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerFeaturedAppRewardCoupon")]
+    issuance_per_unfeatured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerUnfeaturedAppRewardCoupon")]
+    issuance_per_sv_reward_coupon: Annotated[Decimal, DamlName("issuancePerSvRewardCoupon")]
+    opt_issuance_per_validator_faucet_coupon: Annotated[Optional[Decimal], DamlName("optIssuancePerValidatorFaucetCoupon")] = None

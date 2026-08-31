@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from .Types import Round
+from typing import Annotated
+from .. import DamlName
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,7 @@ class SteppedRate:
           deriving (Eq, Ord, Show)
     """
 
-    initial_rate: Decimal
+    initial_rate: Annotated[Decimal, DamlName("initialRate")]
     steps: list[tuple[Decimal, Decimal]]
 
 
@@ -61,6 +63,6 @@ class ExpiringAmount:
     (`loan_terms.vy`'s `verify_amulets`: `amulet.amount.initial_amount`).
     """
 
-    initial_amount: Decimal
-    created_at: Round
-    rate_per_round: RatePerRound
+    initial_amount: Annotated[Decimal, DamlName("initialAmount")]
+    created_at: Annotated[Round, DamlName("createdAt")]
+    rate_per_round: Annotated[RatePerRound, DamlName("ratePerRound")]

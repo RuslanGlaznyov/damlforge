@@ -10,6 +10,8 @@ from decimal import Decimal
 from forge.models.types import Party, RelTime, Timestamp
 from ..Amulet.CryptoHash import Hash
 from ..Types import Round
+from typing import Annotated
+from ... import DamlName
 
 
 @dataclass(frozen=True)
@@ -30,9 +32,9 @@ class CalculateRewardsV2:
 
     dso: Party
     round: Round
-    round_closed_at: Timestamp
-    reward_coupon_time_to_live: RelTime
-    dry_run: bool
+    round_closed_at: Annotated[Timestamp, DamlName("roundClosedAt")]
+    reward_coupon_time_to_live: Annotated[RelTime, DamlName("rewardCouponTimeToLive")]
+    dry_run: Annotated[bool, DamlName("dryRun")]
 
 
 @dataclass(frozen=True)
@@ -54,10 +56,10 @@ class ProcessRewardsV2:
 
     dso: Party
     round: Round
-    round_closed_at: Timestamp
-    dry_run: bool
-    reward_coupon_time_to_live: RelTime
-    batch_hash: Hash
+    round_closed_at: Annotated[Timestamp, DamlName("roundClosedAt")]
+    dry_run: Annotated[bool, DamlName("dryRun")]
+    reward_coupon_time_to_live: Annotated[RelTime, DamlName("rewardCouponTimeToLive")]
+    batch_hash: Annotated[Hash, DamlName("batchHash")]
 
 
 @dataclass(frozen=True)
@@ -116,7 +118,7 @@ class ProcessRewardsV2_ProcessBatch:
     """
 
     batch: Batch
-    providers_with_wrong_vetting_state: frozenset[Party]
+    providers_with_wrong_vetting_state: Annotated[frozenset[Party], DamlName("providersWithWrongVettingState")]
 
 
 @dataclass(frozen=True)

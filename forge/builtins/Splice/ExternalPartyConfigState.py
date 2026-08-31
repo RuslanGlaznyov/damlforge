@@ -5,11 +5,12 @@ IDE/authoring support only, see `Splice/__init__.py`.
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
 
 from forge.models.types import Party, Timestamp
 from .AmuletConfig import USD, RewardVersion, TransferConfigV2
 from .Types import Round
+from .. import DamlName
 
 
 @dataclass(frozen=True)
@@ -31,8 +32,8 @@ class ExternalPartyConfigState:
     """
 
     dso: Party
-    holding_fees_open_round_number: Round
-    amulet_price: Decimal
-    transfer_config: TransferConfigV2[USD]
-    target_archive_after: Timestamp
-    reward_calculation_version: Optional[RewardVersion] = None
+    holding_fees_open_round_number: Annotated[Round, DamlName("holdingFeesOpenRoundNumber")]
+    amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
+    transfer_config: Annotated[TransferConfigV2[USD], DamlName("transferConfig")]
+    target_archive_after: Annotated[Timestamp, DamlName("targetArchiveAfter")]
+    reward_calculation_version: Annotated[Optional[RewardVersion], DamlName("rewardCalculationVersion")] = None

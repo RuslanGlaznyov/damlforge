@@ -5,7 +5,8 @@ support only, see `Splice/__init__.py`.
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
+from .. import DamlName
 
 
 @dataclass(frozen=True)
@@ -25,14 +26,14 @@ class IssuanceConfig:
           deriving (Eq, Show)
     """
 
-    amulet_to_issue_per_year: Decimal
-    validator_reward_percentage: Decimal
-    app_reward_percentage: Decimal
-    validator_reward_cap: Decimal
-    featured_app_reward_cap: Decimal
-    unfeatured_app_reward_cap: Decimal
-    opt_validator_faucet_cap: Optional[Decimal] = None
-    opt_development_fund_percentage: Optional[Decimal] = None
+    amulet_to_issue_per_year: Annotated[Decimal, DamlName("amuletToIssuePerYear")]
+    validator_reward_percentage: Annotated[Decimal, DamlName("validatorRewardPercentage")]
+    app_reward_percentage: Annotated[Decimal, DamlName("appRewardPercentage")]
+    validator_reward_cap: Annotated[Decimal, DamlName("validatorRewardCap")]
+    featured_app_reward_cap: Annotated[Decimal, DamlName("featuredAppRewardCap")]
+    unfeatured_app_reward_cap: Annotated[Decimal, DamlName("unfeaturedAppRewardCap")]
+    opt_validator_faucet_cap: Annotated[Optional[Decimal], DamlName("optValidatorFaucetCap")] = None
+    opt_development_fund_percentage: Annotated[Optional[Decimal], DamlName("optDevelopmentFundPercentage")] = None
 
 
 @dataclass(frozen=True)
@@ -50,8 +51,8 @@ class OpenMiningRoundSummary:
           deriving (Eq, Show)
     """
 
-    total_validator_reward_coupons: Decimal
-    total_featured_app_reward_coupons: Decimal
-    total_unfeatured_app_reward_coupons: Decimal
-    total_sv_reward_weight: int
-    opt_total_validator_faucet_coupons: Optional[int] = None
+    total_validator_reward_coupons: Annotated[Decimal, DamlName("totalValidatorRewardCoupons")]
+    total_featured_app_reward_coupons: Annotated[Decimal, DamlName("totalFeaturedAppRewardCoupons")]
+    total_unfeatured_app_reward_coupons: Annotated[Decimal, DamlName("totalUnfeaturedAppRewardCoupons")]
+    total_sv_reward_weight: Annotated[int, DamlName("totalSvRewardWeight")]
+    opt_total_validator_faucet_coupons: Annotated[Optional[int], DamlName("optTotalValidatorFaucetCoupons")] = None

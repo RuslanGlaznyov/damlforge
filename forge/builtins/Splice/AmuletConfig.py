@@ -6,13 +6,14 @@ support only, see `Splice/__init__.py`.
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
-from typing import Generic, Optional, TypeVar
+from typing import Annotated, Generic, Optional, TypeVar
 
 from forge.models.types import RelTime, Text
 from .DecentralizedSynchronizer import AmuletDecentralizedSynchronizerConfig
 from .Fees import FixedFee, RatePerRound, SteppedRate
 from .Issuance import IssuanceConfig
 from .Schedule import Schedule
+from .. import DamlName
 
 
 class USD:
@@ -47,15 +48,15 @@ class TransferConfig(Generic[Unit]):
           deriving (Eq, Show)
     """
 
-    create_fee: FixedFee
-    holding_fee: RatePerRound
-    transfer_fee: SteppedRate
-    lock_holder_fee: FixedFee
-    extra_featured_app_reward_amount: Decimal
-    max_num_inputs: int
-    max_num_outputs: int
-    max_num_lock_holders: int
-    token_standard_max_ttl: Optional[RelTime] = None
+    create_fee: Annotated[FixedFee, DamlName("createFee")]
+    holding_fee: Annotated[RatePerRound, DamlName("holdingFee")]
+    transfer_fee: Annotated[SteppedRate, DamlName("transferFee")]
+    lock_holder_fee: Annotated[FixedFee, DamlName("lockHolderFee")]
+    extra_featured_app_reward_amount: Annotated[Decimal, DamlName("extraFeaturedAppRewardAmount")]
+    max_num_inputs: Annotated[int, DamlName("maxNumInputs")]
+    max_num_outputs: Annotated[int, DamlName("maxNumOutputs")]
+    max_num_lock_holders: Annotated[int, DamlName("maxNumLockHolders")]
+    token_standard_max_ttl: Annotated[Optional[RelTime], DamlName("tokenStandardMaxTTL")] = None
 
 
 @dataclass(frozen=True)
@@ -74,11 +75,11 @@ class TransferConfigV2(Generic[Unit]):
           deriving (Eq, Show)
     """
 
-    holding_fee: RatePerRound
-    max_num_inputs: int
-    max_num_outputs: int
-    max_num_lock_holders: int
-    token_standard_max_ttl: Optional[RelTime] = None
+    holding_fee: Annotated[RatePerRound, DamlName("holdingFee")]
+    max_num_inputs: Annotated[int, DamlName("maxNumInputs")]
+    max_num_outputs: Annotated[int, DamlName("maxNumOutputs")]
+    max_num_lock_holders: Annotated[int, DamlName("maxNumLockHolders")]
+    token_standard_max_ttl: Annotated[Optional[RelTime], DamlName("tokenStandardMaxTTL")] = None
 
 
 @dataclass(frozen=True)
@@ -98,11 +99,11 @@ class PackageConfig:
     """
 
     amulet: Text
-    amulet_name_service: Text
-    dso_governance: Text
-    validator_lifecycle: Text
+    amulet_name_service: Annotated[Text, DamlName("amuletNameService")]
+    dso_governance: Annotated[Text, DamlName("dsoGovernance")]
+    validator_lifecycle: Annotated[Text, DamlName("validatorLifecycle")]
     wallet: Text
-    wallet_payments: Text
+    wallet_payments: Annotated[Text, DamlName("walletPayments")]
 
 
 @dataclass(frozen=True)
@@ -122,13 +123,13 @@ class AmuletConfig(Generic[Unit]):
           deriving (Show, Eq)
     """
 
-    transfer_config: TransferConfig[Unit]
-    issuance_curve: Schedule[RelTime, IssuanceConfig]
-    decentralized_synchronizer: AmuletDecentralizedSynchronizerConfig
-    tick_duration: RelTime
-    package_config: PackageConfig
-    transfer_preapproval_fee: Optional[Decimal] = None
-    featured_app_activity_marker_amount: Optional[Decimal] = None
+    transfer_config: Annotated[TransferConfig[Unit], DamlName("transferConfig")]
+    issuance_curve: Annotated[Schedule[RelTime, IssuanceConfig], DamlName("issuanceCurve")]
+    decentralized_synchronizer: Annotated[AmuletDecentralizedSynchronizerConfig, DamlName("decentralizedSynchronizer")]
+    tick_duration: Annotated[RelTime, DamlName("tickDuration")]
+    package_config: Annotated[PackageConfig, DamlName("packageConfig")]
+    transfer_preapproval_fee: Annotated[Optional[Decimal], DamlName("transferPreapprovalFee")] = None
+    featured_app_activity_marker_amount: Annotated[Optional[Decimal], DamlName("featuredAppActivityMarkerAmount")] = None
 
 
 class RewardVersion(Enum):
@@ -159,8 +160,8 @@ class RewardConfig:
           deriving (Eq, Show)
     """
 
-    minting_version: RewardVersion
-    dry_run_version: Optional[RewardVersion]
-    batch_size: int
-    reward_coupon_time_to_live: RelTime
-    app_reward_coupon_threshold: Decimal
+    minting_version: Annotated[RewardVersion, DamlName("mintingVersion")]
+    dry_run_version: Annotated[Optional[RewardVersion], DamlName("dryRunVersion")]
+    batch_size: Annotated[int, DamlName("batchSize")]
+    reward_coupon_time_to_live: Annotated[RelTime, DamlName("rewardCouponTimeToLive")]
+    app_reward_coupon_threshold: Annotated[Decimal, DamlName("appRewardCouponThreshold")]

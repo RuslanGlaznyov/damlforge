@@ -8,11 +8,12 @@ choices) is out of scope of the `AmuletRules` choice sweep.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Annotated, Optional
 
 from forge.models.types import ContractId
 from ...Api.Token.HoldingV1 import Holding
 from ...Api.Token.MetadataV1 import Metadata
+from .... import DamlName
 
 
 class TransferInstruction:
@@ -42,7 +43,7 @@ class TransferInstructionResult:
     """
 
     output: TransferInstructionResultOutput
-    sender_change_cids: list[ContractId[Holding]]
+    sender_change_cids: Annotated[list[ContractId[Holding]], DamlName("senderChangeCids")]
     meta: Metadata
 
 
@@ -57,8 +58,8 @@ class TransferInstruction_Update:
             extraArgs : ExtraArgs
     """
 
-    extra_actors: list
-    extra_args: "ExtraArgs"
+    extra_actors: Annotated[list, DamlName("extraActors")]
+    extra_args: Annotated["ExtraArgs", DamlName("extraArgs")]
 
 
 @dataclass(frozen=True)

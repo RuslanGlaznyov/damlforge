@@ -13,7 +13,7 @@ AmuletRules_Transfer with ...`) - there's no real restriction against it.
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Generic, Optional, TypeVar
+from typing import Annotated, Generic, Optional, TypeVar
 
 from forge.models.types import ContractId, Party, Text, Timestamp
 from ..Api.Token.MetadataV1 import Metadata
@@ -22,6 +22,7 @@ from ..Expiry import TimeLock
 from ..Fees import ExpiringAmount
 from ..Round import ClosedMiningRound, OpenMiningRound
 from ..Types import Round
+from ... import DamlName
 
 T = TypeVar("T")
 
@@ -40,7 +41,7 @@ class AmuletCreateSummary(Generic[T]):
     """
 
     amulet: T
-    amulet_price: Decimal
+    amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
     round: Round
 
 
@@ -58,8 +59,8 @@ class AmuletExpireSummary:
 
     owner: Party
     round: Round
-    change_to_initial_amount_as_of_round_zero: Decimal
-    change_to_holding_fees_rate: Decimal
+    change_to_initial_amount_as_of_round_zero: Annotated[Decimal, DamlName("changeToInitialAmountAsOfRoundZero")]
+    change_to_holding_fees_rate: Annotated[Decimal, DamlName("changeToHoldingFeesRate")]
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,7 @@ class Amulet_Expire:
     Real Daml: `choice Amulet_Expire with roundCid : ContractId OpenMiningRound`.
     """
 
-    round_cid: ContractId[OpenMiningRound]
+    round_cid: Annotated[ContractId[OpenMiningRound], DamlName("roundCid")]
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,7 @@ class Amulet_ExpireResult:
     """Real Daml: `data Amulet_ExpireResult = Amulet_ExpireResult with
     expireSum : AmuletExpireSummary; meta : Optional Api.Token.MetadataV1.Metadata`."""
 
-    expire_sum: AmuletExpireSummary
+    expire_sum: Annotated[AmuletExpireSummary, DamlName("expireSum")]
     meta: Optional[Metadata] = None
 
 
@@ -127,8 +128,8 @@ class Amulet_ExpireV2:
           controller dso
     """
 
-    external_party_config_state0_cid: ContractId[ExternalPartyConfigState]
-    external_party_config_state1_cid: ContractId[ExternalPartyConfigState]
+    external_party_config_state0_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState0Cid")]
+    external_party_config_state1_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState1Cid")]
 
 
 @dataclass(frozen=True)
@@ -136,7 +137,7 @@ class Amulet_ExpireV2Result:
     """Real Daml: `data Amulet_ExpireV2Result = Amulet_ExpireV2Result with
     expireSum : AmuletExpireV2Summary; meta : Api.Token.MetadataV1.Metadata`."""
 
-    expire_sum: AmuletExpireV2Summary
+    expire_sum: Annotated[AmuletExpireV2Summary, DamlName("expireSum")]
     meta: Metadata
 
 
@@ -164,7 +165,7 @@ class LockedAmulet_Unlock:
     `choice LockedAmulet_Unlock with openRoundCid : ContractId OpenMiningRound`,
     controller `amulet.owner :: lock.holders`."""
 
-    open_round_cid: ContractId[OpenMiningRound]
+    open_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("openRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -172,7 +173,7 @@ class LockedAmulet_UnlockResult:
     """Real Daml: `data LockedAmulet_UnlockResult = LockedAmulet_UnlockResult
     with amuletSum : AmuletCreateSummary (ContractId Amulet); meta : Optional Metadata`."""
 
-    amulet_sum: AmuletCreateSummary[ContractId[Amulet]]
+    amulet_sum: Annotated[AmuletCreateSummary[ContractId[Amulet]], DamlName("amuletSum")]
     meta: Optional[Metadata] = None
 
 
@@ -188,7 +189,7 @@ class LockedAmulet_UnlockV2Result:
     """Real Daml: `data LockedAmulet_UnlockV2Result = LockedAmulet_UnlockV2Result
     with amuletCid : ContractId Amulet; meta : Metadata`."""
 
-    amulet_cid: ContractId[Amulet]
+    amulet_cid: Annotated[ContractId[Amulet], DamlName("amuletCid")]
     meta: Metadata
 
 
@@ -199,7 +200,7 @@ class LockedAmulet_OwnerExpireLock:
     `choice LockedAmulet_OwnerExpireLock with openRoundCid : ContractId OpenMiningRound`,
     controller `amulet.owner`."""
 
-    open_round_cid: ContractId[OpenMiningRound]
+    open_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("openRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -207,7 +208,7 @@ class LockedAmulet_OwnerExpireLockResult:
     """Real Daml: `data LockedAmulet_OwnerExpireLockResult = ... with
     amuletSum : AmuletCreateSummary (ContractId Amulet); meta : Optional Metadata`."""
 
-    amulet_sum: AmuletCreateSummary[ContractId[Amulet]]
+    amulet_sum: Annotated[AmuletCreateSummary[ContractId[Amulet]], DamlName("amuletSum")]
     meta: Optional[Metadata] = None
 
 
@@ -223,7 +224,7 @@ class LockedAmulet_OwnerExpireLockV2Result:
     """Real Daml: `data LockedAmulet_OwnerExpireLockV2Result = ... with
     amuletCid : ContractId Amulet; meta : Metadata`."""
 
-    amulet_cid: ContractId[Amulet]
+    amulet_cid: Annotated[ContractId[Amulet], DamlName("amuletCid")]
     meta: Metadata
 
 
@@ -234,7 +235,7 @@ class LockedAmulet_ExpireAmulet:
     `choice LockedAmulet_ExpireAmulet with roundCid : ContractId OpenMiningRound`,
     controller `amulet.dso`."""
 
-    round_cid: ContractId[OpenMiningRound]
+    round_cid: Annotated[ContractId[OpenMiningRound], DamlName("roundCid")]
 
 
 @dataclass(frozen=True)
@@ -242,7 +243,7 @@ class LockedAmulet_ExpireAmuletResult:
     """Real Daml: `data LockedAmulet_ExpireAmuletResult = ... with
     expireSum : AmuletExpireSummary; meta : Optional Metadata`."""
 
-    expire_sum: AmuletExpireSummary
+    expire_sum: Annotated[AmuletExpireSummary, DamlName("expireSum")]
     meta: Optional[Metadata] = None
 
 
@@ -258,8 +259,8 @@ class LockedAmulet_ExpireAmuletV2:
           controller amulet.dso
     """
 
-    external_party_config_state0_cid: ContractId[ExternalPartyConfigState]
-    external_party_config_state1_cid: ContractId[ExternalPartyConfigState]
+    external_party_config_state0_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState0Cid")]
+    external_party_config_state1_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState1Cid")]
 
 
 @dataclass(frozen=True)
@@ -267,7 +268,7 @@ class LockedAmulet_ExpireAmuletV2Result:
     """Real Daml: `data LockedAmulet_ExpireAmuletV2Result = ... with
     expireSum : AmuletExpireV2Summary; meta : Metadata`."""
 
-    expire_sum: AmuletExpireV2Summary
+    expire_sum: Annotated[AmuletExpireV2Summary, DamlName("expireSum")]
     meta: Metadata
 
 
@@ -426,7 +427,7 @@ class AppRewardCoupon_DsoExpire:
             closedRoundCid : ContractId ClosedMiningRound
     """
 
-    closed_round_cid: ContractId[ClosedMiningRound]
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -461,8 +462,8 @@ class RewardCouponV2:
     provider: Party
     round: Round
     amount: Decimal
-    expires_at: Timestamp
-    provider_is_observer: bool
+    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    provider_is_observer: Annotated[bool, DamlName("providerIsObserver")]
     beneficiary: Optional[Party] = None
 
 
@@ -501,7 +502,7 @@ class ValidatorRewardCoupon_DsoExpire:
             closedRoundCid : ContractId ClosedMiningRound
     """
 
-    closed_round_cid: ContractId[ClosedMiningRound]
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -525,7 +526,7 @@ class ValidatorRewardCoupon_ArchiveAsValidator:
     """
 
     validator: Party
-    right_cid: ContractId[ValidatorRight]
+    right_cid: Annotated[ContractId[ValidatorRight], DamlName("rightCid")]
 
 
 @dataclass(frozen=True)
@@ -568,7 +569,7 @@ class SvRewardCoupon_DsoExpire:
             closedRoundCid : ContractId ClosedMiningRound
     """
 
-    closed_round_cid: ContractId[ClosedMiningRound]
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -629,9 +630,9 @@ class DevelopmentFundCoupon:
 
     dso: Party
     beneficiary: Party
-    fund_manager: Party
+    fund_manager: Annotated[Party, DamlName("fundManager")]
     amount: Decimal
-    expires_at: Timestamp
+    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
     reason: Text
 
 
@@ -654,7 +655,7 @@ class DevelopmentFundCoupon_WithdrawResult:
     """Real Daml: `data DevelopmentFundCoupon_WithdrawResult` with
     `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: ContractId[UnclaimedDevelopmentFundCoupon]
+    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
 
 
 @dataclass(frozen=True)
@@ -676,7 +677,7 @@ class DevelopmentFundCoupon_RejectResult:
     """Real Daml: `data DevelopmentFundCoupon_RejectResult` with
     `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: ContractId[UnclaimedDevelopmentFundCoupon]
+    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
 
 
 @dataclass(frozen=True)
@@ -691,7 +692,7 @@ class DevelopmentFundCoupon_DsoExpireResult:
     """Real Daml: `data DevelopmentFundCoupon_DsoExpireResult` with
     `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: ContractId[UnclaimedDevelopmentFundCoupon]
+    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
 
 
 @dataclass(frozen=True)

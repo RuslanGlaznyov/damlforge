@@ -4,9 +4,10 @@ support only, see `Splice/__init__.py`.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Annotated, Optional
 
 from forge.models.types import Party, Text, Timestamp
+from .. import DamlName
 
 
 @dataclass(frozen=True)
@@ -22,5 +23,5 @@ class TimeLock:
     """
 
     holders: list[Party]
-    expires_at: Timestamp
-    opt_context: Optional[Text] = None
+    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    opt_context: Annotated[Optional[Text], DamlName("optContext")] = None

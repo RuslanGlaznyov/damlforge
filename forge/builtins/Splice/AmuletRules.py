@@ -5,21 +5,19 @@ rest of the real transfer flow it's used with (`Transfer`, `TransferOutput`,
 `exercise_app_transfer`, ...), analyzed directly against that real source.
 
 Field/function names here are DamlForge's usual snake_case convention (the
-`.vy` DSL is Python-syntax throughout); real Daml spells them camelCase
-(`amuletRules`, `exerciseAppTransfer`, ...). `forge/codegen/emit.py`'s
-`_EXTERNAL_BUILTIN_RENAMES`/`_EXTERNAL_FIELD_RENAMES` tables translate
-between the two at codegen time - see the "Real dpm build validation
-findings" Obsidian note for the full list and why real Daml needs this at
-all (it doesn't share Python's `Optional`/casing conventions).
+`.vy` DSL is Python-syntax throughout); real Daml spells some of them
+camelCase (`amuletRules`, `exerciseAppTransfer`, ...) - those carry a
+`DamlName(...)` (see `forge/builtins/__init__.py`) marking the real spelling.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
 
 from forge.models.types import ContractId, GenMap, Party, RelTime, Text, Timestamp
+from .. import DamlName
 from .Amulet import (
     Amulet,
     AmuletCreateSummary,
@@ -181,9 +179,9 @@ class AmuletRules:
     """
 
     dso: Party
-    config_schedule: Schedule[Timestamp, AmuletConfig[USD]]
-    is_dev_net: bool
-    contract_state_schema_version: Optional[int] = None
+    config_schedule: Annotated[Schedule[Timestamp, AmuletConfig[USD]], DamlName("configSchedule")]
+    is_dev_net: Annotated[bool, DamlName("isDevNet")]
+    contract_state_schema_version: Annotated[Optional[int], DamlName("contractStateSchemaVersion")] = None
 
 
 # Every type imported above (`OpenMiningRound`/`SummarizingMiningRound`/
@@ -216,8 +214,8 @@ class BalanceChange:
           deriving (Show, Eq)
     """
 
-    change_to_initial_amount_as_of_round_zero: Decimal
-    change_to_holding_fees_rate: Decimal
+    change_to_initial_amount_as_of_round_zero: Annotated[Decimal, DamlName("changeToInitialAmountAsOfRoundZero")]
+    change_to_holding_fees_rate: Annotated[Decimal, DamlName("changeToHoldingFeesRate")]
 
 
 @dataclass(frozen=True)
@@ -237,14 +235,14 @@ class TransferSummary:
           deriving (Show, Eq)
     """
 
-    input_app_reward_amount: Decimal
-    input_validator_reward_amount: Decimal
-    input_sv_reward_amount: Decimal
-    input_amulet_amount: Decimal
-    balance_changes: GenMap[Party, BalanceChange]
-    holding_fees: Decimal
-    output_fees: list[Decimal]
-    sender_change_fee: Decimal
+    input_app_reward_amount: Annotated[Decimal, DamlName("inputAppRewardAmount")]
+    input_validator_reward_amount: Annotated[Decimal, DamlName("inputValidatorRewardAmount")]
+    input_sv_reward_amount: Annotated[Decimal, DamlName("inputSvRewardAmount")]
+    input_amulet_amount: Annotated[Decimal, DamlName("inputAmuletAmount")]
+    balance_changes: Annotated[GenMap[Party, BalanceChange], DamlName("balanceChanges")]
+    holding_fees: Annotated[Decimal, DamlName("holdingFees")]
+    output_fees: Annotated[list[Decimal], DamlName("outputFees")]
+    sender_change_fee: Annotated[Decimal, DamlName("senderChangeFee")]
 
 
 @dataclass(frozen=True)
@@ -266,9 +264,11 @@ class AppTransferContext:
     off-ledger client, not from ledger data `.vy` code can read.
     """
 
-    amulet_rules: ContractId[AmuletRules]
-    open_mining_round: ContractId[OpenMiningRound]
-    featured_app_right: Optional[ContractId[FeaturedAppRight]]
+    amulet_rules: Annotated[ContractId[AmuletRules], DamlName("amuletRules")]
+    open_mining_round: Annotated[ContractId[OpenMiningRound], DamlName("openMiningRound")]
+    featured_app_right: Annotated[
+        Optional[ContractId[FeaturedAppRight]], DamlName("featuredAppRight")
+    ]
 
 
 # `TransferInput` is a real Daml variant/sum type DamlForge has no syntax
@@ -308,7 +308,7 @@ class TransferOutput:
     """
 
     receiver: Party
-    receiver_fee_ratio: Decimal
+    receiver_fee_ratio: Annotated[Decimal, DamlName("receiverFeeRatio")]
     amount: Decimal
     lock: Optional[TimeLock]
     meta: Optional[Metadata] = None
@@ -377,11 +377,14 @@ class TransferResult:
 
     round: Round
     summary: TransferSummary
-    created_amulets: list[CreatedAmulet]
-    sender_change_amulet: Optional[ContractId[Amulet]]
+    created_amulets: Annotated[list[CreatedAmulet], DamlName("createdAmulets")]
+    sender_change_amulet: Annotated[
+        Optional[ContractId[Amulet]], DamlName("senderChangeAmulet")
+    ]
     meta: Optional[Metadata] = None
 
 
+@DamlName("exerciseAppTransfer")
 def exercise_app_transfer(
     expected_dso: Party, context: AppTransferContext, transfer: Transfer
 ) -> ContractId[TransferResult]:
@@ -399,6 +402,7 @@ def exercise_app_transfer(
     )
 
 
+@DamlName("createdAmuletToHolding")
 def created_amulet_to_holding(created_amulet: CreatedAmulet) -> ContractId[Holding]:
     """The real Daml `createdAmuletToHolding`, converting a `CreatedAmulet`
     into a `ContractId Splice.Api.Token.HoldingV1.Holding`:
@@ -431,10 +435,12 @@ class TransferContext:
           deriving (Show, Eq)
     """
 
-    open_mining_round: ContractId[OpenMiningRound]
-    issuing_mining_rounds: GenMap[Round, ContractId[IssuingMiningRound]]
-    validator_rights: GenMap[Party, ContractId[ValidatorRight]]
-    featured_app_right: Optional[ContractId[FeaturedAppRight]] = None
+    open_mining_round: Annotated[ContractId[OpenMiningRound], DamlName("openMiningRound")]
+    issuing_mining_rounds: Annotated[GenMap[Round, ContractId[IssuingMiningRound]], DamlName("issuingMiningRounds")]
+    validator_rights: Annotated[GenMap[Party, ContractId[ValidatorRight]], DamlName("validatorRights")]
+    featured_app_right: Annotated[
+        Optional[ContractId[FeaturedAppRight]], DamlName("featuredAppRight")
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -453,8 +459,10 @@ class ExternalPartyTransferContext:
           deriving (Show, Eq)
     """
 
-    external_party_config_state: ContractId[ExternalPartyConfigState]
-    featured_app_right: Optional[ContractId[FeaturedAppRight]] = None
+    external_party_config_state: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState")]
+    featured_app_right: Annotated[
+        Optional[ContractId[FeaturedAppRight]], DamlName("featuredAppRight")
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -471,7 +479,7 @@ class PaymentTransferContext:
           deriving (Eq, Show)
     """
 
-    amulet_rules: ContractId[AmuletRules]
+    amulet_rules: Annotated[ContractId[AmuletRules], DamlName("amuletRules")]
     context: TransferContext
 
 
@@ -489,9 +497,9 @@ class OpenMiningRoundTriple:
           deriving (Show, Eq)
     """
 
-    round0_cid: ContractId[OpenMiningRound]
-    round1_cid: ContractId[OpenMiningRound]
-    round2_cid: ContractId[OpenMiningRound]
+    round0_cid: Annotated[ContractId[OpenMiningRound], DamlName("round0Cid")]
+    round1_cid: Annotated[ContractId[OpenMiningRound], DamlName("round1Cid")]
+    round2_cid: Annotated[ContractId[OpenMiningRound], DamlName("round2Cid")]
 
 
 @dataclass(frozen=True)
@@ -516,8 +524,8 @@ class ExternalPartySetupProposal:
     validator: Party
     user: Party
     dso: Party
-    created_at: Timestamp
-    preapproval_expires_at: Timestamp
+    created_at: Annotated[Timestamp, DamlName("createdAt")]
+    preapproval_expires_at: Annotated[Timestamp, DamlName("preapprovalExpiresAt")]
 
 
 @dataclass(frozen=True)
@@ -532,8 +540,8 @@ class ExternalPartySetupProposal_AcceptResult:
     """Real Daml: `data ExternalPartySetupProposal_AcceptResult` with
     `validatorRightCid`, `transferPreapprovalCid`."""
 
-    validator_right_cid: ContractId[ValidatorRight]
-    transfer_preapproval_cid: ContractId[TransferPreapproval]
+    validator_right_cid: Annotated[ContractId[ValidatorRight], DamlName("validatorRightCid")]
+    transfer_preapproval_cid: Annotated[ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")]
 
 
 @dataclass(frozen=True)
@@ -555,7 +563,7 @@ class ExternalPartySetupProposal_RejectResult:
     """Real Daml: `data ExternalPartySetupProposal_RejectResult` with
     `dummyArg : ()` (kept only so the record can be upgraded later)."""
 
-    dummy_arg: tuple = ()
+    dummy_arg: Annotated[tuple, DamlName("dummyArg")] = ()
 
 
 @dataclass(frozen=True)
@@ -577,7 +585,7 @@ class ExternalPartySetupProposal_WithdrawResult:
     """Real Daml: `data ExternalPartySetupProposal_WithdrawResult` with
     `dummyArg : ()` (kept only so the record can be upgraded later)."""
 
-    dummy_arg: tuple = ()
+    dummy_arg: Annotated[tuple, DamlName("dummyArg")] = ()
 
 
 @dataclass(frozen=True)
@@ -602,9 +610,9 @@ class TransferPreapproval:
     dso: Party
     receiver: Party
     provider: Party
-    valid_from: Timestamp
-    last_renewed_at: Timestamp
-    expires_at: Timestamp
+    valid_from: Annotated[Timestamp, DamlName("validFrom")]
+    last_renewed_at: Annotated[Timestamp, DamlName("lastRenewedAt")]
+    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
 
 
 @dataclass(frozen=True)
@@ -702,7 +710,7 @@ class TransferPreapproval_Renew:
 
     context: PaymentTransferContext
     inputs: list[TransferInput]
-    new_expires_at: Timestamp
+    new_expires_at: Annotated[Timestamp, DamlName("newExpiresAt")]
 
 
 @dataclass(frozen=True)
@@ -711,11 +719,11 @@ class TransferPreapproval_RenewResult:
     `transferPreapprovalCid`, `transferResult`, `receiver`, `provider`,
     `amuletPaid`, `meta`."""
 
-    transfer_preapproval_cid: ContractId[TransferPreapproval]
-    transfer_result: TransferResult
+    transfer_preapproval_cid: Annotated[ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")]
+    transfer_result: Annotated[TransferResult, DamlName("transferResult")]
     receiver: Party
     provider: Party
-    amulet_paid: Decimal
+    amulet_paid: Annotated[Decimal, DamlName("amuletPaid")]
     meta: Optional[Metadata] = None
 
 
@@ -765,8 +773,8 @@ class AmuletRules_ExpireTransferInstructionInput:
           deriving (Eq, Show)
     """
 
-    transfer_instruction_cid: ContractId[TransferInstruction]
-    expire_lock: bool
+    transfer_instruction_cid: Annotated[ContractId[TransferInstruction], DamlName("transferInstructionCid")]
+    expire_lock: Annotated[bool, DamlName("expireLock")]
 
 
 # ---------------------------------------------------------------------------
@@ -784,7 +792,7 @@ class AmuletRules_ComputeFees:
     context: TransferContext
     sender: Party
     outputs: list[TransferOutput]
-    expected_dso: Optional[Party] = None
+    expected_dso: Annotated[Optional[Party], DamlName("expectedDso")] = None
 
 
 @dataclass(frozen=True)
@@ -810,7 +818,7 @@ class AmuletRules_Transfer:
 
     transfer: Transfer
     context: TransferContext
-    expected_dso: Optional[Party] = None
+    expected_dso: Annotated[Optional[Party], DamlName("expectedDso")] = None
 
 
 @dataclass(frozen=True)
@@ -835,9 +843,9 @@ class AmuletRules_CreateExternalPartySetupProposal:
     inputs: list[TransferInput]
     user: Party
     validator: Party
-    preapproval_expires_at: Timestamp
-    expected_dso: Optional[Party] = None
-    opt_created_at: Optional[Timestamp] = None
+    preapproval_expires_at: Annotated[Timestamp, DamlName("preapprovalExpiresAt")]
+    expected_dso: Annotated[Optional[Party], DamlName("expectedDso")] = None
+    opt_created_at: Annotated[Optional[Timestamp], DamlName("optCreatedAt")] = None
 
 
 @dataclass(frozen=True)
@@ -846,11 +854,11 @@ class AmuletRules_CreateExternalPartySetupProposalResult:
     with `proposalCid`, `user`, `validator`, `transferResult`,
     `amuletPaid`, `meta`."""
 
-    proposal_cid: ContractId[ExternalPartySetupProposal]
+    proposal_cid: Annotated[ContractId[ExternalPartySetupProposal], DamlName("proposalCid")]
     user: Party
     validator: Party
-    transfer_result: TransferResult
-    amulet_paid: Decimal
+    transfer_result: Annotated[TransferResult, DamlName("transferResult")]
+    amulet_paid: Annotated[Decimal, DamlName("amuletPaid")]
     meta: Optional[Metadata] = None
 
 
@@ -875,9 +883,9 @@ class AmuletRules_CreateTransferPreapproval:
     inputs: list[TransferInput]
     receiver: Party
     provider: Party
-    expires_at: Timestamp
-    expected_dso: Optional[Party] = None
-    opt_created_at: Optional[Timestamp] = None
+    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    expected_dso: Annotated[Optional[Party], DamlName("expectedDso")] = None
+    opt_created_at: Annotated[Optional[Timestamp], DamlName("optCreatedAt")] = None
 
 
 @dataclass(frozen=True)
@@ -885,9 +893,9 @@ class AmuletRules_CreateTransferPreapprovalResult:
     """Real Daml: `data AmuletRules_CreateTransferPreapprovalResult` with
     `transferPreapprovalCid`, `transferResult`, `amuletPaid`, `meta`."""
 
-    transfer_preapproval_cid: ContractId[TransferPreapproval]
-    transfer_result: TransferResult
-    amulet_paid: Decimal
+    transfer_preapproval_cid: Annotated[ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")]
+    transfer_result: Annotated[TransferResult, DamlName("transferResult")]
+    amulet_paid: Annotated[Decimal, DamlName("amuletPaid")]
     meta: Optional[Metadata] = None
 
 
@@ -912,11 +920,11 @@ class AmuletRules_BuyMemberTraffic:
     inputs: list[TransferInput]
     context: TransferContext
     provider: Party
-    member_id: Text
-    synchronizer_id: Text
-    migration_id: int
-    traffic_amount: int
-    expected_dso: Optional[Party] = None
+    member_id: Annotated[Text, DamlName("memberId")]
+    synchronizer_id: Annotated[Text, DamlName("synchronizerId")]
+    migration_id: Annotated[int, DamlName("migrationId")]
+    traffic_amount: Annotated[int, DamlName("trafficAmount")]
+    expected_dso: Annotated[Optional[Party], DamlName("expectedDso")] = None
 
 
 @dataclass(frozen=True)
@@ -927,9 +935,11 @@ class AmuletRules_BuyMemberTrafficResult:
 
     round: Round
     summary: TransferSummary
-    amulet_paid: Decimal
-    purchased_traffic: ContractId[MemberTraffic]
-    sender_change_amulet: Optional[ContractId[Amulet]] = None
+    amulet_paid: Annotated[Decimal, DamlName("amuletPaid")]
+    purchased_traffic: Annotated[ContractId[MemberTraffic], DamlName("purchasedTraffic")]
+    sender_change_amulet: Annotated[
+        Optional[ContractId[Amulet]], DamlName("senderChangeAmulet")
+    ] = None
     meta: Optional[Metadata] = None
 
 
@@ -944,7 +954,7 @@ class AmuletRules_MergeMemberTrafficContracts:
             trafficCids : [ContractId MemberTraffic]
     """
 
-    traffic_cids: list[ContractId[MemberTraffic]]
+    traffic_cids: Annotated[list[ContractId[MemberTraffic]], DamlName("trafficCids")]
 
 
 @dataclass(frozen=True)
@@ -952,7 +962,7 @@ class AmuletRules_MergeMemberTrafficContractsResult:
     """Real Daml: `data AmuletRules_MergeMemberTrafficContractsResult` with
     `mergedTrafficCid`."""
 
-    merged_traffic_cid: ContractId[MemberTraffic]
+    merged_traffic_cid: Annotated[ContractId[MemberTraffic], DamlName("mergedTrafficCid")]
 
 
 @dataclass(frozen=True)
@@ -970,7 +980,7 @@ class AmuletRules_Mint:
 
     receiver: Party
     amount: Decimal
-    open_round: ContractId[OpenMiningRound]
+    open_round: Annotated[ContractId[OpenMiningRound], DamlName("openRound")]
     reason: Optional[Text] = None
 
 
@@ -978,7 +988,7 @@ class AmuletRules_Mint:
 class AmuletRules_MintResult:
     """Real Daml: `data AmuletRules_MintResult` with `amuletSum`."""
 
-    amulet_sum: AmuletCreateSummary[ContractId[Amulet]]
+    amulet_sum: Annotated[AmuletCreateSummary[ContractId[Amulet]], DamlName("amuletSum")]
 
 
 @dataclass(frozen=True)
@@ -996,7 +1006,7 @@ class AmuletRules_DevNet_Tap:
 
     receiver: Party
     amount: Decimal
-    open_round: ContractId[OpenMiningRound]
+    open_round: Annotated[ContractId[OpenMiningRound], DamlName("openRound")]
 
 
 @dataclass(frozen=True)
@@ -1004,7 +1014,7 @@ class AmuletRules_DevNet_TapResult:
     """Real Daml: `data AmuletRules_DevNet_TapResult` with `amuletSum`,
     `meta`."""
 
-    amulet_sum: AmuletCreateSummary[ContractId[Amulet]]
+    amulet_sum: Annotated[AmuletCreateSummary[ContractId[Amulet]], DamlName("amuletSum")]
     meta: Optional[Metadata] = None
 
 
@@ -1027,7 +1037,7 @@ class AmuletRules_DevNet_FeatureAppResult:
     """Real Daml: `data AmuletRules_DevNet_FeatureAppResult` with
     `featuredAppRightCid`."""
 
-    featured_app_right_cid: ContractId[FeaturedAppRight]
+    featured_app_right_cid: Annotated[ContractId[FeaturedAppRight], DamlName("featuredAppRightCid")]
 
 
 @dataclass(frozen=True)
@@ -1043,9 +1053,9 @@ class AmuletRules_Bootstrap_Rounds:
             initialRound : Optional Int
     """
 
-    amulet_price: Decimal
-    round0_duration: RelTime
-    initial_round: Optional[int] = None
+    amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
+    round0_duration: Annotated[RelTime, DamlName("round0Duration")]
+    initial_round: Annotated[Optional[int], DamlName("initialRound")] = None
 
 
 @dataclass(frozen=True)
@@ -1053,8 +1063,8 @@ class AmuletRules_Bootstrap_RoundsResult:
     """Real Daml: `data AmuletRules_Bootstrap_RoundsResult` with
     `openMiningRoundCid`, `initialRound`."""
 
-    open_mining_round_cid: ContractId[OpenMiningRound]
-    initial_round: Optional[Round] = None
+    open_mining_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("openMiningRoundCid")]
+    initial_round: Annotated[Optional[Round], DamlName("initialRound")] = None
 
 
 @dataclass(frozen=True)
@@ -1069,8 +1079,8 @@ class AmuletRules_BootstrapExternalPartyConfigState:
             expectedDso : Party
     """
 
-    open_mining_round_triple: OpenMiningRoundTriple
-    expected_dso: Party
+    open_mining_round_triple: Annotated[OpenMiningRoundTriple, DamlName("openMiningRoundTriple")]
+    expected_dso: Annotated[Party, DamlName("expectedDso")]
 
 
 @dataclass(frozen=True)
@@ -1093,10 +1103,10 @@ class AmuletRules_AdvanceOpenMiningRounds:
             latestRoundCid : ContractId OpenMiningRound
     """
 
-    amulet_price: Decimal
-    round_to_archive_cid: ContractId[OpenMiningRound]
-    middle_round_cid: ContractId[OpenMiningRound]
-    latest_round_cid: ContractId[OpenMiningRound]
+    amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
+    round_to_archive_cid: Annotated[ContractId[OpenMiningRound], DamlName("roundToArchiveCid")]
+    middle_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("middleRoundCid")]
+    latest_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("latestRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -1104,8 +1114,8 @@ class AmuletRules_AdvanceOpenMiningRoundsResult:
     """Real Daml: `data AmuletRules_AdvanceOpenMiningRoundsResult` with
     `summarizingRoundCid`, `openRoundCid`."""
 
-    summarizing_round_cid: ContractId[SummarizingMiningRound]
-    open_round_cid: ContractId[OpenMiningRound]
+    summarizing_round_cid: Annotated[ContractId[SummarizingMiningRound], DamlName("summarizingRoundCid")]
+    open_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("openRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -1121,7 +1131,7 @@ class AmuletRules_MiningRound_StartIssuing:
             summary : OpenMiningRoundSummary
     """
 
-    mining_round_cid: ContractId[SummarizingMiningRound]
+    mining_round_cid: Annotated[ContractId[SummarizingMiningRound], DamlName("miningRoundCid")]
     summary: OpenMiningRoundSummary
 
 
@@ -1130,8 +1140,8 @@ class AmuletRules_MiningRound_StartIssuingResult:
     """Real Daml: `data AmuletRules_MiningRound_StartIssuingResult` with
     `issuingRoundCid`, `unclaimedDevelopmentFundCouponCid`."""
 
-    issuing_round_cid: ContractId[IssuingMiningRound]
-    unclaimed_development_fund_coupon_cid: Optional[ContractId[UnclaimedDevelopmentFundCoupon]] = None
+    issuing_round_cid: Annotated[ContractId[IssuingMiningRound], DamlName("issuingRoundCid")]
+    unclaimed_development_fund_coupon_cid: Annotated[Optional[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("unclaimedDevelopmentFundCouponCid")] = None
 
 
 @dataclass(frozen=True)
@@ -1145,7 +1155,7 @@ class AmuletRules_MiningRound_Close:
             issuingRoundCid : ContractId IssuingMiningRound
     """
 
-    issuing_round_cid: ContractId[IssuingMiningRound]
+    issuing_round_cid: Annotated[ContractId[IssuingMiningRound], DamlName("issuingRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -1153,7 +1163,7 @@ class AmuletRules_MiningRound_CloseResult:
     """Real Daml: `data AmuletRules_MiningRound_CloseResult` with
     `closedRoundCid`."""
 
-    closed_round_cid: ContractId[ClosedMiningRound]
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -1167,7 +1177,7 @@ class AmuletRules_MiningRound_Archive:
             closedRoundCid : ContractId ClosedMiningRound
     """
 
-    closed_round_cid: ContractId[ClosedMiningRound]
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -1192,14 +1202,14 @@ class AmuletRules_ClaimExpiredRewards:
             optValidatorLivenessActivityRecordCids : Optional [ContractId ValidatorLivenessActivityRecord]
     """
 
-    closed_round_cid: ContractId[ClosedMiningRound]
-    validator_reward_coupon_cids: list[ContractId[ValidatorRewardCoupon]]
-    app_coupon_cids: list[ContractId[AppRewardCoupon]]
-    sv_reward_coupon_cids: list[ContractId[SvRewardCoupon]]
-    opt_validator_faucet_coupon_cids: Optional[list[ContractId[ValidatorFaucetCoupon]]] = None
-    opt_validator_liveness_activity_record_cids: Optional[
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
+    validator_reward_coupon_cids: Annotated[list[ContractId[ValidatorRewardCoupon]], DamlName("validatorRewardCouponCids")]
+    app_coupon_cids: Annotated[list[ContractId[AppRewardCoupon]], DamlName("appCouponCids")]
+    sv_reward_coupon_cids: Annotated[list[ContractId[SvRewardCoupon]], DamlName("svRewardCouponCids")]
+    opt_validator_faucet_coupon_cids: Annotated[Optional[list[ContractId[ValidatorFaucetCoupon]]], DamlName("optValidatorFaucetCouponCids")] = None
+    opt_validator_liveness_activity_record_cids: Annotated[Optional[
         list[ContractId[ValidatorLivenessActivityRecord]]
-    ] = None
+    ], DamlName("optValidatorLivenessActivityRecordCids")] = None
 
 
 @dataclass(frozen=True)
@@ -1207,7 +1217,7 @@ class AmuletRules_ClaimExpiredRewardsResult:
     """Real Daml: `data AmuletRules_ClaimExpiredRewardsResult` with
     `unclaimedRewardCid`."""
 
-    unclaimed_reward_cid: Optional[ContractId[UnclaimedReward]] = None
+    unclaimed_reward_cid: Annotated[Optional[ContractId[UnclaimedReward]], DamlName("unclaimedRewardCid")] = None
 
 
 @dataclass(frozen=True)
@@ -1222,8 +1232,8 @@ class AmuletRules_ClaimExpiredRewardsV2:
             expiryObservers : [Party]
     """
 
-    reward_coupon_cids: list[ContractId[RewardCouponV2]]
-    expiry_observers: list[Party]
+    reward_coupon_cids: Annotated[list[ContractId[RewardCouponV2]], DamlName("rewardCouponCids")]
+    expiry_observers: Annotated[list[Party], DamlName("expiryObservers")]
 
 
 @dataclass(frozen=True)
@@ -1245,8 +1255,8 @@ class AmuletRules_StartProcessingRewardsV2:
             batchHash : CryptoHash.Hash
     """
 
-    calculate_rewards_cid: ContractId[CalculateRewardsV2]
-    batch_hash: Hash
+    calculate_rewards_cid: Annotated[ContractId[CalculateRewardsV2], DamlName("calculateRewardsCid")]
+    batch_hash: Annotated[Hash, DamlName("batchHash")]
 
 
 @dataclass(frozen=True)
@@ -1266,7 +1276,7 @@ class AmuletRules_UnhideRewardCouponsV2:
             providers : [Party]
     """
 
-    reward_coupon_cids: list[ContractId[RewardCouponV2]]
+    reward_coupon_cids: Annotated[list[ContractId[RewardCouponV2]], DamlName("rewardCouponCids")]
     providers: list[Party]
 
 
@@ -1287,8 +1297,8 @@ class AmuletRules_ArchiveDryRunRewardAccountingV2:
             processRewardsCids : [ContractId ProcessRewardsV2]
     """
 
-    calculate_rewards_cids: list[ContractId[CalculateRewardsV2]]
-    process_rewards_cids: list[ContractId[ProcessRewardsV2]]
+    calculate_rewards_cids: Annotated[list[ContractId[CalculateRewardsV2]], DamlName("calculateRewardsCids")]
+    process_rewards_cids: Annotated[list[ContractId[ProcessRewardsV2]], DamlName("processRewardsCids")]
 
 
 @dataclass(frozen=True)
@@ -1307,7 +1317,7 @@ class AmuletRules_MergeUnclaimedRewards:
             unclaimedRewardCids : [ContractId UnclaimedReward]
     """
 
-    unclaimed_reward_cids: list[ContractId[UnclaimedReward]]
+    unclaimed_reward_cids: Annotated[list[ContractId[UnclaimedReward]], DamlName("unclaimedRewardCids")]
 
 
 @dataclass(frozen=True)
@@ -1315,7 +1325,7 @@ class AmuletRules_MergeUnclaimedRewardsResult:
     """Real Daml: `data AmuletRules_MergeUnclaimedRewardsResult` with
     `unclaimedRewardCid`."""
 
-    unclaimed_reward_cid: ContractId[UnclaimedReward]
+    unclaimed_reward_cid: Annotated[ContractId[UnclaimedReward], DamlName("unclaimedRewardCid")]
 
 
 @dataclass(frozen=True)
@@ -1329,7 +1339,7 @@ class AmuletRules_MergeUnclaimedDevelopmentFundCoupons:
             unclaimedDevelopmentFundCouponCids : [ContractId UnclaimedDevelopmentFundCoupon]
     """
 
-    unclaimed_development_fund_coupon_cids: list[ContractId[UnclaimedDevelopmentFundCoupon]]
+    unclaimed_development_fund_coupon_cids: Annotated[list[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("unclaimedDevelopmentFundCouponCids")]
 
 
 @dataclass(frozen=True)
@@ -1337,7 +1347,7 @@ class AmuletRules_MergeUnclaimedDevelopmentFundCouponsResult:
     """Real Daml: `data AmuletRules_MergeUnclaimedDevelopmentFundCouponsResult`
     with `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: ContractId[UnclaimedDevelopmentFundCoupon]
+    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
 
 
 @dataclass(frozen=True)
@@ -1357,12 +1367,12 @@ class AmuletRules_AllocateDevelopmentFundCoupon:
             fundManager : Party
     """
 
-    unclaimed_development_fund_coupon_cids: list[ContractId[UnclaimedDevelopmentFundCoupon]]
+    unclaimed_development_fund_coupon_cids: Annotated[list[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("unclaimedDevelopmentFundCouponCids")]
     beneficiary: Party
     amount: Decimal
-    expires_at: Timestamp
+    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
     reason: Text
-    fund_manager: Party
+    fund_manager: Annotated[Party, DamlName("fundManager")]
 
 
 @dataclass(frozen=True)
@@ -1370,8 +1380,8 @@ class AmuletRules_AllocateDevelopmentFundCouponResult:
     """Real Daml: `data AmuletRules_AllocateDevelopmentFundCouponResult`
     with `developmentFundCouponCid`, `optUnclaimedDevelopmentFundCouponCid`."""
 
-    development_fund_coupon_cid: ContractId[DevelopmentFundCoupon]
-    opt_unclaimed_development_fund_coupon_cid: Optional[ContractId[UnclaimedDevelopmentFundCoupon]] = None
+    development_fund_coupon_cid: Annotated[ContractId[DevelopmentFundCoupon], DamlName("developmentFundCouponCid")]
+    opt_unclaimed_development_fund_coupon_cid: Annotated[Optional[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("optUnclaimedDevelopmentFundCouponCid")] = None
 
 
 @dataclass(frozen=True)
@@ -1403,15 +1413,15 @@ class AmuletRules_SetConfig:
             baseConfig : AmuletConfig Unit.USD
     """
 
-    new_config: AmuletConfig[USD]
-    base_config: AmuletConfig[USD]
+    new_config: Annotated[AmuletConfig[USD], DamlName("newConfig")]
+    base_config: Annotated[AmuletConfig[USD], DamlName("baseConfig")]
 
 
 @dataclass(frozen=True)
 class AmuletRules_SetConfigResult:
     """Real Daml: `data AmuletRules_SetConfigResult` with `newAmuletRules`."""
 
-    new_amulet_rules: ContractId[AmuletRules]
+    new_amulet_rules: Annotated[ContractId[AmuletRules], DamlName("newAmuletRules")]
 
 
 @dataclass(frozen=True)
@@ -1425,7 +1435,7 @@ class AmuletRules_AddFutureAmuletConfigSchedule:
             newScheduleItem : (Time, AmuletConfig Unit.USD)
     """
 
-    new_schedule_item: tuple[Timestamp, AmuletConfig[USD]]
+    new_schedule_item: Annotated[tuple[Timestamp, AmuletConfig[USD]], DamlName("newScheduleItem")]
 
 
 @dataclass(frozen=True)
@@ -1433,7 +1443,7 @@ class AmuletRules_AddFutureAmuletConfigScheduleResult:
     """Real Daml: `data AmuletRules_AddFutureAmuletConfigScheduleResult`
     with `newAmuletRules`."""
 
-    new_amulet_rules: ContractId[AmuletRules]
+    new_amulet_rules: Annotated[ContractId[AmuletRules], DamlName("newAmuletRules")]
 
 
 @dataclass(frozen=True)
@@ -1447,7 +1457,7 @@ class AmuletRules_RemoveFutureAmuletConfigSchedule:
             scheduleTime : Time
     """
 
-    schedule_time: Timestamp
+    schedule_time: Annotated[Timestamp, DamlName("scheduleTime")]
 
 
 @dataclass(frozen=True)
@@ -1455,7 +1465,7 @@ class AmuletRules_RemoveFutureAmuletConfigScheduleResult:
     """Real Daml: `data AmuletRules_RemoveFutureAmuletConfigScheduleResult`
     with `newAmuletRules`."""
 
-    new_amulet_rules: ContractId[AmuletRules]
+    new_amulet_rules: Annotated[ContractId[AmuletRules], DamlName("newAmuletRules")]
 
 
 @dataclass(frozen=True)
@@ -1469,7 +1479,7 @@ class AmuletRules_UpdateFutureAmuletConfigSchedule:
             scheduleItem : (Time, AmuletConfig Unit.USD)
     """
 
-    schedule_item: tuple[Timestamp, AmuletConfig[USD]]
+    schedule_item: Annotated[tuple[Timestamp, AmuletConfig[USD]], DamlName("scheduleItem")]
 
 
 @dataclass(frozen=True)
@@ -1477,7 +1487,7 @@ class AmuletRules_UpdateFutureAmuletConfigScheduleResult:
     """Real Daml: `data AmuletRules_UpdateFutureAmuletConfigScheduleResult`
     with `newAmuletRules`."""
 
-    new_amulet_rules: ContractId[AmuletRules]
+    new_amulet_rules: Annotated[ContractId[AmuletRules], DamlName("newAmuletRules")]
 
 
 @dataclass(frozen=True)
@@ -1494,8 +1504,8 @@ class AmuletRules_ConvertFeaturedAppActivityMarkers:
             observers : Optional [Party]
     """
 
-    marker_cids: list[ContractId[FeaturedAppActivityMarker]]
-    open_mining_round_cid: ContractId[OpenMiningRound]
+    marker_cids: Annotated[list[ContractId[FeaturedAppActivityMarker]], DamlName("markerCids")]
+    open_mining_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("openMiningRoundCid")]
     observers: Optional[list[Party]] = None
 
 
@@ -1504,7 +1514,7 @@ class AmuletRules_ConvertFeaturedAppActivityMarkersResult:
     """Real Daml: `data AmuletRules_ConvertFeaturedAppActivityMarkersResult`
     with `appRewardCouponCids`."""
 
-    app_reward_coupon_cids: list[ContractId[AppRewardCoupon]]
+    app_reward_coupon_cids: Annotated[list[ContractId[AppRewardCoupon]], DamlName("appRewardCouponCids")]
 
 
 @dataclass(frozen=True)
@@ -1521,7 +1531,7 @@ class AmuletRules_Amulet_ExpireTransferInstructions:
             observers : [Party]
     """
 
-    expected_dso: Party
+    expected_dso: Annotated[Party, DamlName("expectedDso")]
     inputs: list[AmuletRules_ExpireTransferInstructionInput]
     observers: list[Party]
 
@@ -1547,9 +1557,9 @@ class AmuletRules_UpdateExternalPartyConfigStates:
             openMiningRoundTriple : OpenMiningRoundTriple
     """
 
-    external_party_config_state_cid0: ContractId[ExternalPartyConfigState]
-    external_party_config_state_cid1: ContractId[ExternalPartyConfigState]
-    open_mining_round_triple: OpenMiningRoundTriple
+    external_party_config_state_cid0: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigStateCid0")]
+    external_party_config_state_cid1: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigStateCid1")]
+    open_mining_round_triple: Annotated[OpenMiningRoundTriple, DamlName("openMiningRoundTriple")]
 
 
 @dataclass(frozen=True)
@@ -1557,4 +1567,4 @@ class AmuletRules_UpdateExternalPartyConfigStatesResult:
     """Real Daml: `data AmuletRules_UpdateExternalPartyConfigStatesResult`
     with `newExternalPartyConfigStateCid`."""
 
-    new_external_party_config_state_cid: ContractId[ExternalPartyConfigState]
+    new_external_party_config_state_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("newExternalPartyConfigStateCid")]

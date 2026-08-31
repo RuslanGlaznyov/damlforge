@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from forge.models.types import ContractId, Party
 from .Round import ClosedMiningRound
 from .Types import Round
+from typing import Annotated
+from .. import DamlName
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,7 @@ class ValidatorFaucetCoupon_DsoExpire:
             closedRoundCid : ContractId ClosedMiningRound
     """
 
-    closed_round_cid: ContractId[ClosedMiningRound]
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
 
 
 @dataclass(frozen=True)
@@ -84,7 +86,7 @@ class ValidatorLivenessActivityRecord_DsoExpire:
             closedRoundCid : ContractId ClosedMiningRound
     """
 
-    closed_round_cid: ContractId[ClosedMiningRound]
+    closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
 
 
 @dataclass(frozen=True)

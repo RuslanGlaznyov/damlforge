@@ -14,6 +14,7 @@ from decimal import Decimal
 from forge.models.types import ContractId, Party, Text
 from ..Amulet import Amulet, LockedAmulet
 from ..AmuletRules import AppTransferContext
+from ... import DamlName
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class SubscriptionData:
     description: Text
 
 
+@DamlName("unlockAndTransfer")
 def unlock_and_transfer(
     transfer_context: AppTransferContext,
     subscription_data: SubscriptionData,
