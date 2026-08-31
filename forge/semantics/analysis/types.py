@@ -119,22 +119,59 @@ def daml_builtin_type_names() -> set:
     return set(_get_primitive_types()) | set(_get_generic_types())
 
 
+_DECLARATION_TYPES = (
+    vy_ast.StructDef,
+    vy_ast.FlagDef,
+    vy_ast.InterfaceDef,
+    vy_ast.TemplateDef,
+    vy_ast.InstanceDef,
+)
+
+
+def known_declarations(modules) -> dict:
+    declarations = {}
+    for module in _reachable_modules(modules):
+        for node in module.body:
+            if isinstance(node, _DECLARATION_TYPES):
+                declarations[node.name] = node
+    return declarations
+
+
 def known_type_names(modules) -> set:
-    local_dec_types = (
-        vy_ast.StructDef,
-        vy_ast.FlagDef,
-        vy_ast.InterfaceDef,
-        vy_ast.TemplateDef,
-        vy_ast.InstanceDef,
-    )
-    
     names = daml_builtin_type_names()
     for module in _reachable_modules(modules):
         names |= ImportsBuilder.imported_names(module)
-        for node in module.body:
-            if isinstance(node, local_dec_types):
-                names.add(node.name)
+    names |= known_declarations(modules).keys()
     return names
+
+
+def _flag_members(node: vy_ast.FlagDef) -> frozenset:
+    return frozenset(
+        stmt.value.id
+        for stmt in node.body
+        if isinstance(stmt, vy_ast.Expr) and isinstance(stmt.value, vy_ast.Name)
+    )
+
+
+def check_flag_value_access(node: vy_ast.TopLevel, declarations: dict, errors: ExceptionList) -> None:
+    for attr in node.get_descendants(vy_ast.Attribute):
+        if not isinstance(attr.value, vy_ast.Name):
+            continue
+        declaration = declarations.get(attr.value.id)
+        if not isinstance(declaration, vy_ast.FlagDef):
+            continue
+        members = _flag_members(declaration)
+        if attr.attr in members:
+            attr._metadata["is_flag_value"] = True
+            continue
+        errors.append(
+            DamlForgeException(
+                f"`{attr.attr}` is not a member of flag `{attr.value.id}` "
+                f"(known members: {', '.join(sorted(members))})",
+                attr,
+                code=ErrorCodes.DF1216.value,
+            )
+        )
 
 
 def _walk_type_ref(type_ref: TypeRef, known_names: set, node, context: str, errors: ExceptionList) -> None:

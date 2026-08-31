@@ -1,9 +1,12 @@
+import re
 from collections import defaultdict
 from typing import Optional
 
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
+
+FLAG_MEMBER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 CHOICE_DECORATOR = "choice"
 LEDGER_EFFECT_DECORATOR = "ledger_effect"
@@ -528,12 +531,29 @@ def check_recursion(
         )
 
 
+def check_flag_member_names(node: vy_ast.FlagDef, errors: ExceptionList) -> None:
+    for stmt in node.body:
+        if not (isinstance(stmt, vy_ast.Expr) and isinstance(stmt.value, vy_ast.Name)):
+            continue
+        name = stmt.value.id
+        if not FLAG_MEMBER_NAME.match(name):
+            errors.append(
+                DamlForgeException(
+                    f"Flag member `{name}` of `{node.name}` must be SCREAMING_SNAKE_CASE",
+                    stmt,
+                    code=ErrorCodes.DF1217.value,
+                )
+            )
+
+
 def check_container(
     node: vy_ast.TopLevel,
     errors: ExceptionList,
     recursion_context: Optional[_RecursionContext] = None,
 ) -> None:
-    if isinstance(node, vy_ast.TemplateDef):
+    if isinstance(node, vy_ast.FlagDef):
+        check_flag_member_names(node, errors)
+    elif isinstance(node, vy_ast.TemplateDef):
         check_template_signatory(node, errors)
         check_template_key_maintainer(node, errors)
         check_template_ensure(node, errors)

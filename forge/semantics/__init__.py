@@ -4,7 +4,9 @@ from forge.semantics.analysis.imports import ImportsBuilder
 from forge.semantics.analysis.structure import _RecursionContext, check_container
 from forge.semantics.analysis.types import (
     check_container_type_annotations,
+    check_flag_value_access,
     check_optional_field_construction,
+    known_declarations,
     known_field_types,
     known_type_names,
 )
@@ -41,11 +43,13 @@ def analyze_modules(modules):
     recursion_context = _RecursionContext(module_list)
     type_names = known_type_names(module_list)
     field_types = known_field_types(module_list)
+    declarations = known_declarations(module_list)
     for module in module_list:
         for node in module.body:
             check_container(node, errors, recursion_context)
             check_container_type_annotations(node, type_names, errors)
             check_optional_field_construction(node, field_types, errors)
+            check_flag_value_access(node, declarations, errors)
     errors.raise_if_not_empty()
 
     return imports_builder.graph

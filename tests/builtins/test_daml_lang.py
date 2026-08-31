@@ -1,5 +1,5 @@
 from forge.ast.parse import parse_to_ast
-from forge.builtins import collect_daml_renames
+from forge.builtins import collect_daml_builtins
 from forge.codegen import generate_daml
 from forge.ir import lower_module
 from forge.semantics import analyze_module
@@ -13,8 +13,8 @@ def _compile(source):
     return daml_source
 
 
-def test_collect_daml_renames_includes_daml_lang_functions():
-    function_renames, _, function_import_modules = collect_daml_renames()
+def test_collect_daml_builtins_includes_daml_lang_functions():
+    function_renames = collect_daml_builtins().function_renames
 
     assert function_renames["from_interface_contract_id"] == "fromInterfaceContractId"
     assert function_renames["to_interface_contract_id"] == "toInterfaceContractId"
@@ -25,7 +25,7 @@ def test_collect_daml_renames_includes_daml_lang_functions():
 
 
 def test_prelude_functions_need_no_import():
-    _, _, function_import_modules = collect_daml_renames()
+    function_import_modules = collect_daml_builtins().function_import_modules
 
     assert "fromInterfaceContractId" not in function_import_modules
     assert "toInterfaceContractId" not in function_import_modules
@@ -34,10 +34,49 @@ def test_prelude_functions_need_no_import():
 
 
 def test_da_time_functions_require_da_time_import():
-    _, _, function_import_modules = collect_daml_renames()
+    function_import_modules = collect_daml_builtins().function_import_modules
 
     assert function_import_modules["addRelTime"] == "DA.Time"
     assert function_import_modules["subTime"] == "DA.Time"
+
+
+def test_exercise_app_transfer_and_unlock_and_transfer_are_ledger_effects():
+    ledger_effect_fns = collect_daml_builtins().ledger_effect_fns
+
+    assert "exercise_app_transfer" in ledger_effect_fns
+    assert "unlock_and_transfer" in ledger_effect_fns
+    assert "from_interface_contract_id" not in ledger_effect_fns
+
+
+def test_variant_constructor_functions_are_derived():
+    constructor_of = collect_daml_builtins().constructor_of
+
+    assert constructor_of["InputAmulet"] == "TransferInput"
+    assert constructor_of["TransferResultAmulet"] == "CreatedAmulet"
+    assert constructor_of["TransferResultLockedAmulet"] == "CreatedAmulet"
+    assert constructor_of["BatchOfBatches"] == "Batch"
+    assert constructor_of["BatchOfMintingAllowances"] == "Batch"
+
+
+def test_constructor_types_include_explicitly_marked_types_and_variant_targets():
+    constructor_types = collect_daml_builtins().constructor_types
+
+    assert "AppTransferContext" in constructor_types
+    assert "TransferOutput" in constructor_types
+    assert "Transfer" in constructor_types
+    assert "TransferInput" in constructor_types
+    assert "CreatedAmulet" in constructor_types
+    assert "Batch" in constructor_types
+    assert "DamlName" not in constructor_types
+    assert "BuiltinMetadata" not in constructor_types
+
+
+def test_constructor_types_excludes_unmarked_types_even_when_constructed():
+    constructor_types = collect_daml_builtins().constructor_types
+
+    assert "TimeLock" not in constructor_types
+    assert "Amulet" not in constructor_types
+    assert "InstrumentId" not in constructor_types
 
 
 def test_from_interface_contract_id_renders_and_needs_no_extra_import():

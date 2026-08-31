@@ -25,10 +25,17 @@ from forge.ir.nodes import (
     TypeRef,
 )
 from forge.models.decorators import Consuming
+from forge.semantics import analyze_module
 
 
 def _lower(source):
     module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    return lower_module(module)
+
+
+def _analyze_and_lower(source):
+    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    analyze_module(module)
     return lower_module(module)
 
 
@@ -49,6 +56,29 @@ def test_flag_lowers_to_values():
     (status,) = ir.flags
     assert status.name == "Status"
     assert status.values == ("PENDING", "DONE")
+
+
+def test_validated_flag_value_access_lowers_to_bare_name():
+    ir = _analyze_and_lower(
+        "flag Status:\n"
+        "    PENDING\n"
+        "    DONE\n\n"
+        "def f() -> bool:\n"
+        "    return Status.PENDING == Status.DONE\n"
+    )
+
+    (fn,) = ir.functions
+    assert fn.body[0] == IRReturn(IRCompare(IRName("PENDING"), "==", IRName("DONE")))
+
+
+def test_unvalidated_attribute_access_lowers_to_ir_attribute():
+    ir = _lower(
+        "def f(x: int128) -> bool:\n"
+        "    return x.PENDING\n"
+    )
+
+    (fn,) = ir.functions
+    assert fn.body[0] == IRReturn(IRAttribute(IRName("x"), "PENDING"))
 
 
 def test_generic_type_ref_lowers_nested_subscripts():

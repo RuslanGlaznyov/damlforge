@@ -39,7 +39,7 @@ class SubscriptionData:
     description: Text
 
 
-@DamlName("unlockAndTransfer")
+@DamlName("unlockAndTransfer", is_ledger_effect=True)
 def unlock_and_transfer(
     transfer_context: AppTransferContext,
     subscription_data: SubscriptionData,

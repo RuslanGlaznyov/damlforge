@@ -1,6 +1,8 @@
 from decimal import Decimal
+from functools import lru_cache
 from typing import Optional
 
+from forge.builtins import collect_daml_builtins
 from forge.exceptions import CompilerPanic
 from forge.ir.nodes import (
     IRAssert,
@@ -156,11 +158,29 @@ def _render_call_arg(e) -> str:
     return rendered
 
 
+_LANGUAGE_BUILTIN_RENAMES = {"len": "length"}
+
+
+@lru_cache(maxsize=1)
+def _external_builtin_renames() -> dict:
+    return {**_LANGUAGE_BUILTIN_RENAMES, **collect_daml_builtins().function_renames}
+
+
+@lru_cache(maxsize=1)
+def _external_field_renames() -> dict:
+    return collect_daml_builtins().field_renames
+
+
+@lru_cache(maxsize=1)
+def _builtin_import_modules() -> dict:
+    return collect_daml_builtins().function_import_modules
+
+
 def render_expr(e) -> str:
     if isinstance(e, IRName):
-        return e.id
+        return _external_builtin_renames().get(e.id, e.id)
     if isinstance(e, IRAttribute):
-        return f"{_render_atom_for_attr(e.value)}.{e.attr}"
+        return f"{_render_atom_for_attr(e.value)}.{_external_field_renames().get(e.attr, e.attr)}"
     if isinstance(e, IRSubscript):
         return _render_subscript(e)
     if isinstance(e, IRCall):

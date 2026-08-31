@@ -401,6 +401,60 @@ template Asset:
     ensure: bool
 """
 
+FLAG_VALUE_ACCESS_IS_ALLOWED = """
+flag Status:
+    PENDING
+    PAID
+
+template Asset:
+    owner: Party
+    status: Status
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def mark_paid(self) -> bool:
+        return self.status == Status.PENDING
+"""
+
+FLAG_VALUE_ACCESS_UNKNOWN_MEMBER = """
+flag Status:
+    PENDING
+    PAID
+
+template Asset:
+    owner: Party
+    status: Status
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def mark_paid(self) -> bool:
+        return self.status == Status.TYPO
+"""
+
+FLAG_MEMBER_LOWERCASE_NOT_ALLOWED = """
+flag Status:
+    pending
+    PAID
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+"""
+
+FLAG_MEMBER_MIXED_CASE_NOT_ALLOWED = """
+flag Status:
+    Pending
+    PAID
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+"""
+
 
 def test_valid_template_passes():
     _analyze(VALID_TEMPLATE)
@@ -422,6 +476,7 @@ def test_valid_template_passes():
         TEMPLATE_ENSURE_BOOLOP_IS_ALLOWED,
         TEMPLATE_ENSURE_CALL_IS_ALLOWED,
         TEMPLATE_WITHOUT_ENSURE_IS_ALLOWED,
+        FLAG_VALUE_ACCESS_IS_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -453,6 +508,9 @@ def test_valid_decorator_usage_passes(source):
         (DOUBLE_IMPORTS_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (UNRESOLVABLE_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (UNRESOLVABLE_BARE_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
+        (FLAG_VALUE_ACCESS_UNKNOWN_MEMBER, ErrorCodes.DF1216.value),
+        (FLAG_MEMBER_LOWERCASE_NOT_ALLOWED, ErrorCodes.DF1217.value),
+        (FLAG_MEMBER_MIXED_CASE_NOT_ALLOWED, ErrorCodes.DF1217.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

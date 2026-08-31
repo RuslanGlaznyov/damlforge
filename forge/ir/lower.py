@@ -92,6 +92,8 @@ def lower_expr(node: vy_ast.VyperNode):
     if isinstance(node, vy_ast.Name):
         return IRName(node.id)
     if isinstance(node, vy_ast.Attribute):
+        if node._metadata.get("is_flag_value"):
+            return IRName(node.attr)
         return IRAttribute(lower_expr(node.value), node.attr)
     if isinstance(node, vy_ast.Subscript):
         return IRSubscript(lower_expr(node.value), lower_expr(node.slice))

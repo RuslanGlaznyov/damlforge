@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Annotated, Optional
 
 from forge.models.types import ContractId, GenMap, Party, RelTime, Text, Timestamp
-from .. import DamlName
+from .. import DamlName, ExposeConstructor
 from .Amulet import (
     Amulet,
     AmuletCreateSummary,
@@ -245,6 +245,7 @@ class TransferSummary:
     sender_change_fee: Annotated[Decimal, DamlName("senderChangeFee")]
 
 
+@ExposeConstructor()
 @dataclass(frozen=True)
 class AppTransferContext:
     """The real Daml `AppTransferContext` record - the ledger context an app
@@ -293,6 +294,7 @@ def InputAmulet(amulet_cid: ContractId[Amulet]) -> TransferInput:
     )
 
 
+@ExposeConstructor()
 @dataclass(frozen=True)
 class TransferOutput:
     """The real Daml `TransferOutput` record - one output of a batch
@@ -314,6 +316,7 @@ class TransferOutput:
     meta: Optional[Metadata] = None
 
 
+@ExposeConstructor()
 @dataclass(frozen=True)
 class Transfer:
     """The real Daml `Transfer` record - a batch transfer of one or more
@@ -384,7 +387,7 @@ class TransferResult:
     meta: Optional[Metadata] = None
 
 
-@DamlName("exerciseAppTransfer")
+@DamlName("exerciseAppTransfer", is_ledger_effect=True)
 def exercise_app_transfer(
     expected_dso: Party, context: AppTransferContext, transfer: Transfer
 ) -> ContractId[TransferResult]:
