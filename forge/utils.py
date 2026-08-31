@@ -5,6 +5,7 @@ import enum
 import functools
 import hashlib
 import os
+import re
 import sys
 import time
 import traceback
@@ -237,6 +238,15 @@ def keccak256(x):
 @functools.lru_cache(maxsize=512)
 def sha256sum(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).digest().hex()
+
+
+_MODULE_NAME_SEGMENT = re.compile(r"[A-Za-z0-9]+")
+
+
+def daml_module_name(stem: str) -> str:
+    segments = _MODULE_NAME_SEGMENT.findall(stem)
+    name = "".join(seg[:1].upper() + seg[1:] for seg in segments)
+    return name if name and name[0].isalpha() else f"M{name}"
 
 
 # Converts four bytes to an integer

@@ -27,26 +27,25 @@ def _iter_modules(modules) -> list[vy_ast.Module]:
     return [module for module in candidates if isinstance(module, vy_ast.Module)]
 
 
-def analyze_module(module: vy_ast.Module) -> None:
-    analyze_modules([module])
+def analyze_module(module: vy_ast.Module):
+    return analyze_modules([module])
 
 
-def analyze_modules(modules) -> None:
+def analyze_modules(modules):
     module_list = _iter_modules(modules)
     imports_builder = ImportsBuilder()
-    for module in module_list:
-        imports_builder.resolve_sibling_imports(module)
-
     errors = ExceptionList()
+    for module in module_list:
+        imports_builder.resolve_imports(module, errors)
+
     recursion_context = _RecursionContext(module_list)
     type_names = known_type_names(module_list)
     field_types = known_field_types(module_list)
     for module in module_list:
         for node in module.body:
             check_container(node, errors, recursion_context)
-            imports_builder.check_no_aliased_from_import(node, errors)
-            imports_builder.check_import_names_resolve(node, errors)
-            imports_builder.check_sibling_import_names_resolve(node, errors)
             check_container_type_annotations(node, type_names, errors)
             check_optional_field_construction(node, field_types, errors)
     errors.raise_if_not_empty()
+
+    return imports_builder.graph

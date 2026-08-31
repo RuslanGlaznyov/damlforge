@@ -22,9 +22,31 @@ class ImportInfo:
         self.ast = ast
 
 
+class ImportGraph:
+    def __init__(self) -> None:
+        self.modules: dict = {}
+        self.edges: dict = {}
+        self.sibling_module_strs: set = set()
+
+    def add_module(self, key: str, module: vy_ast.Module) -> None:
+        self.modules[key] = module
+
+    def add_edge(self, from_key: str, to_key: str) -> None:
+        self.edges.setdefault(from_key, []).append(to_key)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.modules
+
+    def __iter__(self):
+        return iter(self.modules.values())
+
+    def __len__(self) -> int:
+        return len(self.modules)
+
+
 class ImportsBuilder:
     def __init__(self) -> None:
-        self._sibling_cache: dict = {}
+        self.graph = ImportGraph()
         self._integrity_cache: dict = {}
 
     @staticmethod
@@ -168,16 +190,22 @@ class ImportsBuilder:
             code=ErrorCodes.DF1213.value,
         )
 
-    def resolve_sibling_imports(self, module: vy_ast.Module, _stack: tuple = ()) -> None:
+    def resolve_imports(
+        self, module: vy_ast.Module, errors: ExceptionList, _stack: tuple = ()
+    ) -> ImportGraph:
         search_base = self._search_base(module)
         resolved = getattr(module, "resolved_path", None) or getattr(module, "path", None)
         this_key = str(Path(resolved).resolve()) if resolved else f"<module:{id(module)}>"
         stack = _stack + (this_key,)
+        self.graph.add_module(this_key, module)
 
         seen_in_module: dict = {}
         for node in module.body:
             if not isinstance(node, (vy_ast.Import, vy_ast.ImportFrom)):
                 continue
+
+            self.check_no_aliased_from_import(node, errors)
+            self.check_import_names_resolve(node, errors)
 
             infos = []
             for module_str in self._module_strs_for(node):
@@ -201,17 +229,24 @@ class ImportsBuilder:
                     )
                 seen_in_module[key] = node
 
-                if key not in self._sibling_cache:
+                self.graph.sibling_module_strs.add(module_str)
+                self.graph.add_edge(this_key, key)
+
+                if key not in self.graph:
                     sibling_ast = parse_to_ast(
                         path.read_text(), module_path=path.name, resolved_path=str(path)
                     )
-                    self._sibling_cache[key] = sibling_ast
-                    self.resolve_sibling_imports(sibling_ast, _stack=stack)
+                    self.graph.add_module(key, sibling_ast)
+                    self.resolve_imports(sibling_ast, errors, _stack=stack)
 
-                infos.append(ImportInfo(module_str, module_str, path, self._sibling_cache[key]))
+                infos.append(ImportInfo(module_str, module_str, path, self.graph.modules[key]))
 
             if infos:
                 node._metadata["import_infos"] = infos
+
+            self.check_sibling_import_names_resolve(node, errors)
+
+        return self.graph
 
     @staticmethod
     def check_sibling_import_names_resolve(node, errors: ExceptionList) -> None:

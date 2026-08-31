@@ -254,10 +254,6 @@ class IRInstance:
 @dataclass(frozen=True)
 class IRImport:
     module: str
-    # `None` means a bare, unqualified import (`import Splice.AmuletRules`,
-    # from a plain `.vy` `import Splice.AmuletRules` with no `from` and no
-    # `as`) - real Daml's own unqualified-import form, no parens. A tuple
-    # means a selective import (`import Splice.AmuletRules (A, B)`).
     names: Optional[tuple[str, ...]] = None
 
 

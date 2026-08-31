@@ -334,12 +334,16 @@ def lower_instance(node: vy_ast.InstanceDef) -> IRInstance:
     return IRInstance(node.name, bases, choices, src=_src(node))
 
 
-def _lower_imports(body) -> tuple:
-    # deferred import: `forge.semantics.analysis.types` imports `lower_type`
-    # from this module (and `forge.semantics`'s package `__init__` imports
-    # `types` in turn), so importing anything under `forge.semantics` back at
-    # module-load time here would be circular.
+def _lower_imports(body, import_graph=None) -> tuple:
     from forge.semantics.analysis.imports import ImportsBuilder
+    from forge.utils import daml_module_name
+
+    def _daml_module_ref(module_str: str) -> str:
+        if import_graph is not None:
+            is_sibling = module_str in import_graph.sibling_module_strs
+        else:
+            is_sibling = "." not in module_str
+        return daml_module_name(module_str) if is_sibling else module_str
 
     imports = []
     for node in body:
@@ -348,19 +352,18 @@ def _lower_imports(body) -> tuple:
                 a.name for a in node.names if ImportsBuilder.needs_daml_import(node.module, a.name)
             )
             if names:
-                imports.append(IRImport(node.module, names))
+                imports.append(IRImport(_daml_module_ref(node.module), names))
         elif isinstance(node, vy_ast.Import):
-            # `import Splice.AmuletRules` (bare, no `from`, no `as`) - real
-            # Daml's own unqualified-import form. `import X as Y` (whole-
-            # module qualified aliasing, real Daml's `import qualified X as
-            # Y`) isn't supported yet - left as a known gap, same as today.
             for alias in node.names:
-                if alias.asname is None:
-                    imports.append(IRImport(alias.name, names=None))
+                if alias.asname is not None:
+                    continue
+                if ImportsBuilder.is_annotation_only_root(alias.name.split(".", 1)[0]):
+                    continue
+                imports.append(IRImport(_daml_module_ref(alias.name), names=None))
     return tuple(imports)
 
 
-def lower_module(module: vy_ast.Module) -> IRModule:
+def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
     structs = []
     flags = []
     interfaces = []
@@ -389,5 +392,5 @@ def lower_module(module: vy_ast.Module) -> IRModule:
         templates=tuple(templates),
         instances=tuple(instances),
         functions=tuple(functions),
-        imports=_lower_imports(module.body),
+        imports=_lower_imports(module.body, import_graph),
     )

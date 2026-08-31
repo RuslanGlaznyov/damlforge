@@ -1,7 +1,7 @@
 import pytest
 
 from forge.ast.parse import parse_to_ast
-from forge.exceptions import DamlForgeException
+from forge.exceptions import DamlForgeException, ExceptionList
 from forge.semantics import analyze_module
 from forge.semantics.analysis.imports import ImportsBuilder
 from forge.models.error_codes import ErrorCodes
@@ -506,7 +506,7 @@ def test_integrity_sum_changes_when_sibling_import_changes(tmp_path):
             main_path.read_text(), module_path="main.vy", resolved_path=str(main_path)
         )
         builder = ImportsBuilder()
-        builder.resolve_sibling_imports(module)
+        builder.resolve_imports(module, ExceptionList())
         return builder.integrity_sum(module)
 
     before = _main_integrity_sum()
