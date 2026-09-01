@@ -249,6 +249,10 @@ def daml_module_name(stem: str) -> str:
     return name if name and name[0].isalpha() else f"M{name}"
 
 
+def daml_choice_name(name: str) -> str:
+    return name[:1].upper() + name[1:] if name else name
+
+
 # Converts four bytes to an integer
 def fourbytes_to_int(inp):
     return (inp[0] << 24) + (inp[1] << 16) + (inp[2] << 8) + inp[3]

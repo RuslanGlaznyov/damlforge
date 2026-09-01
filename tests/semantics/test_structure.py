@@ -45,6 +45,50 @@ template Asset:
         pass
 """
 
+CHOICE_LEADING_UNDERSCORE_NAME_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def _mint(self) -> bool:
+        return True
+"""
+
+CHOICE_DOUBLE_LEADING_UNDERSCORE_NAME_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def __mint(self) -> bool:
+        return True
+"""
+
+CHOICE_NAME_WITH_NO_LETTER_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def _123(self) -> bool:
+        return True
+"""
+
+CHOICE_ALL_UNDERSCORE_NAME_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def ___(self) -> bool:
+        return True
+"""
+
 
 CHOICE_MISSING_CONSUMING = """
 template Asset:
@@ -511,6 +555,10 @@ def test_valid_decorator_usage_passes(source):
         (FLAG_VALUE_ACCESS_UNKNOWN_MEMBER, ErrorCodes.DF1216.value),
         (FLAG_MEMBER_LOWERCASE_NOT_ALLOWED, ErrorCodes.DF1217.value),
         (FLAG_MEMBER_MIXED_CASE_NOT_ALLOWED, ErrorCodes.DF1217.value),
+        (CHOICE_LEADING_UNDERSCORE_NAME_NOT_ALLOWED, ErrorCodes.DF1218.value),
+        (CHOICE_DOUBLE_LEADING_UNDERSCORE_NAME_NOT_ALLOWED, ErrorCodes.DF1218.value),
+        (CHOICE_NAME_WITH_NO_LETTER_NOT_ALLOWED, ErrorCodes.DF1218.value),
+        (CHOICE_ALL_UNDERSCORE_NAME_NOT_ALLOWED, ErrorCodes.DF1218.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

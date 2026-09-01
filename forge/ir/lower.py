@@ -60,6 +60,8 @@ _UNARY_OPS = {"Not": "not", "USub": "-"}
 _COMPARE_OPS = {
     "Eq": "==",
     "NotEq": "!=",
+    "Is": "==",
+    "IsNot": "!=",
     "Lt": "<",
     "LtE": "<=",
     "Gt": ">",

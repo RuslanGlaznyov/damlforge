@@ -77,6 +77,17 @@ def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -
             kwargs = {kw.arg: kw.value for kw in call.keywords}
             qualified_name = f"{container.name}.{fn.name}"
 
+            if fn.name.startswith("_"):
+                errors.append(
+                    DamlForgeException(
+                        f"Choice `{qualified_name}` starts with `_` - Python's own "
+                        "convention for a private method, which contradicts `@choice` "
+                        "making it a public, externally-exercisable Daml choice",
+                        fn,
+                        code=ErrorCodes.DF1218.value,
+                    )
+                )
+
             if "controller" not in kwargs:
                 errors.append(
                     DamlForgeException(

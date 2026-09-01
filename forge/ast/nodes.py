@@ -1244,6 +1244,18 @@ class NotEq(Operator):
     _op = operator.ne
 
 
+class Is(Operator):
+    __slots__ = ()
+    _description = "identity"
+    _op = operator.is_
+
+
+class IsNot(Operator):
+    __slots__ = ()
+    _description = "non-identity"
+    _op = operator.is_not
+
+
 class Lt(Operator):
     __slots__ = ()
     _description = "less than"

@@ -1,5 +1,7 @@
 from forge.models import Party, choice, GenMap
+from typing import Optional
 from Splice.AmuletRules import AppTransferContext
+from models import CrossTemplate
 
 template SimpleTemplate:
     platform: Party
@@ -8,6 +10,7 @@ template SimpleTemplate:
     total_target: Decimal
     total_balance: Decimal
     test_balance: int
+    cross_template: Optional[CrossTemplate]
 
     signatory: list[Party] = [platform]
     mint_receiver: list[Party] = [platform, developer, dso]
@@ -20,7 +23,8 @@ template SimpleTemplate:
         dso: Party,
         total_target: Decimal,
         total_balance: Decimal,
-        test_balance: int
+        test_balance: int,
+        cross_template: Optional[CrossTemplate]
     ):
         ensure (total_target > Decimal(0) and total_balance >= Decimal(0))
         assert total_target > Decimal(0), "total_target must be greater than 0"
@@ -32,6 +36,7 @@ template SimpleTemplate:
         self.dso = dso
         self.total_target = total_target
         self.total_balance = total_balance
+        self.cross_template = cross_template
 
     @choice(controller=[developer, platform], consuming=True)
     def SimpleTemplate_Mint(self) -> ContractId[SimpleTemplate]:
@@ -52,4 +57,7 @@ template SimpleTemplate:
         beneficiary: list[Party], 
         amount: int,
         app_transfer_context : AppTransferContext) -> bool:
+        
+        if self.cross_template is not None:
+            self.cross_template.CrossTemplate_Cross()
         return True
