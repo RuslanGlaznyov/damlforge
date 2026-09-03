@@ -90,6 +90,65 @@ template Asset:
 """
 
 
+SELF_REFERENCE_VIA_TEMPLATE_NAME_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def withdraw(self, amount: int) -> bool:
+        return Asset.balance >= amount
+"""
+
+SELF_REFERENCE_VIA_ANOTHER_TEMPLATE_NAME_IS_ALLOWED = """
+template Other:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def noop(self) -> bool:
+        return True
+
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def withdraw(self, amount: int) -> bool:
+        return self.balance >= amount
+"""
+
+UNRESOLVED_NAME_USED_AS_ATTRIBUTE_BASE_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def withdraw(self, amount: int) -> bool:
+        return SomeUndeclaredName.balance >= amount
+"""
+
+LOCAL_VARIABLE_USED_AS_ATTRIBUTE_BASE_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def withdraw(self, amount: int) -> bool:
+        other: Asset = self
+        return other.balance >= amount
+"""
+
+
 CHOICE_MISSING_CONSUMING = """
 template Asset:
     owner: Party
@@ -521,6 +580,8 @@ def test_valid_template_passes():
         TEMPLATE_ENSURE_CALL_IS_ALLOWED,
         TEMPLATE_WITHOUT_ENSURE_IS_ALLOWED,
         FLAG_VALUE_ACCESS_IS_ALLOWED,
+        SELF_REFERENCE_VIA_ANOTHER_TEMPLATE_NAME_IS_ALLOWED,
+        LOCAL_VARIABLE_USED_AS_ATTRIBUTE_BASE_IS_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -559,6 +620,8 @@ def test_valid_decorator_usage_passes(source):
         (CHOICE_DOUBLE_LEADING_UNDERSCORE_NAME_NOT_ALLOWED, ErrorCodes.DF1218.value),
         (CHOICE_NAME_WITH_NO_LETTER_NOT_ALLOWED, ErrorCodes.DF1218.value),
         (CHOICE_ALL_UNDERSCORE_NAME_NOT_ALLOWED, ErrorCodes.DF1218.value),
+        (SELF_REFERENCE_VIA_TEMPLATE_NAME_NOT_ALLOWED, ErrorCodes.DF1219.value),
+        (UNRESOLVED_NAME_USED_AS_ATTRIBUTE_BASE_NOT_ALLOWED, ErrorCodes.DF1219.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

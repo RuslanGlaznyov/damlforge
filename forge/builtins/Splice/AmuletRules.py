@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Annotated, Optional
 
 from forge.models.types import ContractId, GenMap, Party, RelTime, Text, Timestamp
-from .. import DamlName, ExposeConstructor
+from .. import DamlCaseAccessor, DamlName
 from .Amulet import (
     Amulet,
     AmuletCreateSummary,
@@ -70,6 +70,7 @@ __all__ = [
     "TransferResult",
     "exercise_app_transfer",
     "created_amulet_to_holding",
+    "created_amulet_locked_cid",
     "TransferContext",
     "ExternalPartyTransferContext",
     "PaymentTransferContext",
@@ -245,7 +246,6 @@ class TransferSummary:
     sender_change_fee: Annotated[Decimal, DamlName("senderChangeFee")]
 
 
-@ExposeConstructor()
 @dataclass(frozen=True)
 class AppTransferContext:
     """The real Daml `AppTransferContext` record - the ledger context an app
@@ -294,7 +294,6 @@ def InputAmulet(amulet_cid: ContractId[Amulet]) -> TransferInput:
     )
 
 
-@ExposeConstructor()
 @dataclass(frozen=True)
 class TransferOutput:
     """The real Daml `TransferOutput` record - one output of a batch
@@ -316,7 +315,6 @@ class TransferOutput:
     meta: Optional[Metadata] = None
 
 
-@ExposeConstructor()
 @dataclass(frozen=True)
 class Transfer:
     """The real Daml `Transfer` record - a batch transfer of one or more
@@ -414,6 +412,18 @@ def created_amulet_to_holding(created_amulet: CreatedAmulet) -> ContractId[Holdi
     """
     raise NotImplementedError(
         "created_amulet_to_holding is a real Daml function - only meaningful "
+        "inside compiled .vy source, not callable directly from Python"
+    )
+
+
+@DamlCaseAccessor("TransferResultLockedAmulet")
+def created_amulet_locked_cid(created_amulet: CreatedAmulet) -> Optional[ContractId[LockedAmulet]]:
+    """DamlForge-only helper (no real-Daml equivalent) that extracts the
+    `ContractId LockedAmulet` from `CreatedAmulet`'s `TransferResultLockedAmulet`
+    constructor, or `None` for any other constructor - the same pattern-match
+    real Daml code must write inline since `CreatedAmulet` is a variant type."""
+    raise NotImplementedError(
+        "created_amulet_locked_cid is a DamlForge-only helper - only meaningful "
         "inside compiled .vy source, not callable directly from Python"
     )
 

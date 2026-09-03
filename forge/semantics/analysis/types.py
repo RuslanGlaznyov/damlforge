@@ -174,6 +174,142 @@ def check_flag_value_access(node: vy_ast.TopLevel, declarations: dict, errors: E
         )
 
 
+_NON_VARIABLE_DECLARATION_TYPES = (
+    vy_ast.StructDef,
+    vy_ast.InterfaceDef,
+    vy_ast.TemplateDef,
+    vy_ast.InstanceDef,
+)
+
+_LEDGER_EFFECT_BUILTINS = frozenset({"create", "fetch", "exercise", "archive", "lookup"})
+_LANGUAGE_BUILTIN_NAMES = frozenset({"len", "ceil"})
+
+
+def known_global_names(modules) -> frozenset:
+    from forge.builtins import collect_daml_builtins
+
+    names = set(daml_builtin_type_names())
+    for module in _reachable_modules(modules):
+        names |= ImportsBuilder.imported_names(module)
+        for node in module.body:
+            if isinstance(node, vy_ast.FunctionDef):
+                names.add(node.name)
+    names |= _LEDGER_EFFECT_BUILTINS
+    names |= _LANGUAGE_BUILTIN_NAMES
+    names |= set(collect_daml_builtins().function_renames.keys())
+    return frozenset(names)
+
+
+def _extract_bound_names(target, names: set) -> None:
+    if isinstance(target, vy_ast.Name):
+        names.add(target.id)
+    elif isinstance(target, vy_ast.Tuple):
+        for el in target.elements:
+            _extract_bound_names(el, names)
+    elif hasattr(target, "target"):
+        _extract_bound_names(target.target, names)
+
+
+def _local_bound_names(fn: vy_ast.FunctionDef) -> frozenset:
+    names = {a.arg for a in fn.args.args}
+    for assign in fn.get_descendants((vy_ast.Assign, vy_ast.AnnAssign)):
+        _extract_bound_names(assign.target, names)
+    for for_stmt in fn.get_descendants(vy_ast.For):
+        _extract_bound_names(for_stmt.target, names)
+    return frozenset(names)
+
+
+def check_unresolved_attribute_base(
+    node: vy_ast.TopLevel, declarations: dict, global_names: frozenset, errors: ExceptionList
+) -> None:
+    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    for fn in fns:
+        local_names = _local_bound_names(fn)
+        for attr in fn.get_descendants(vy_ast.Attribute):
+            if not isinstance(attr.value, vy_ast.Name):
+                continue
+            name = attr.value.id
+            if name in local_names:
+                continue
+            declaration = declarations.get(name)
+            if isinstance(declaration, vy_ast.FlagDef):
+                continue
+            if isinstance(declaration, _NON_VARIABLE_DECLARATION_TYPES):
+                errors.append(
+                    DamlForgeException(
+                        f"`{name}` is a type name, not a variable - no variable named `{name}` "
+                        f"exists in this scope; use `self.{attr.attr}` to access the current "
+                        "contract's fields",
+                        attr,
+                        code=ErrorCodes.DF1219.value,
+                    )
+                )
+                continue
+            if name in global_names:
+                continue
+            errors.append(
+                DamlForgeException(
+                    f"`{name}` is not defined - no variable, parameter, import, or declaration "
+                    f"named `{name}` exists in scope here",
+                    attr,
+                    code=ErrorCodes.DF1219.value,
+                )
+            )
+
+
+def _is_list_type_annotation(node) -> bool:
+    return (
+        isinstance(node, vy_ast.Subscript)
+        and isinstance(node.value, vy_ast.Name)
+        and node.value.id == "list"
+    )
+
+
+def known_list_returning_functions(modules) -> frozenset:
+    names = set()
+    for module in _reachable_modules(modules):
+        for node in module.body:
+            if isinstance(node, vy_ast.FunctionDef) and _is_list_type_annotation(node.returns):
+                names.add(node.name)
+    return frozenset(names)
+
+
+def _assigns_list_value(value, list_returning_fns: frozenset, list_names: set) -> bool:
+    if isinstance(value, vy_ast.List):
+        return True
+    if isinstance(value, vy_ast.Name):
+        return value.id in list_names
+    if (
+        isinstance(value, vy_ast.Call)
+        and isinstance(value.func, vy_ast.Name)
+        and value.func.id in list_returning_fns
+    ):
+        return True
+    return False
+
+
+def _mark_list_subscripts_in_body(stmts, list_returning_fns: frozenset, list_names: set) -> None:
+    for stmt in stmts:
+        for sub in stmt.get_descendants(vy_ast.Subscript, include_self=True):
+            if (
+                isinstance(sub.value, vy_ast.Name)
+                and sub.value.id in list_names
+                and isinstance(sub.slice, vy_ast.Int)
+            ):
+                sub._metadata["is_list_value"] = True
+        if isinstance(stmt, vy_ast.Assign) and isinstance(stmt.target, vy_ast.Name):
+            if _assigns_list_value(stmt.value, list_returning_fns, list_names):
+                list_names.add(stmt.target.id)
+            else:
+                list_names.discard(stmt.target.id)
+
+
+def mark_list_subscripts(node: vy_ast.TopLevel, list_returning_fns: frozenset) -> None:
+    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    for fn in fns:
+        _mark_list_subscripts_in_body(fn.body, list_returning_fns, set())
+
+
 def _walk_type_ref(type_ref: TypeRef, known_names: set, node, context: str, errors: ExceptionList) -> None:
     if type_ref.name not in known_names:
         errors.append(

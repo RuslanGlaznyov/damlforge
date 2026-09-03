@@ -71,12 +71,19 @@ def test_constructor_types_include_explicitly_marked_types_and_variant_targets()
     assert "BuiltinMetadata" not in constructor_types
 
 
-def test_constructor_types_excludes_unmarked_types_even_when_constructed():
+def test_constructor_types_includes_every_dataclass_record():
     constructor_types = collect_daml_builtins().constructor_types
 
-    assert "TimeLock" not in constructor_types
-    assert "Amulet" not in constructor_types
-    assert "InstrumentId" not in constructor_types
+    assert "TimeLock" in constructor_types
+    assert "LockedAmulet_UnlockV2" in constructor_types
+    assert "Amulet" in constructor_types
+    assert "InstrumentId" in constructor_types
+
+
+def test_constructor_types_excludes_plain_interface_marker_classes():
+    constructor_types = collect_daml_builtins().constructor_types
+
+    assert "Holding" not in constructor_types
 
 
 def test_from_interface_contract_id_renders_and_needs_no_extra_import():

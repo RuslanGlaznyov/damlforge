@@ -21,10 +21,16 @@ class DamlName:
 
 
 @dataclasses.dataclass(frozen=True)
-class ExposeConstructor:
-    def __call__(self, cls):
-        cls.__daml_expose_constructor__ = True
-        return cls
+class DamlCaseAccessor:
+    """Marks a DamlForge-only helper with no real-Daml equivalent name that
+    pattern-matches a variant type's given constructor, rendering as an
+    inline `case ... of Constructor x -> Some x; _ -> None` expression."""
+
+    constructor: str
+
+    def __call__(self, fn):
+        fn.__daml_case_accessor__ = self.constructor
+        return fn
 
 
 @dataclasses.dataclass(frozen=True)
@@ -35,6 +41,7 @@ class BuiltinMetadata:
     ledger_effect_fns: frozenset
     constructor_types: frozenset
     constructor_of: dict
+    case_accessors: dict
 
 
 def _walk_submodules(package_name: str):
@@ -51,6 +58,7 @@ def collect_daml_builtins() -> BuiltinMetadata:
     ledger_effect_fns: set = set()
     marked_constructor_types: set = set()
     constructor_of: dict = {}
+    case_accessors: dict = {}
 
     for module in _walk_submodules("forge.builtins"):
         for name, obj in vars(module).items():
@@ -66,10 +74,13 @@ def collect_daml_builtins() -> BuiltinMetadata:
                 if getattr(obj, "__daml_ledger_effect__", False):
                     ledger_effect_fns.add(name)
 
+            case_constructor = getattr(obj, "__daml_case_accessor__", None)
+            if case_constructor is not None and callable(obj):
+                case_accessors[name] = case_constructor
+
             if isinstance(obj, type):
-                if getattr(obj, "__daml_expose_constructor__", False):
-                    marked_constructor_types.add(name)
                 if dataclasses.is_dataclass(obj):
+                    marked_constructor_types.add(name)
                     hints = typing.get_type_hints(obj, include_extras=True)
                     for field in dataclasses.fields(obj):
                         for meta in getattr(hints.get(field.name), "__metadata__", ()):
@@ -89,4 +100,5 @@ def collect_daml_builtins() -> BuiltinMetadata:
         ledger_effect_fns=frozenset(ledger_effect_fns),
         constructor_types=frozenset(marked_constructor_types | set(constructor_of.values())),
         constructor_of=constructor_of,
+        case_accessors=case_accessors,
     )

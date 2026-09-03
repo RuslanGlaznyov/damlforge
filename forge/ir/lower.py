@@ -98,7 +98,8 @@ def lower_expr(node: vy_ast.VyperNode):
             return IRName(node.attr)
         return IRAttribute(lower_expr(node.value), node.attr)
     if isinstance(node, vy_ast.Subscript):
-        return IRSubscript(lower_expr(node.value), lower_expr(node.slice))
+        is_list = bool(node._metadata.get("is_list_value"))
+        return IRSubscript(lower_expr(node.value), lower_expr(node.slice), is_list=is_list)
     if isinstance(node, vy_ast.Call):
         args = tuple(lower_expr(a) for a in node.args)
         keywords = tuple((kw.arg, lower_expr(kw.value)) for kw in node.keywords)
@@ -338,9 +339,24 @@ def lower_instance(node: vy_ast.InstanceDef) -> IRInstance:
     return IRInstance(node.name, bases, choices, src=_src(node))
 
 
+_CONSTRUCTOR_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.TemplateDef, vy_ast.FlagDef)
+
+
+def _sibling_constructor_names(node) -> frozenset:
+    names = set()
+    for info in node._metadata.get("import_infos", ()):
+        for decl in info.ast.body:
+            if isinstance(decl, _CONSTRUCTOR_DECLARATION_TYPES):
+                names.add(decl.name)
+    return frozenset(names)
+
+
 def _lower_imports(body, import_graph=None) -> tuple:
+    from forge.builtins import collect_daml_builtins
     from forge.semantics.analysis.imports import ImportsBuilder
     from forge.utils import daml_module_name
+
+    case_accessor_names = frozenset(collect_daml_builtins().case_accessors)
 
     def _daml_module_ref(module_str: str) -> str:
         if import_graph is not None:
@@ -353,10 +369,13 @@ def _lower_imports(body, import_graph=None) -> tuple:
     for node in body:
         if isinstance(node, vy_ast.ImportFrom):
             names = tuple(
-                a.name for a in node.names if ImportsBuilder.needs_daml_import(node.module, a.name)
+                a.name
+                for a in node.names
+                if a.name not in case_accessor_names and ImportsBuilder.needs_daml_import(node.module, a.name)
             )
             if names:
-                imports.append(IRImport(_daml_module_ref(node.module), names))
+                constructor_names = frozenset(names) & _sibling_constructor_names(node)
+                imports.append(IRImport(_daml_module_ref(node.module), names, constructor_names))
         elif isinstance(node, vy_ast.Import):
             for alias in node.names:
                 if alias.asname is not None:

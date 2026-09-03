@@ -6,9 +6,13 @@ from forge.semantics.analysis.types import (
     check_container_type_annotations,
     check_flag_value_access,
     check_optional_field_construction,
+    check_unresolved_attribute_base,
     known_declarations,
     known_field_types,
+    known_global_names,
+    known_list_returning_functions,
     known_type_names,
+    mark_list_subscripts,
 )
 
 
@@ -44,12 +48,16 @@ def analyze_modules(modules):
     type_names = known_type_names(module_list)
     field_types = known_field_types(module_list)
     declarations = known_declarations(module_list)
+    list_returning_fns = known_list_returning_functions(module_list)
+    global_names = known_global_names(module_list)
     for module in module_list:
         for node in module.body:
             check_container(node, errors, recursion_context)
             check_container_type_annotations(node, type_names, errors)
             check_optional_field_construction(node, field_types, errors)
             check_flag_value_access(node, declarations, errors)
+            mark_list_subscripts(node, list_returning_fns)
+            check_unresolved_attribute_base(node, declarations, global_names, errors)
     errors.raise_if_not_empty()
 
     return imports_builder.graph

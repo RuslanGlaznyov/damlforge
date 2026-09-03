@@ -1,4 +1,4 @@
-from typing import TypeVar
+from typing import Optional, TypeVar
 
 from forge.models.types import ContractId, RelTime, Timestamp
 from . import DamlName
@@ -51,5 +51,13 @@ def add_rel_time(time: Timestamp, rel: RelTime) -> Timestamp:
 def sub_time(t1: Timestamp, t2: Timestamp) -> RelTime:
     raise NotImplementedError(
         "sub_time is a real DA.Time builtin - only meaningful inside "
+        "compiled .vy source, not callable directly from Python"
+    )
+
+
+@DamlName("fromSome", module="DA.Optional")
+def from_some(value: Optional[_T1]) -> _T1:
+    raise NotImplementedError(
+        "from_some is a real DA.Optional builtin - only meaningful inside "
         "compiled .vy source, not callable directly from Python"
     )
