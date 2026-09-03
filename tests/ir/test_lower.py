@@ -13,6 +13,7 @@ from forge.ir.nodes import (
     IRCompare,
     IRConstant,
     IRDict,
+    IRExprStmt,
     IRFor,
     IRIf,
     IRList,
@@ -79,6 +80,214 @@ def test_unvalidated_attribute_access_lowers_to_ir_attribute():
 
     (fn,) = ir.functions
     assert fn.body[0] == IRReturn(IRAttribute(IRName("x"), "PENDING"))
+
+
+def test_bare_value_assigned_to_optional_field_auto_wraps_in_some():
+    ir = _analyze_and_lower(
+        "struct Terms:\n"
+        "    label: Optional[Text]\n\n"
+        "def f(label: Text) -> Terms:\n"
+        "    return Terms(label=label)\n"
+    )
+
+    (fn,) = ir.functions
+    assert fn.body[0] == IRReturn(IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),)))
+
+
+def test_optional_field_read_with_non_optional_annotation_auto_unwraps():
+    ir = _analyze_and_lower(
+        "struct Terms:\n"
+        "    fee: Decimal\n\n"
+        "struct Holder:\n"
+        "    terms: Optional[Terms]\n\n"
+        "def f(holder: Holder) -> Decimal:\n"
+        "    t: Terms = holder.terms\n"
+        "    return t.fee\n"
+    )
+
+    (fn,) = ir.functions
+    assign = fn.body[0]
+    assert isinstance(assign, IRAssign)
+    assert assign.value == IRCall(IRName("from_some"), (IRAttribute(IRName("holder"), "terms"),))
+
+
+def test_optional_typed_return_value_auto_unwraps_to_match_bare_return_type():
+    ir = _analyze_and_lower(
+        "def f(value: Optional[list[int]]) -> list[int]:\n"
+        "    if value == None:\n"
+        "        return []\n"
+        "    return value\n"
+    )
+
+    (fn,) = ir.functions
+    final_return = fn.body[-1]
+    assert final_return == IRReturn(IRCall(IRName("from_some"), (IRName("value"),)))
+
+
+def test_none_assigned_to_optional_field_is_not_wrapped():
+    ir = _analyze_and_lower(
+        "struct Terms:\n"
+        "    label: Optional[Text]\n\n"
+        "def f() -> Terms:\n"
+        "    return Terms(label=None)\n"
+    )
+
+    (fn,) = ir.functions
+    assert fn.body[0] == IRReturn(IRCall(IRName("Terms"), (), (("label", IRConstant(None)),)))
+
+
+def test_manual_some_call_in_vy_source_is_rejected():
+    with pytest.raises(Exception, match="DF1219"):
+        _analyze_and_lower(
+            "struct Terms:\n"
+            "    label: Optional[Text]\n\n"
+            "def f(label: Text) -> Terms:\n"
+            "    return Terms(label=Some(label))\n"
+        )
+
+
+def test_manual_from_some_call_in_vy_source_is_rejected():
+    with pytest.raises(Exception, match="DF1219"):
+        _analyze_and_lower(
+            "def f(x: Optional[Decimal]) -> Decimal:\n"
+            "    return from_some(x)\n"
+        )
+
+
+def test_nested_attribute_chain_auto_unwraps():
+    ir = _analyze_and_lower(
+        "struct Rewards:\n"
+        "    amount: Decimal\n\n"
+        "struct Terms:\n"
+        "    rewards: Optional[Rewards]\n\n"
+        "template Tracker:\n"
+        "    owner: Party\n"
+        "    terms: Terms\n"
+        "    signatory: list[Party] = [owner]\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def get_rewards(self) -> Decimal:\n"
+        "        rewards: Rewards = self.terms.rewards\n"
+        "        return rewards.amount\n"
+    )
+
+    (tracker,) = ir.templates
+    (choice,) = tracker.choices
+    assign = choice.body[0]
+    assert isinstance(assign, IRAssign)
+    assert assign.value == IRCall(
+        IRName("from_some"), (IRAttribute(IRAttribute(IRName("self"), "terms"), "rewards"),)
+    )
+
+
+def test_for_loop_target_type_does_not_leak_into_outer_scope():
+    ir = _analyze_and_lower(
+        "struct Terms:\n"
+        "    label: Optional[Text]\n\n"
+        "def f(label: Text, xs: list[Text]) -> Terms:\n"
+        "    ys: list[Text] = []\n"
+        "    for label: Text in xs:\n"
+        "        ys.append(label)\n"
+        "    return Terms(label=label)\n"
+    )
+
+    (fn,) = ir.functions
+    final_return = fn.body[-1]
+    assert final_return == IRReturn(
+        IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),))
+    )
+
+
+def test_variable_with_same_type_in_both_if_branches_is_known_after_the_if():
+    ir = _analyze_and_lower(
+        "struct Terms:\n"
+        "    label: Optional[Text]\n\n"
+        "def f(cond: bool, a: Text, b: Text) -> Terms:\n"
+        "    if cond:\n"
+        "        label = a\n"
+        "    else:\n"
+        "        label = b\n"
+        "    return Terms(label=label)\n"
+    )
+
+    (fn,) = ir.functions
+    final_return = fn.body[-1]
+    assert final_return == IRReturn(
+        IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),))
+    )
+
+
+def test_list_append_of_optional_value_auto_unwraps():
+    ir = _analyze_and_lower(
+        "def maybe_text(x: Optional[Text]) -> Optional[Text]:\n"
+        "    return x\n\n"
+        "def f(x: Optional[Text]) -> list[Text]:\n"
+        "    out: list[Text] = []\n"
+        "    value = maybe_text(x)\n"
+        "    out.append(value)\n"
+        "    return out\n"
+    )
+
+    (_maybe_text, fn) = ir.functions
+    append_stmt = fn.body[2]
+    assert append_stmt == IRExprStmt(
+        IRCall(IRAttribute(IRName("out"), "append"), (IRCall(IRName("from_some"), (IRName("value"),)),))
+    )
+
+
+def test_reassignment_of_optional_local_auto_wraps():
+    ir = _analyze_and_lower(
+        "def f(cond: bool, a: Text) -> Optional[Text]:\n"
+        "    result: Optional[Text] = None\n"
+        "    if cond:\n"
+        "        result = a\n"
+        "    return result\n"
+    )
+
+    (fn,) = ir.functions
+    if_stmt = fn.body[1]
+    assert isinstance(if_stmt, IRIf)
+    assert if_stmt.body[0] == IRAssign(IRName("result"), IRCall(IRName("Some"), (IRName("a"),)))
+
+
+def test_fetch_infers_contract_payload_type_from_contract_id_argument():
+    ir = _analyze_and_lower(
+        "struct Terms:\n"
+        "    label: Text\n\n"
+        "template Tracker:\n"
+        "    owner: Party\n"
+        "    terms: Optional[Terms]\n"
+        "    signatory: list[Party] = [owner]\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def read_via_fetch(self, cid: ContractId['Tracker']) -> Terms:\n"
+        "        data = fetch(cid)\n"
+        "        terms: Terms = data.terms\n"
+        "        return terms\n"
+    )
+
+    (tracker,) = ir.templates
+    (choice,) = tracker.choices
+    terms_assign = choice.body[1]
+    assert isinstance(terms_assign, IRAssign)
+    assert terms_assign.value == IRCall(IRName("from_some"), (IRAttribute(IRName("data"), "terms"),))
+
+
+def test_create_infers_bare_contract_id_result_type():
+    ir = _analyze_and_lower(
+        "template Tracker:\n"
+        "    owner: Party\n"
+        "    signatory: list[Party] = [owner]\n\n"
+        "struct Holder:\n"
+        "    tracker_cid: Optional[ContractId[Tracker]]\n\n"
+        "def build(owner: Party) -> Holder:\n"
+        "    new_cid = create(Tracker(owner=owner))\n"
+        "    return Holder(tracker_cid=new_cid)\n"
+    )
+
+    (fn,) = ir.functions
+    final_return = fn.body[-1]
+    assert final_return == IRReturn(
+        IRCall(IRName("Holder"), (), (("tracker_cid", IRCall(IRName("Some"), (IRName("new_cid"),))),))
+    )
 
 
 def test_generic_type_ref_lowers_nested_subscripts():

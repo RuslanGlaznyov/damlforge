@@ -5,14 +5,15 @@ from forge.semantics.analysis.structure import _RecursionContext, check_containe
 from forge.semantics.analysis.types import (
     check_container_type_annotations,
     check_flag_value_access,
-    check_optional_field_construction,
-    check_unresolved_attribute_base,
+    check_unresolved_names,
     known_declarations,
     known_field_types,
     known_global_names,
     known_list_returning_functions,
+    known_return_types,
     known_type_names,
     mark_list_subscripts,
+    mark_optional_conversions,
 )
 
 
@@ -47,6 +48,7 @@ def analyze_modules(modules):
     recursion_context = _RecursionContext(module_list)
     type_names = known_type_names(module_list)
     field_types = known_field_types(module_list)
+    return_types = known_return_types(module_list, field_types)
     declarations = known_declarations(module_list)
     list_returning_fns = known_list_returning_functions(module_list)
     global_names = known_global_names(module_list)
@@ -54,10 +56,10 @@ def analyze_modules(modules):
         for node in module.body:
             check_container(node, errors, recursion_context)
             check_container_type_annotations(node, type_names, errors)
-            check_optional_field_construction(node, field_types, errors)
             check_flag_value_access(node, declarations, errors)
             mark_list_subscripts(node, list_returning_fns)
-            check_unresolved_attribute_base(node, declarations, global_names, errors)
+            check_unresolved_names(node, declarations, global_names, errors)
+            mark_optional_conversions(node, field_types, return_types)
     errors.raise_if_not_empty()
 
     return imports_builder.graph

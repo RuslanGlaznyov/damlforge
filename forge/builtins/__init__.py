@@ -6,6 +6,8 @@ import typing
 from functools import lru_cache
 from typing import Optional
 
+from forge.ir.nodes import TypeRef
+
 
 @dataclasses.dataclass(frozen=True)
 class DamlName:
@@ -22,10 +24,6 @@ class DamlName:
 
 @dataclasses.dataclass(frozen=True)
 class DamlCaseAccessor:
-    """Marks a DamlForge-only helper with no real-Daml equivalent name that
-    pattern-matches a variant type's given constructor, rendering as an
-    inline `case ... of Constructor x -> Some x; _ -> None` expression."""
-
     constructor: str
 
     def __call__(self, fn):
@@ -42,12 +40,35 @@ class BuiltinMetadata:
     constructor_types: frozenset
     constructor_of: dict
     case_accessors: dict
+    field_types: dict
+    function_return_types: dict
 
 
 def _walk_submodules(package_name: str):
     package = importlib.import_module(package_name)
     for info in pkgutil.walk_packages(package.__path__, package_name + "."):
         yield importlib.import_module(info.name)
+
+
+def _python_type_to_type_ref(py_type) -> Optional[TypeRef]:
+    if py_type is None:
+        return None
+    origin = typing.get_origin(py_type)
+    if origin is None:
+        name = getattr(py_type, "__name__", None)
+        return TypeRef(name) if name else None
+    args = typing.get_args(py_type)
+    if origin is typing.Union:
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1 and len(non_none) != len(args):
+            inner = _python_type_to_type_ref(non_none[0])
+            return TypeRef("Optional", (inner,) if inner is not None else ())
+        return None
+    name = getattr(origin, "__name__", None)
+    if name is None:
+        return None
+    arg_refs = tuple(ref for a in args if (ref := _python_type_to_type_ref(a)) is not None)
+    return TypeRef(name, arg_refs)
 
 
 @lru_cache(maxsize=1)
@@ -59,6 +80,8 @@ def collect_daml_builtins() -> BuiltinMetadata:
     marked_constructor_types: set = set()
     constructor_of: dict = {}
     case_accessors: dict = {}
+    field_types: dict = {}
+    function_return_types: dict = {}
 
     for module in _walk_submodules("forge.builtins"):
         for name, obj in vars(module).items():
@@ -82,16 +105,25 @@ def collect_daml_builtins() -> BuiltinMetadata:
                 if dataclasses.is_dataclass(obj):
                     marked_constructor_types.add(name)
                     hints = typing.get_type_hints(obj, include_extras=True)
+                    stripped_hints = typing.get_type_hints(obj, include_extras=False)
+                    fields: dict = {}
                     for field in dataclasses.fields(obj):
                         for meta in getattr(hints.get(field.name), "__metadata__", ()):
                             if isinstance(meta, DamlName):
                                 field_renames[field.name] = meta.name
+                        type_ref = _python_type_to_type_ref(stripped_hints.get(field.name))
+                        if type_ref is not None:
+                            fields[field.name] = type_ref
+                    field_types[name] = fields
                 continue
 
-            if inspect.isfunction(obj) and name[:1].isupper():
+            if inspect.isfunction(obj):
                 return_type = typing.get_type_hints(obj).get("return")
-                if return_type is not None:
+                if name[:1].isupper() and return_type is not None:
                     constructor_of[name] = getattr(return_type, "__name__", str(return_type))
+                type_ref = _python_type_to_type_ref(return_type)
+                if type_ref is not None:
+                    function_return_types[name] = type_ref
 
     return BuiltinMetadata(
         function_renames=function_renames,
@@ -101,4 +133,6 @@ def collect_daml_builtins() -> BuiltinMetadata:
         constructor_types=frozenset(marked_constructor_types | set(constructor_of.values())),
         constructor_of=constructor_of,
         case_accessors=case_accessors,
+        field_types=field_types,
+        function_return_types=function_return_types,
     )

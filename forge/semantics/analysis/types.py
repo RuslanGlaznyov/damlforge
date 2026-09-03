@@ -8,11 +8,6 @@ from forge.semantics.analysis.structure import _reachable_modules
 
 
 class _PrimT:
-    """Base for a fixed, non-parametrized Daml primitive type - mirrors
-    Vyper's `_PrimT` (`vyper/semantics/types/primitives.py`), which wraps
-    even non-parametrized types like `BoolT`/`DecimalT`/`AddressT` as
-    classes rather than bare string literals."""
-
     _id: str
 
 
@@ -73,11 +68,6 @@ def _get_primitive_types() -> dict:
 
 
 class _GenericT:
-    """Base for a builtin generic/parametrized Daml type constructor -
-    mirrors Vyper's sequence types (`HashMapT`/`DArrayT`), which are also
-    registered by `_id` rather than a bare string in `GENERIC_TYPES`. Each
-    of these may grow its own construction/arity checks later."""
-
     _id: str
 
 
@@ -111,11 +101,6 @@ def _get_generic_types() -> dict:
 
 
 def daml_builtin_type_names() -> set:
-    """Every name Daml's own prelude always has in scope - a Python stand-in
-    for one of these (`forge.models.Party`, `decimal.Decimal`,
-    `typing.Optional`, ...) needs no corresponding Daml `import` at all,
-    unlike a genuine external Daml module reference (`Splice.*`, a sibling
-    `.vy` module)."""
     return set(_get_primitive_types()) | set(_get_generic_types())
 
 
@@ -182,7 +167,7 @@ _NON_VARIABLE_DECLARATION_TYPES = (
 )
 
 _LEDGER_EFFECT_BUILTINS = frozenset({"create", "fetch", "exercise", "archive", "lookup"})
-_LANGUAGE_BUILTIN_NAMES = frozenset({"len", "ceil"})
+_LANGUAGE_BUILTIN_NAMES = frozenset({"len", "ceil", "floor", "range"})
 
 
 def known_global_names(modules) -> frozenset:
@@ -219,7 +204,10 @@ def _local_bound_names(fn: vy_ast.FunctionDef) -> frozenset:
     return frozenset(names)
 
 
-def check_unresolved_attribute_base(
+_CONSTRUCTIBLE_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.TemplateDef)
+
+
+def check_unresolved_names(
     node: vy_ast.TopLevel, declarations: dict, global_names: frozenset, errors: ExceptionList
 ) -> None:
     fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
@@ -252,6 +240,26 @@ def check_unresolved_attribute_base(
                     f"`{name}` is not defined - no variable, parameter, import, or declaration "
                     f"named `{name}` exists in scope here",
                     attr,
+                    code=ErrorCodes.DF1219.value,
+                )
+            )
+
+        decorator_call_ids = {id(d) for d in fn.decorator_list if isinstance(d, vy_ast.Call)}
+        for call in fn.get_descendants(vy_ast.Call):
+            if id(call) in decorator_call_ids:
+                continue
+            if not isinstance(call.func, vy_ast.Name):
+                continue
+            name = call.func.id
+            if name in local_names or name in global_names:
+                continue
+            if isinstance(declarations.get(name), _CONSTRUCTIBLE_DECLARATION_TYPES):
+                continue
+            errors.append(
+                DamlForgeException(
+                    f"`{name}` is not defined - no function, import, or struct/template "
+                    f"declaration named `{name}` exists in scope here",
+                    call,
                     code=ErrorCodes.DF1219.value,
                 )
             )
@@ -374,20 +382,9 @@ def check_interface_view_type_annotation(
 
 
 def known_field_types(modules) -> dict:
-    """Registry of `{struct_or_template_name: {field_name: TypeRef}}`, built
-    from every struct/template field declaration across all reachable
-    modules. DamlForge does no general type inference or checking (IR is
-    structural, not typed - see the codegen design doc), but this narrow
-    registry is enough to catch one real, previously-undetected class of bug:
-    a field declared `Optional[T]` constructed with a value that is provably
-    NOT itself optional or `None` - real Daml's `Optional` is a genuine sum
-    type needing an explicit `Some(...)` wrapper, unlike Python's own
-    `Optional[T] = T | None` typing (which accepts a bare `T` with no wrapping
-    at all) - so this specific mismatch compiles fine as `.vy`/Python but
-    fails the real Daml compiler outright ("Couldn't match expected type
-    'Optional X' with actual type 'X'"), and nothing in this codebase caught
-    it before real `dpm build` validation started."""
-    registry = {}
+    from forge.builtins import collect_daml_builtins
+
+    registry = dict(collect_daml_builtins().field_types)
     for module in _reachable_modules(modules):
         for node in module.body:
             if not isinstance(node, (vy_ast.StructDef, vy_ast.TemplateDef)):
@@ -400,74 +397,168 @@ def known_field_types(modules) -> dict:
     return registry
 
 
-def _local_value_types(fn: vy_ast.FunctionDef, field_types: dict) -> dict:
-    """Best-effort, non-flow-sensitive map of `{name: TypeRef}` for names
-    whose type can be determined from this function's own signature/body: an
-    explicit parameter annotation, an explicit `AnnAssign`, or - failing an
-    annotation - assignment from a call to a known struct/template
-    constructor (which always produces that exact, non-optional type). Not
-    real type inference - just enough to catch the shapes actually seen in
-    practice without false-positiving on anything more complex (a value
-    computed via a plain function call, attribute access, or unannotated
-    parameter is left unresolved and never flagged)."""
-    local_types = {}
-    for arg in fn.args.args:
-        if arg.arg == "self" or arg.annotation is None:
-            continue
-        local_types[arg.arg] = lower_type(arg.annotation)
-    for stmt in fn.get_descendants(vy_ast.AnnAssign):
-        if isinstance(stmt.target, vy_ast.Name):
-            local_types[stmt.target.id] = lower_type(stmt.annotation)
-    for stmt in fn.get_descendants(vy_ast.Assign):
-        if (
-            isinstance(stmt.target, vy_ast.Name)
-            and stmt.target.id not in local_types
-            and isinstance(stmt.value, vy_ast.Call)
-            and isinstance(stmt.value.func, vy_ast.Name)
-            and stmt.value.func.id in field_types
-        ):
-            local_types[stmt.target.id] = TypeRef(stmt.value.func.id)
-    return local_types
+def known_return_types(modules, field_types: dict) -> dict:
+    from forge.builtins import collect_daml_builtins
+
+    types = {name: TypeRef(name) for name in field_types}
+    types.update(collect_daml_builtins().function_return_types)
+    for module in _reachable_modules(modules):
+        for node in module.body:
+            if isinstance(node, vy_ast.FunctionDef) and node.returns is not None:
+                types[node.name] = lower_type(node.returns)
+    return types
 
 
-def check_optional_field_construction(node: vy_ast.TopLevel, field_types: dict, errors: ExceptionList) -> None:
+def _infer_expr_type(expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict):
+    if isinstance(expr, vy_ast.NameConstant) and expr.value is None:
+        return TypeRef("None")
+    if isinstance(expr, vy_ast.List):
+        return TypeRef("list")
+    if isinstance(expr, vy_ast.Tuple):
+        return TypeRef("tuple")
+    if isinstance(expr, (vy_ast.Int, vy_ast.Decimal, vy_ast.Str, vy_ast.NameConstant)):
+        return TypeRef(type(expr).__name__)
+    if isinstance(expr, (vy_ast.BinOp, vy_ast.BoolOp, vy_ast.UnaryOp, vy_ast.Compare)):
+        return TypeRef(type(expr).__name__)
+    if isinstance(expr, vy_ast.Name):
+        return local_types.get(expr.id)
+    if isinstance(expr, vy_ast.Attribute):
+        if isinstance(expr.value, vy_ast.Name) and expr.value.id == "self":
+            base_type_name = enclosing_type
+        else:
+            base_type = _infer_expr_type(expr.value, enclosing_type, local_types, field_types, return_types)
+            base_type_name = base_type.name if base_type is not None else None
+        if base_type_name is None:
+            return None
+        return field_types.get(base_type_name, {}).get(expr.attr)
+    if isinstance(expr, vy_ast.Call) and isinstance(expr.func, vy_ast.Name):
+        fn = expr.func.id
+        if fn == "fetch" and expr.args:
+            cid_type = _infer_expr_type(expr.args[0], enclosing_type, local_types, field_types, return_types)
+            if cid_type is not None and cid_type.name == "ContractId" and cid_type.args:
+                return cid_type.args[0]
+            return None
+        if fn == "create" and expr.args:
+            payload_type = _infer_expr_type(expr.args[0], enclosing_type, local_types, field_types, return_types)
+            return TypeRef("ContractId", (payload_type,) if payload_type is not None else ())
+        return return_types.get(fn)
+    return None
+
+
+def _functions_and_enclosing_type(node: vy_ast.TopLevel):
     if isinstance(node, (vy_ast.TemplateDef, vy_ast.InterfaceDef, vy_ast.InstanceDef)):
         functions = [n for n in node.body if isinstance(n, vy_ast.FunctionDef)]
-    elif isinstance(node, vy_ast.FunctionDef):
-        functions = [node]
-    else:
-        return
+        enclosing_type = node.name if isinstance(node, vy_ast.TemplateDef) else None
+        return functions, enclosing_type
+    if isinstance(node, vy_ast.FunctionDef):
+        return [node], None
+    return [], None
 
-    for fn in functions:
-        local_types = _local_value_types(fn, field_types)
-        for call in fn.get_descendants(vy_ast.Call):
-            if not (isinstance(call.func, vy_ast.Name) and call.func.id in field_types):
+
+def _mark_call_optional_conversions(call, enclosing_type, local_types: dict, field_types: dict, return_types: dict) -> None:
+    if isinstance(call.func, vy_ast.Name) and call.func.id in field_types:
+        fields = field_types[call.func.id]
+        for kw in call.keywords:
+            field_type = fields.get(kw.arg)
+            if field_type is None or field_type.name != "Optional":
                 continue
-            fields = field_types[call.func.id]
-            for kw in call.keywords:
-                field_type = fields.get(kw.arg)
-                if field_type is None or field_type.name != "Optional":
+            value_type = _infer_expr_type(kw.value, enclosing_type, local_types, field_types, return_types)
+            if value_type is not None and value_type.name not in ("Optional", "None"):
+                kw.value._metadata["needs_some_wrap"] = True
+
+    if (
+        isinstance(call.func, vy_ast.Attribute)
+        and call.func.attr == "append"
+        and isinstance(call.func.value, vy_ast.Name)
+        and len(call.args) == 1
+    ):
+        list_type = local_types.get(call.func.value.id)
+        if list_type is not None and list_type.name == "list" and list_type.args:
+            element_type = list_type.args[0]
+            if element_type.name != "Optional":
+                value_type = _infer_expr_type(call.args[0], enclosing_type, local_types, field_types, return_types)
+                if value_type is not None and value_type.name == "Optional":
+                    call.args[0]._metadata["needs_from_some_unwrap"] = True
+
+
+def _mark_expr_optional_conversions(expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict) -> None:
+    if expr is None:
+        return
+    for call in expr.get_descendants(vy_ast.Call, include_self=True):
+        _mark_call_optional_conversions(call, enclosing_type, local_types, field_types, return_types)
+
+
+def _mark_stmts_optional_conversions(
+    stmts, enclosing_type, local_types: dict, field_types: dict, return_types: dict, return_type
+) -> None:
+    for stmt in stmts:
+        if isinstance(stmt, vy_ast.AnnAssign):
+            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            target_type = lower_type(stmt.annotation)
+            if stmt.value is not None and target_type.name != "Optional":
+                value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+                if value_type is not None and value_type.name == "Optional":
+                    stmt.value._metadata["needs_from_some_unwrap"] = True
+            if isinstance(stmt.target, vy_ast.Name):
+                local_types[stmt.target.id] = target_type
+        elif isinstance(stmt, vy_ast.Assign):
+            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            if isinstance(stmt.target, vy_ast.Name):
+                existing_type = local_types.get(stmt.target.id)
+                if existing_type is not None and existing_type.name == "Optional":
+                    value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+                    if value_type is not None and value_type.name not in ("Optional", "None"):
+                        stmt.value._metadata["needs_some_wrap"] = True
+                elif existing_type is None:
+                    value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+                    if value_type is not None:
+                        local_types[stmt.target.id] = value_type
+        elif isinstance(stmt, vy_ast.If):
+            _mark_expr_optional_conversions(stmt.test, enclosing_type, local_types, field_types, return_types)
+            body_types = dict(local_types)
+            orelse_types = dict(local_types)
+            _mark_stmts_optional_conversions(
+                stmt.body, enclosing_type, body_types, field_types, return_types, return_type
+            )
+            _mark_stmts_optional_conversions(
+                stmt.orelse, enclosing_type, orelse_types, field_types, return_types, return_type
+            )
+            for target_name, body_type in body_types.items():
+                if local_types.get(target_name) == body_type:
                     continue
-                
-                valid = False
-                if isinstance(kw.value, vy_ast.NameConstant) and kw.value.value is None:
-                    valid = False
-                if isinstance(kw.value, vy_ast.Call) and isinstance(kw.value.func, vy_ast.Name) and kw.value.func.id in field_types:
-                    # constructing another known struct/template directly always
-                    # produces that exact type, never `Optional` of it.
-                    valid = True
-                if isinstance(kw.value, vy_ast.Name) and kw.value.id in local_types:
-                    valid = local_types[kw.value.id].name != "Optional"
-                if valid:
-                    errors.append(
-                        DamlForgeException(
-                            f"`{call.func.id}.{kw.arg}` is declared `Optional[...]` but is "
-                            "constructed here with a value that is not itself optional or "
-                            f"`None` - wrap it, e.g. `Some({kw.arg})`",
-                            kw.value,
-                            code=ErrorCodes.DF1215.value,
-                        )
-                    )
+                if orelse_types.get(target_name) == body_type:
+                    local_types[target_name] = body_type
+        elif isinstance(stmt, vy_ast.For):
+            _mark_expr_optional_conversions(stmt.iter, enclosing_type, local_types, field_types, return_types)
+            body_types = dict(local_types)
+            target = stmt.target.target if hasattr(stmt.target, "target") else stmt.target
+            annotation = getattr(stmt.target, "annotation", None)
+            if isinstance(target, vy_ast.Name) and annotation is not None:
+                body_types[target.id] = lower_type(annotation)
+            _mark_stmts_optional_conversions(stmt.body, enclosing_type, body_types, field_types, return_types, return_type)
+        elif isinstance(stmt, vy_ast.Return):
+            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            if stmt.value is not None and return_type is not None and return_type.name != "Optional":
+                value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+                if value_type is not None and value_type.name == "Optional":
+                    stmt.value._metadata["needs_from_some_unwrap"] = True
+        elif isinstance(stmt, vy_ast.Assert):
+            _mark_expr_optional_conversions(stmt.test, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(stmt.msg, enclosing_type, local_types, field_types, return_types)
+        elif isinstance(stmt, vy_ast.Expr):
+            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+
+
+def mark_optional_conversions(node: vy_ast.TopLevel, field_types: dict, return_types: dict) -> None:
+    functions, enclosing_type = _functions_and_enclosing_type(node)
+    for fn in functions:
+        local_types = {}
+        for arg in fn.args.args:
+            if arg.arg == "self" or arg.annotation is None:
+                continue
+            local_types[arg.arg] = lower_type(arg.annotation)
+        return_type = lower_type(fn.returns) if fn.returns is not None else None
+        _mark_stmts_optional_conversions(fn.body, enclosing_type, local_types, field_types, return_types, return_type)
 
 
 def check_container_type_annotations(node: vy_ast.TopLevel, known_names: set, errors: ExceptionList) -> None:

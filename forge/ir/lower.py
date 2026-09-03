@@ -91,6 +91,15 @@ def lower_type(node: vy_ast.VyperNode) -> TypeRef:
 
 
 def lower_expr(node: vy_ast.VyperNode):
+    result = _lower_expr_inner(node)
+    if node._metadata.get("needs_some_wrap"):
+        result = IRCall(IRName("Some"), (result,))
+    if node._metadata.get("needs_from_some_unwrap"):
+        result = IRCall(IRName("from_some"), (result,))
+    return result
+
+
+def _lower_expr_inner(node: vy_ast.VyperNode):
     if isinstance(node, vy_ast.Name):
         return IRName(node.id)
     if isinstance(node, vy_ast.Attribute):

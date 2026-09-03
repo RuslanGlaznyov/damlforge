@@ -160,3 +160,19 @@ def test_da_time_import_emitted_only_once_when_both_functions_used():
     )
 
     assert daml.count("import DA.Time") == 1
+
+
+def test_builtin_splice_struct_optional_field_auto_wraps_without_manual_some():
+    daml = _compile(
+        "from Splice.Expiry import TimeLock\n\n"
+        "template Asset:\n"
+        "    owner: Party\n\n"
+        "    signatory: list[Party] = [owner]\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def lock(self, deadline) -> bool:\n"
+        "        holders: list[Party] = [self.owner]\n"
+        "        lock = TimeLock(holders=holders, expires_at=deadline, opt_context=\"reason\")\n"
+        "        return True\n"
+    )
+
+    assert "optContext = Some \"reason\"" in daml

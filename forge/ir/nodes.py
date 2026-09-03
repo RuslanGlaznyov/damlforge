@@ -44,6 +44,7 @@ class IRAttribute:
 class IRSubscript:
     value: "IRExpr"
     index: "IRExpr"
+    is_list: bool = False
 
 
 @dataclass(frozen=True)
@@ -255,6 +256,7 @@ class IRInstance:
 class IRImport:
     module: str
     names: Optional[tuple[str, ...]] = None
+    constructor_names: frozenset = frozenset()
 
 
 @dataclass(frozen=True)
