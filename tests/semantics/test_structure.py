@@ -160,6 +160,19 @@ template Asset:
         return some_undeclared_function(amount) > 0
 """
 
+UNKNOWN_DECORATOR_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    @DamlName("Asset_Withdraw")
+    def withdraw(self, amount: int) -> bool:
+        return True
+"""
+
 KNOWN_BUILTIN_AND_STRUCT_CONSTRUCTOR_CALL_TARGETS_ARE_ALLOWED = """
 struct Terms:
     label: Text
@@ -653,6 +666,7 @@ def test_valid_decorator_usage_passes(source):
         (SELF_REFERENCE_VIA_TEMPLATE_NAME_NOT_ALLOWED, ErrorCodes.DF1219.value),
         (UNRESOLVED_NAME_USED_AS_ATTRIBUTE_BASE_NOT_ALLOWED, ErrorCodes.DF1219.value),
         (UNRESOLVED_NAME_USED_AS_CALL_TARGET_NOT_ALLOWED, ErrorCodes.DF1219.value),
+        (UNKNOWN_DECORATOR_NOT_ALLOWED, ErrorCodes.DF1220.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

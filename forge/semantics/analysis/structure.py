@@ -68,6 +68,31 @@ def _check_bare_marker_decorator(
                 )
 
 
+def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    from forge.models.decorators import known_function_decorator_names
+
+    known_decorators = known_function_decorator_names()
+
+    for fn in container.body:
+        if not isinstance(fn, vy_ast.FunctionDef):
+            continue
+
+        for dec in fn.decorator_list:
+            target = dec.func if isinstance(dec, vy_ast.Call) else dec
+            if isinstance(target, vy_ast.Name) and target.id in known_decorators:
+                continue
+
+            name = target.id if isinstance(target, vy_ast.Name) else "<expression>"
+            errors.append(
+                DamlForgeException(
+                    f"Unknown decorator `@{name}` on `{container.name}.{fn.name}` - only "
+                    f"{sorted(known_decorators)!r} are recognized decorators",
+                    dec,
+                    code=ErrorCodes.DF1220.value,
+                )
+            )
+
+
 def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
@@ -568,6 +593,7 @@ def check_container(
         check_template_signatory(node, errors)
         check_template_key_maintainer(node, errors)
         check_template_ensure(node, errors)
+        check_unknown_decorators(node, errors)
         check_choice_decorators(node, errors)
         check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)
@@ -575,6 +601,7 @@ def check_container(
         check_view_outside_interface(node, errors)
         check_recursion(node, errors, recursion_context)
     elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.InstanceDef)):
+        check_unknown_decorators(node, errors)
         check_choice_decorators(node, errors)
         check_consuming_variant_scope(node, errors)
         check_ledger_effect_decorator(node, errors)

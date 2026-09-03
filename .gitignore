@@ -72,3 +72,5 @@ docs/*
 */*/*.daml
 */*/*.map.json
 */*/*.json
+examples/*/.daml/
+examples/*/*.dar
