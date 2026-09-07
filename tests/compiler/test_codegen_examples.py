@@ -34,6 +34,26 @@ def test_real_example_generates_daml_without_error(path):
     assert len(source_map["mappings"]) > 0
 
 
+def test_funding_campaign_example_import_exposure_matches_real_damlc_requirements():
+    path = EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.vy"
+    daml_source, _ = _full_pipeline(path)
+
+    assert (
+        "import Splice.Amulet (Amulet(..), LockedAmulet(..), LockedAmulet_UnlockV2(..))"
+    ) in daml_source
+    assert (
+        "import Splice.AmuletRules (AppTransferContext(..), CreatedAmulet(..), "
+        "Transfer(..), TransferInput(..), TransferOutput(..), "
+        "createdAmuletToHolding, exerciseAppTransfer)"
+    ) in daml_source
+    assert "import Splice.Api.Token.HoldingV1 (Holding, InstrumentId(..))" in daml_source
+    assert "import Splice.Expiry (TimeLock(..))" in daml_source
+    assert (
+        "import LoanTerms (LoanRewards(..), LoanTerms(..), LoanTracker(..), "
+        "PeriodPayment(..), PeriodPaymentStatus(..))"
+    ) in daml_source
+
+
 def test_token_standard_example_generates_clean_daml_no_loop_placeholders():
     path = EXAMPLES_ROOT / "token_standard" / "token_standard.vy"
     daml_source, _ = _full_pipeline(path)
@@ -77,9 +97,12 @@ def test_simple_example_mutates_self_via_create_and_dict_via_map():
     assert "Map.insert" in daml_source
     assert "`elem`" not in daml_source
     assert "!!" not in daml_source
-    # `mint` mutates self - its real Daml return type must reflect the new contract
-    assert "choice mint : (ContractId SimpleTemplate, Bool)" in daml_source
-    assert "create self" in daml_source
+    # `SimpleTemplate_Mint` mutates self - its real Daml return type must reflect the new contract
+    assert "choice SimpleTemplate_Mint : (ContractId SimpleTemplate, ContractId SimpleTemplate)" in daml_source
+    # every self-rebind must mint a fresh SSA name (`_damlforge_selfN`), never
+    # literally reusing `self` - real damlc rejects local `let X = f(X)` as
+    # illegal recursion, even when `X` was originally bound by `this`
+    assert "create _damlforge_self" in daml_source
 
 
 def test_decimal_calls_render_as_daml_numeric_literals():

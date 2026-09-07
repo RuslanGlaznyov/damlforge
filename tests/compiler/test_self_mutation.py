@@ -59,10 +59,12 @@ def test_self_field_assignment_becomes_record_update_and_synthesizes_create():
 
     assert "let self = this" in source
     assert "self { balance = self.balance + 1 }" in source
-    assert "_damlforge_new_self <- create self" in source
+    # `self` must be rebound to a fresh SSA name, never reused - real damlc
+    # rejects any local `let X = f(X)` as illegal recursion
+    assert "_damlforge_new_self <- create _damlforge_self1" in source
     assert "pure (_damlforge_new_self, ())" in source
     # no original return value declared -> augmented type is (ContractId Asset, ())
-    assert "choice mint : (ContractId Asset, ())" in source
+    assert "choice Mint : (ContractId Asset, ())" in source
 
 
 def test_self_field_assignment_preserves_original_return_value():
@@ -73,7 +75,7 @@ def test_self_field_assignment_preserves_original_return_value():
     module = _template_with_choice(TypeRef("Decimal"), body, return_type=TypeRef("bool"))
     source, _ = generate_daml(module)
 
-    assert "choice mint : (ContractId Asset, Bool)" in source
+    assert "choice Mint : (ContractId Asset, Bool)" in source
     assert "pure (_damlforge_new_self, True)" in source
 
 
@@ -99,7 +101,7 @@ def test_dict_field_subscript_read_uses_map_lookup():
     assert "fromSome (Map.lookup k self.balance)" in source
     # no mutation happened here - no create/record-update machinery kicks in
     assert "create self" not in source
-    assert "choice mint : Decimal" in source
+    assert "choice Mint : Decimal" in source
 
 
 def test_dict_field_membership_uses_map_member_not_elem():
@@ -128,5 +130,5 @@ def test_choice_without_self_mutation_is_unaffected():
 
     assert "let self = this" in source
     assert "create self" not in source
-    assert "choice mint : Bool" in source
+    assert "choice Mint : Bool" in source
     assert "import DA.Map" not in source
