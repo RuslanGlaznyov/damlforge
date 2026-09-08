@@ -15,6 +15,8 @@ class DamlName:
     module: Optional[str] = None
     is_ledger_effect: bool = False
 
+    __vy_decorator__ = True
+
     def __call__(self, fn):
         fn.__daml_name__ = self.name
         fn.__daml_module__ = self.module
@@ -48,6 +50,18 @@ def _walk_submodules(package_name: str):
     package = importlib.import_module(package_name)
     for info in pkgutil.walk_packages(package.__path__, package_name + "."):
         yield importlib.import_module(info.name)
+
+
+def known_decorator_names() -> frozenset:
+    from forge.models import decorators as vy_decorators_module
+
+    own_module = importlib.import_module(__name__)
+    names = set()
+    for module in (own_module, vy_decorators_module):
+        names |= {
+            name for name, obj in vars(module).items() if getattr(obj, "__vy_decorator__", False)
+        }
+    return frozenset(names)
 
 
 def _python_type_to_type_ref(py_type) -> Optional[TypeRef]:

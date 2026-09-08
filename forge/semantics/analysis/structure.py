@@ -11,6 +11,7 @@ FLAG_MEMBER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 CHOICE_DECORATOR = "choice"
 LEDGER_EFFECT_DECORATOR = "ledger_effect"
 VIEW_DECORATOR = "view"
+DAML_NAME_DECORATOR = "DamlName"
 
 LEDGER_EFFECT_BUILTINS = {"create", "fetch", "exercise", "archive", "lookup"}
 
@@ -68,10 +69,31 @@ def _check_bare_marker_decorator(
                 )
 
 
-def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    from forge.models.decorators import known_function_decorator_names
+def _check_daml_name_args(
+    container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+) -> None:
+    if (
+        isinstance(dec, vy_ast.Call)
+        and len(dec.args) == 1
+        and not dec.keywords
+        and isinstance(dec.args[0], vy_ast.Str)
+    ):
+        return
 
-    known_decorators = known_function_decorator_names()
+    errors.append(
+        DamlForgeException(
+            f"`@{DAML_NAME_DECORATOR}` on `{container.name}.{fn.name}` takes exactly one "
+            "string literal argument",
+            fn,
+            code=ErrorCodes.DF1221.value,
+        )
+    )
+
+
+def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    from forge.builtins import known_decorator_names
+
+    known_decorators = known_decorator_names()
 
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
@@ -79,18 +101,20 @@ def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) 
 
         for dec in fn.decorator_list:
             target = dec.func if isinstance(dec, vy_ast.Call) else dec
-            if isinstance(target, vy_ast.Name) and target.id in known_decorators:
+            if not (isinstance(target, vy_ast.Name) and target.id in known_decorators):
+                name = target.id if isinstance(target, vy_ast.Name) else "<expression>"
+                errors.append(
+                    DamlForgeException(
+                        f"Unknown decorator `@{name}` on `{container.name}.{fn.name}` - only "
+                        f"{sorted(known_decorators)!r} are recognized decorators",
+                        dec,
+                        code=ErrorCodes.DF1220.value,
+                    )
+                )
                 continue
 
-            name = target.id if isinstance(target, vy_ast.Name) else "<expression>"
-            errors.append(
-                DamlForgeException(
-                    f"Unknown decorator `@{name}` on `{container.name}.{fn.name}` - only "
-                    f"{sorted(known_decorators)!r} are recognized decorators",
-                    dec,
-                    code=ErrorCodes.DF1220.value,
-                )
-            )
+            if target.id == DAML_NAME_DECORATOR:
+                _check_daml_name_args(container, fn, dec, errors)
 
 
 def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:

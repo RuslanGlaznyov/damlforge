@@ -71,6 +71,7 @@ _COMPARE_OPS = {
 }
 
 CHOICE_DECORATOR = "choice"
+DAML_NAME_DECORATOR = "DamlName"
 
 
 def lower_type(node: vy_ast.VyperNode) -> TypeRef:
@@ -200,6 +201,15 @@ def _choice_call(fn: vy_ast.FunctionDef):
     return None
 
 
+def _daml_name_override(fn: vy_ast.FunctionDef) -> "str | None":
+    for dec in fn.decorator_list:
+        if not isinstance(dec, vy_ast.Call):
+            continue
+        if isinstance(dec.func, vy_ast.Name) and dec.func.id == DAML_NAME_DECORATOR:
+            return dec.args[0].value
+    return None
+
+
 def _lower_consuming(node) -> Consuming:
     if isinstance(node, vy_ast.NameConstant) and isinstance(node.value, bool):
         return Consuming.CONSUMING if node.value else Consuming.NON_CONSUMING
@@ -236,7 +246,7 @@ def lower_choice(fn: vy_ast.FunctionDef) -> IRChoice:
 
     return_type = lower_type(fn.returns) if fn.returns is not None else None
     return IRChoice(
-        name=fn.name,
+        name=_daml_name_override(fn) or fn.name,
         controller=controller,
         consuming=consuming,
         observer=observer,

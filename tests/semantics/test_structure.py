@@ -168,7 +168,46 @@ template Asset:
     signatory: list[Party] = [owner]
 
     @choice(controller=owner, consuming=True)
+    @TotallyBogusDecorator("Asset_Withdraw")
+    def withdraw(self, amount: int) -> bool:
+        return True
+"""
+
+DAML_NAME_OVERRIDES_CHOICE_NAME_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
     @DamlName("Asset_Withdraw")
+    def withdraw(self, amount: int) -> bool:
+        return True
+"""
+
+DAML_NAME_WITH_NO_ARGUMENTS_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    @DamlName()
+    def withdraw(self, amount: int) -> bool:
+        return True
+"""
+
+DAML_NAME_WITH_NON_LITERAL_ARGUMENT_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    balance: int
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    @DamlName(owner)
     def withdraw(self, amount: int) -> bool:
         return True
 """
@@ -625,6 +664,7 @@ def test_valid_template_passes():
         SELF_REFERENCE_VIA_ANOTHER_TEMPLATE_NAME_IS_ALLOWED,
         LOCAL_VARIABLE_USED_AS_ATTRIBUTE_BASE_IS_ALLOWED,
         KNOWN_BUILTIN_AND_STRUCT_CONSTRUCTOR_CALL_TARGETS_ARE_ALLOWED,
+        DAML_NAME_OVERRIDES_CHOICE_NAME_IS_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -667,6 +707,8 @@ def test_valid_decorator_usage_passes(source):
         (UNRESOLVED_NAME_USED_AS_ATTRIBUTE_BASE_NOT_ALLOWED, ErrorCodes.DF1219.value),
         (UNRESOLVED_NAME_USED_AS_CALL_TARGET_NOT_ALLOWED, ErrorCodes.DF1219.value),
         (UNKNOWN_DECORATOR_NOT_ALLOWED, ErrorCodes.DF1220.value),
+        (DAML_NAME_WITH_NO_ARGUMENTS_NOT_ALLOWED, ErrorCodes.DF1221.value),
+        (DAML_NAME_WITH_NON_LITERAL_ARGUMENT_NOT_ALLOWED, ErrorCodes.DF1221.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):

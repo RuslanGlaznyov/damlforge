@@ -1,4 +1,3 @@
-import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional, Tuple
@@ -78,13 +77,6 @@ def ledger_effect(fn):
 def view(fn):
     fn.__view__ = True
     return fn
-
-
-def known_function_decorator_names() -> frozenset:
-    module = sys.modules[__name__]
-    return frozenset(
-        name for name, obj in vars(module).items() if getattr(obj, "__vy_decorator__", False)
-    )
 
 
 def template(cls):
