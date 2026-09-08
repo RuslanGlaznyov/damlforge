@@ -15,8 +15,6 @@ DAML_NAME_DECORATOR = "DamlName"
 
 LEDGER_EFFECT_BUILTINS = {"create", "fetch", "exercise", "archive", "lookup"}
 
-# mirrors Daml's `Consuming` LF-AST type: PreConsuming | Consuming | NonConsuming | PostConsuming
-CONSUMING_VARIANTS = {"preconsuming", "consuming", "nonconsuming", "postconsuming"}
 # preconsuming/postconsuming are template-only; not supported on interface choices
 # (compiler/damlc/daml-lf-conversion/src/DA/Daml/LFConversion.hs, "Preconsuming/Postconsuming
 # choice for interface" is an unsupported-operation error there)
@@ -29,14 +27,6 @@ def _choice_calls(fn: vy_ast.FunctionDef):
             continue
         if isinstance(dec.func, vy_ast.Name) and dec.func.id == CHOICE_DECORATOR:
             yield dec
-
-
-def _consuming_variant(node) -> Optional[str]:
-    if isinstance(node, vy_ast.NameConstant) and isinstance(node.value, bool):
-        return "consuming" if node.value else "nonconsuming"
-    if isinstance(node, vy_ast.Str) and node.value in CONSUMING_VARIANTS:
-        return node.value
-    return None
 
 
 def _has_decorator(fn: vy_ast.FunctionDef, name: str) -> bool:
@@ -102,49 +92,9 @@ def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) 
                 resolved.__post_vy_check__(container, fn, dec, errors)
 
 
-def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    for fn in container.body:
-        if not isinstance(fn, vy_ast.FunctionDef):
-            continue
-
-        for call in _choice_calls(fn):
-            kwargs = {kw.arg: kw.value for kw in call.keywords}
-            qualified_name = f"{container.name}.{fn.name}"
-
-            if fn.name.startswith("_"):
-                errors.append(
-                    DamlForgeException(
-                        f"Choice `{qualified_name}` starts with `_` - Python's own "
-                        "convention for a private method, which contradicts `@choice` "
-                        "making it a public, externally-exercisable Daml choice",
-                        fn,
-                        code=ErrorCodes.DF1218.value,
-                    )
-                )
-
-            if "controller" not in kwargs:
-                errors.append(
-                    DamlForgeException(
-                        f"Choice `{qualified_name}` must declare an explicit `controller`",
-                        fn,
-                        code=ErrorCodes.DF1203.value,
-                    )
-                )
-
-            consuming = kwargs.get("consuming")
-            variant = None if consuming is None else _consuming_variant(consuming)
-            if variant is None:
-                errors.append(
-                    DamlForgeException(
-                        f"Choice `{qualified_name}` must explicitly declare `consuming` as "
-                        f"True/False or one of {sorted(CONSUMING_VARIANTS)!r}",
-                        fn,
-                        code=ErrorCodes.DF1203.value,
-                    )
-                )
-
-
 def check_consuming_variant_scope(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    from forge.builtins import _consuming_variant_from_ast
+
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
             continue
@@ -152,7 +102,7 @@ def check_consuming_variant_scope(container: vy_ast.TopLevel, errors: ExceptionL
         for call in _choice_calls(fn):
             kwargs = {kw.arg: kw.value for kw in call.keywords}
             consuming = kwargs.get("consuming")
-            variant = None if consuming is None else _consuming_variant(consuming)
+            variant = None if consuming is None else _consuming_variant_from_ast(consuming)
 
             if variant in TEMPLATE_ONLY_CONSUMING_VARIANTS:
                 errors.append(
@@ -603,7 +553,6 @@ def check_container(
         check_template_key_maintainer(node, errors)
         check_template_ensure(node, errors)
         check_unknown_decorators(node, errors)
-        check_choice_decorators(node, errors)
         check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)
         check_view_decorator(node, errors)
@@ -611,7 +560,6 @@ def check_container(
         check_recursion(node, errors, recursion_context)
     elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.InstanceDef)):
         check_unknown_decorators(node, errors)
-        check_choice_decorators(node, errors)
         check_consuming_variant_scope(node, errors)
         check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)

@@ -3,14 +3,13 @@ import importlib
 import inspect
 import pkgutil
 import typing
+from enum import Enum
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 from abc import ABC, abstractmethod
 
-from forge.ir.nodes import TypeRef
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
-from forge.models.error_codes import ErrorCodes
 
 
 @dataclasses.dataclass(frozen=True)
@@ -47,6 +46,8 @@ class DamlName(VyDecorator):
     @classmethod
     def __post_vy_check__(cls, container: vy_ast.TopLevel,
                           fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+        from forge.models.error_codes import ErrorCodes
+
         if (
                 isinstance(dec, vy_ast.Call)
                 and len(dec.args) == 1
@@ -63,6 +64,105 @@ class DamlName(VyDecorator):
                 code=ErrorCodes.DF1221.value,
             )
         )
+
+
+class Consuming(Enum):
+    PRE_CONSUMING = "preconsuming"
+    CONSUMING = "consuming"
+    NON_CONSUMING = "nonconsuming"
+    POST_CONSUMING = "postconsuming"
+
+
+def _normalize_consuming(consuming) -> Consuming:
+    if isinstance(consuming, Consuming):
+        return consuming
+    if isinstance(consuming, bool):
+        return Consuming.CONSUMING if consuming else Consuming.NON_CONSUMING
+    if isinstance(consuming, str):
+        try:
+            return Consuming(consuming)
+        except ValueError:
+            pass
+    valid_strings = [c.value for c in Consuming]
+    raise TypeError(
+        "choice(consuming=...) must be True/False, a Consuming member, or one of "
+        f"{valid_strings!r}; got {consuming!r}"
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class ChoiceMeta:
+    controller: Any
+    consuming: Consuming
+    observer: Optional[Any] = None
+
+
+CONSUMING_VARIANTS = {"preconsuming", "consuming", "nonconsuming", "postconsuming"}
+
+
+def _consuming_variant_from_ast(node) -> Optional[str]:
+    if isinstance(node, vy_ast.NameConstant) and isinstance(node.value, bool):
+        return "consuming" if node.value else "nonconsuming"
+    if isinstance(node, vy_ast.Str) and node.value in CONSUMING_VARIANTS:
+        return node.value
+    return None
+
+
+@dataclasses.dataclass(frozen=True)
+class choice(VyDecorator):
+    controller: Any
+    consuming: Any
+    observer: Optional[Any] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "consuming", _normalize_consuming(self.consuming))
+
+    def __call__(self, fn):
+        fn = super().__call__(fn)
+        fn.__choice__ = ChoiceMeta(
+            controller=self.controller, consuming=self.consuming, observer=self.observer
+        )
+        return fn
+
+    @classmethod
+    def __post_vy_check__(cls, container: vy_ast.TopLevel,
+                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+        from forge.models.error_codes import ErrorCodes
+
+        kwargs = {kw.arg: kw.value for kw in dec.keywords} if isinstance(dec, vy_ast.Call) else {}
+        qualified_name = f"{container.name}.{fn.name}"
+
+        if fn.name.startswith("_"):
+            errors.append(
+                DamlForgeException(
+                    f"Choice `{qualified_name}` starts with `_` - Python's own "
+                    "convention for a private method, which contradicts `@choice` "
+                    "making it a public, externally-exercisable Daml choice",
+                    fn,
+                    code=ErrorCodes.DF1218.value,
+                )
+            )
+
+        if "controller" not in kwargs:
+            errors.append(
+                DamlForgeException(
+                    f"Choice `{qualified_name}` must declare an explicit `controller`",
+                    fn,
+                    code=ErrorCodes.DF1203.value,
+                )
+            )
+
+        consuming = kwargs.get("consuming")
+        variant = None if consuming is None else _consuming_variant_from_ast(consuming)
+        if variant is None:
+            errors.append(
+                DamlForgeException(
+                    f"Choice `{qualified_name}` must explicitly declare `consuming` as "
+                    f"True/False or one of {sorted(CONSUMING_VARIANTS)!r}",
+                    fn,
+                    code=ErrorCodes.DF1203.value,
+                )
+            )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -108,7 +208,9 @@ def known_decorator_names() -> frozenset:
     return frozenset(names)
 
 
-def _python_type_to_type_ref(py_type) -> Optional[TypeRef]:
+def _python_type_to_type_ref(py_type) -> "Optional[TypeRef]":
+    from forge.ir.nodes import TypeRef
+
     if py_type is None:
         return None
     origin = typing.get_origin(py_type)

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Optional, Tuple
+from typing import Any, Tuple
+
+from forge.builtins import ChoiceMeta, Consuming, choice
 
 
 @dataclass(frozen=True)
@@ -8,39 +9,6 @@ class VyDecorator:
     def __call__(self, fn):
         fn.__vy_decorator__ = True
         return fn
-
-
-class Consuming(Enum):
-    """Mirrors Daml's `Consuming` LF-AST type: PreConsuming | Consuming | NonConsuming | PostConsuming."""
-
-    PRE_CONSUMING = "preconsuming"
-    CONSUMING = "consuming"
-    NON_CONSUMING = "nonconsuming"
-    POST_CONSUMING = "postconsuming"
-
-
-def _normalize_consuming(consuming) -> Consuming:
-    if isinstance(consuming, Consuming):
-        return consuming
-    if isinstance(consuming, bool):
-        return Consuming.CONSUMING if consuming else Consuming.NON_CONSUMING
-    if isinstance(consuming, str):
-        try:
-            return Consuming(consuming)
-        except ValueError:
-            pass
-    valid_strings = [c.value for c in Consuming]
-    raise TypeError(
-        "choice(consuming=...) must be True/False, a Consuming member, or one of "
-        f"{valid_strings!r}; got {consuming!r}"
-    )
-
-
-@dataclass(frozen=True)
-class ChoiceMeta:
-    controller: Any
-    consuming: Consuming
-    observer: Optional[Any] = None
 
 
 @dataclass(frozen=True)
@@ -52,19 +20,6 @@ class InterfaceMeta:
 @dataclass(frozen=True)
 class InstanceMeta:
     interface: Any
-
-
-@VyDecorator()
-def choice(*, controller, consuming, observer=None):
-    normalized_consuming = _normalize_consuming(consuming)
-
-    def wrap(fn):
-        fn.__choice__ = ChoiceMeta(
-            controller=controller, consuming=normalized_consuming, observer=observer
-        )
-        return fn
-
-    return wrap
 
 
 @VyDecorator()
