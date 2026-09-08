@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Tuple
 
-from forge.builtins import ChoiceMeta, Consuming, choice
+from forge.builtins import ChoiceMeta, Consuming, choice, ledger_effect
 
 
 @dataclass(frozen=True)
@@ -20,12 +20,6 @@ class InterfaceMeta:
 @dataclass(frozen=True)
 class InstanceMeta:
     interface: Any
-
-
-@VyDecorator()
-def ledger_effect(fn):
-    fn.__ledger_effect__ = True
-    return fn
 
 
 @VyDecorator()

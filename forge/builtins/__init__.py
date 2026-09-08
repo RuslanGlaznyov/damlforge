@@ -165,6 +165,27 @@ class choice(VyDecorator):
             )
 
 
+class ledger_effect(VyDecorator):
+    def __new__(cls, fn):
+        fn.__vy_decorator__ = True
+        fn.__ledger_effect__ = True
+        return fn
+
+    @classmethod
+    def __post_vy_check__(cls, container: vy_ast.TopLevel,
+                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+        from forge.models.error_codes import ErrorCodes
+
+        if isinstance(dec, vy_ast.Call):
+            errors.append(
+                DamlForgeException(
+                    f"`@{cls.__name__}` on `{container.name}.{fn.name}` takes no arguments",
+                    fn,
+                    code=ErrorCodes.DF1204.value,
+                )
+            )
+
+
 @dataclasses.dataclass(frozen=True)
 class DamlCaseAccessor:
     constructor: str

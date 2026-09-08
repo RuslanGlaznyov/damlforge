@@ -116,10 +116,6 @@ def check_consuming_variant_scope(container: vy_ast.TopLevel, errors: ExceptionL
                 )
 
 
-def check_ledger_effect_decorator(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    _check_bare_marker_decorator(container, LEDGER_EFFECT_DECORATOR, "DF1204", errors)
-
-
 def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
@@ -553,7 +549,6 @@ def check_container(
         check_template_key_maintainer(node, errors)
         check_template_ensure(node, errors)
         check_unknown_decorators(node, errors)
-        check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)
         check_view_decorator(node, errors)
         check_view_outside_interface(node, errors)
@@ -561,7 +556,6 @@ def check_container(
     elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.InstanceDef)):
         check_unknown_decorators(node, errors)
         check_consuming_variant_scope(node, errors)
-        check_ledger_effect_decorator(node, errors)
         check_hidden_ledger_effects(node, errors)
         check_view_decorator(node, errors)
         check_recursion(node, errors, recursion_context)
