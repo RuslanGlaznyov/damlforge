@@ -98,72 +98,122 @@ def lower_expr(node: vy_ast.VyperNode):
 
 
 def _lower_expr_inner(node: vy_ast.VyperNode):
-    if isinstance(node, vy_ast.Name):
-        return IRName(node.id)
-    if isinstance(node, vy_ast.Attribute):
-        if node._metadata.get("is_flag_value"):
-            return IRName(node.attr)
-        return IRAttribute(lower_expr(node.value), node.attr)
-    if isinstance(node, vy_ast.Subscript):
-        is_list = bool(node._metadata.get("is_list_value"))
-        return IRSubscript(lower_expr(node.value), lower_expr(node.slice), is_list=is_list)
-    if isinstance(node, vy_ast.Call):
-        args = tuple(lower_expr(a) for a in node.args)
-        keywords = tuple((kw.arg, lower_expr(kw.value)) for kw in node.keywords)
-        return IRCall(lower_expr(node.func), args, keywords)
-    if isinstance(node, vy_ast.NameConstant):
-        return IRConstant(node.value)
-    if isinstance(node, (vy_ast.Int, vy_ast.Decimal, vy_ast.Str)):
-        return IRConstant(node.value)
-    if isinstance(node, vy_ast.List):
-        return IRList(tuple(lower_expr(e) for e in node.elements))
-    if isinstance(node, vy_ast.Tuple):
-        return IRTuple(tuple(lower_expr(e) for e in node.elements))
-    if isinstance(node, vy_ast.Dict):
-        keys = tuple(lower_expr(k) for k in node.keys)
-        values = tuple(lower_expr(v) for v in node.values)
-        return IRDict(keys, values)
-    if isinstance(node, vy_ast.BinOp):
-        op = _BIN_OPS[type(node.op).__name__]
-        return IRBinOp(op, lower_expr(node.left), lower_expr(node.right))
-    if isinstance(node, vy_ast.BoolOp):
-        op = _BOOL_OPS[type(node.op).__name__]
-        return IRBoolOp(op, tuple(lower_expr(v) for v in node.values))
-    if isinstance(node, vy_ast.UnaryOp):
-        op = _UNARY_OPS[type(node.op).__name__]
-        return IRUnaryOp(op, lower_expr(node.operand))
-    if isinstance(node, vy_ast.Compare):
-        op = _COMPARE_OPS[type(node.op).__name__]
-        return IRCompare(lower_expr(node.left), op, lower_expr(node.right))
-    raise CompilerPanic(f"lower_expr: unsupported expression node {type(node).__name__}")
+    handler = globals().get(f"_lower_expr_{type(node).__name__}")
+    if handler is None:
+        raise CompilerPanic(f"lower_expr: unsupported expression node {type(node).__name__}")
+    return handler(node)
+
+
+def _lower_expr_Name(node):
+    return IRName(node.id)
+
+
+def _lower_expr_Attribute(node):
+    if node._metadata.get("is_flag_value"):
+        return IRName(node.attr)
+    return IRAttribute(lower_expr(node.value), node.attr)
+
+
+def _lower_expr_Subscript(node):
+    is_list = bool(node._metadata.get("is_list_value"))
+    return IRSubscript(lower_expr(node.value), lower_expr(node.slice), is_list=is_list)
+
+
+def _lower_expr_Call(node):
+    args = tuple(lower_expr(a) for a in node.args)
+    keywords = tuple((kw.arg, lower_expr(kw.value)) for kw in node.keywords)
+    return IRCall(lower_expr(node.func), args, keywords)
+
+
+def _lower_expr_literal(node):
+    return IRConstant(node.value)
+
+
+_lower_expr_NameConstant = _lower_expr_literal
+_lower_expr_Int = _lower_expr_literal
+_lower_expr_Decimal = _lower_expr_literal
+_lower_expr_Str = _lower_expr_literal
+
+
+def _lower_expr_List(node):
+    return IRList(tuple(lower_expr(e) for e in node.elements))
+
+
+def _lower_expr_Tuple(node):
+    return IRTuple(tuple(lower_expr(e) for e in node.elements))
+
+
+def _lower_expr_Dict(node):
+    keys = tuple(lower_expr(k) for k in node.keys)
+    values = tuple(lower_expr(v) for v in node.values)
+    return IRDict(keys, values)
+
+
+def _lower_expr_BinOp(node):
+    op = _BIN_OPS[type(node.op).__name__]
+    return IRBinOp(op, lower_expr(node.left), lower_expr(node.right))
+
+
+def _lower_expr_BoolOp(node):
+    op = _BOOL_OPS[type(node.op).__name__]
+    return IRBoolOp(op, tuple(lower_expr(v) for v in node.values))
+
+
+def _lower_expr_UnaryOp(node):
+    op = _UNARY_OPS[type(node.op).__name__]
+    return IRUnaryOp(op, lower_expr(node.operand))
+
+
+def _lower_expr_Compare(node):
+    op = _COMPARE_OPS[type(node.op).__name__]
+    return IRCompare(lower_expr(node.left), op, lower_expr(node.right))
 
 
 def lower_stmt(node: vy_ast.VyperNode):
-    if isinstance(node, vy_ast.Assert):
-        msg = lower_expr(node.msg) if node.msg is not None else None
-        return IRAssert(lower_expr(node.test), msg, src=_src(node))
-    if isinstance(node, vy_ast.AnnAssign):
-        value = lower_expr(node.value) if node.value is not None else None
-        return IRAssign(lower_expr(node.target), value, lower_type(node.annotation), src=_src(node))
-    if isinstance(node, vy_ast.Assign):
-        return IRAssign(lower_expr(node.target), lower_expr(node.value), src=_src(node))
-    if isinstance(node, vy_ast.If):
-        body = tuple(lower_stmt(s) for s in node.body)
-        orelse = tuple(lower_stmt(s) for s in node.orelse)
-        return IRIf(lower_expr(node.test), body, orelse, src=_src(node))
-    if isinstance(node, vy_ast.For):
-        target = node.target.target
-        target_type = lower_type(node.target.annotation) if node.target.annotation else None
-        body = tuple(lower_stmt(s) for s in node.body)
-        return IRFor(target.id, target_type, lower_expr(node.iter), body, src=_src(node))
-    if isinstance(node, vy_ast.Return):
-        value = lower_expr(node.value) if node.value is not None else None
-        return IRReturn(value, src=_src(node))
-    if isinstance(node, vy_ast.Pass):
-        return IRPass(src=_src(node))
-    if isinstance(node, vy_ast.Expr):
-        return IRExprStmt(lower_expr(node.value), src=_src(node))
-    raise CompilerPanic(f"lower_stmt: unsupported statement node {type(node).__name__}")
+    handler = globals().get(f"_lower_stmt_{type(node).__name__}")
+    if handler is None:
+        raise CompilerPanic(f"lower_stmt: unsupported statement node {type(node).__name__}")
+    return handler(node)
+
+
+def _lower_stmt_Assert(node):
+    msg = lower_expr(node.msg) if node.msg is not None else None
+    return IRAssert(lower_expr(node.test), msg, src=_src(node))
+
+
+def _lower_stmt_AnnAssign(node):
+    value = lower_expr(node.value) if node.value is not None else None
+    return IRAssign(lower_expr(node.target), value, lower_type(node.annotation), src=_src(node))
+
+
+def _lower_stmt_Assign(node):
+    return IRAssign(lower_expr(node.target), lower_expr(node.value), src=_src(node))
+
+
+def _lower_stmt_If(node):
+    body = tuple(lower_stmt(s) for s in node.body)
+    orelse = tuple(lower_stmt(s) for s in node.orelse)
+    return IRIf(lower_expr(node.test), body, orelse, src=_src(node))
+
+
+def _lower_stmt_For(node):
+    target = node.target.target
+    target_type = lower_type(node.target.annotation) if node.target.annotation else None
+    body = tuple(lower_stmt(s) for s in node.body)
+    return IRFor(target.id, target_type, lower_expr(node.iter), body, src=_src(node))
+
+
+def _lower_stmt_Return(node):
+    value = lower_expr(node.value) if node.value is not None else None
+    return IRReturn(value, src=_src(node))
+
+
+def _lower_stmt_Pass(node):
+    return IRPass(src=_src(node))
+
+
+def _lower_stmt_Expr(node):
+    return IRExprStmt(lower_expr(node.value), src=_src(node))
 
 
 def _lower_body(body) -> tuple:
