@@ -3,15 +3,11 @@ from collections import defaultdict
 from typing import Optional
 
 from forge.ast import nodes as vy_ast
+from forge.builtins import choice, ledger_effect
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 
 FLAG_MEMBER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
-
-CHOICE_DECORATOR = "choice"
-LEDGER_EFFECT_DECORATOR = "ledger_effect"
-VIEW_DECORATOR = "view"
-DAML_NAME_DECORATOR = "DamlName"
 
 LEDGER_EFFECT_BUILTINS = {"create", "fetch", "exercise", "archive", "lookup"}
 
@@ -25,7 +21,7 @@ def _choice_calls(fn: vy_ast.FunctionDef):
     for dec in fn.decorator_list:
         if not isinstance(dec, vy_ast.Call):
             continue
-        if isinstance(dec.func, vy_ast.Name) and dec.func.id == CHOICE_DECORATOR:
+        if isinstance(dec.func, vy_ast.Name) and dec.func.id == choice.__name__:
             yield dec
 
 
@@ -35,28 +31,6 @@ def _has_decorator(fn: vy_ast.FunctionDef, name: str) -> bool:
         if isinstance(target, vy_ast.Name) and target.id == name:
             return True
     return False
-
-
-def _check_bare_marker_decorator(
-    container: vy_ast.TopLevel, name: str, code: str, errors: ExceptionList
-) -> None:
-    for fn in container.body:
-        if not isinstance(fn, vy_ast.FunctionDef):
-            continue
-
-        for dec in fn.decorator_list:
-            target = dec.func if isinstance(dec, vy_ast.Call) else dec
-            if not (isinstance(target, vy_ast.Name) and target.id == name):
-                continue
-
-            if isinstance(dec, vy_ast.Call):
-                errors.append(
-                    DamlForgeException(
-                        f"`@{name}` on `{container.name}.{fn.name}` takes no arguments",
-                        fn,
-                        code=code,
-                    )
-                )
 
 
 def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
@@ -121,7 +95,7 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
         if not isinstance(fn, vy_ast.FunctionDef):
             continue
 
-        if _has_decorator(fn, LEDGER_EFFECT_DECORATOR) or _has_decorator(fn, CHOICE_DECORATOR):
+        if _has_decorator(fn, ledger_effect.__name__) or _has_decorator(fn, choice.__name__):
             continue
 
         for call in fn.get_descendants(vy_ast.Call):
@@ -129,31 +103,11 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
                 errors.append(
                     DamlForgeException(
                         f"`{container.name}.{fn.name}` calls `{call.func.id}` but is not "
-                        f"decorated `@{LEDGER_EFFECT_DECORATOR}` and is not a `@{CHOICE_DECORATOR}`",
+                        f"decorated `@{ledger_effect.__name__}` and is not a `@{choice.__name__}`",
                         call,
                         code=ErrorCodes.DF1205.value,
                     )
                 )
-
-
-def check_view_decorator(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    _check_bare_marker_decorator(container, VIEW_DECORATOR, ErrorCodes.DF1206.value, errors)
-
-
-def check_view_outside_interface(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    for fn in container.body:
-        if not isinstance(fn, vy_ast.FunctionDef):
-            continue
-
-        if _has_decorator(fn, VIEW_DECORATOR):
-            errors.append(
-                DamlForgeException(
-                    f"`@{VIEW_DECORATOR}` on `{container.name}.{fn.name}` is only valid "
-                    "inside `interface`/`instance`, not `template`",
-                    fn,
-                    code=ErrorCodes.DF1207.value,
-                )
-            )
 
 
 def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
@@ -550,14 +504,11 @@ def check_container(
         check_template_ensure(node, errors)
         check_unknown_decorators(node, errors)
         check_hidden_ledger_effects(node, errors)
-        check_view_decorator(node, errors)
-        check_view_outside_interface(node, errors)
         check_recursion(node, errors, recursion_context)
     elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.InstanceDef)):
         check_unknown_decorators(node, errors)
         check_consuming_variant_scope(node, errors)
         check_hidden_ledger_effects(node, errors)
-        check_view_decorator(node, errors)
         check_recursion(node, errors, recursion_context)
     elif isinstance(node, vy_ast.FunctionDef):
         check_recursion(node, errors, recursion_context)

@@ -5,7 +5,7 @@ import pkgutil
 import typing
 from enum import Enum
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 from abc import ABC, abstractmethod
 
 from forge.ast import nodes as vy_ast
@@ -184,6 +184,64 @@ class ledger_effect(VyDecorator):
                     code=ErrorCodes.DF1204.value,
                 )
             )
+
+
+class view(VyDecorator):
+    def __new__(cls, fn):
+        fn.__vy_decorator__ = True
+        fn.__view__ = True
+        return fn
+
+    @classmethod
+    def __post_vy_check__(cls, container: vy_ast.TopLevel,
+                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+        from forge.models.error_codes import ErrorCodes
+
+        if isinstance(dec, vy_ast.Call):
+            errors.append(
+                DamlForgeException(
+                    f"`@{cls.__name__}` on `{container.name}.{fn.name}` takes no arguments",
+                    fn,
+                    code=ErrorCodes.DF1206.value,
+                )
+            )
+
+        if isinstance(container, vy_ast.TemplateDef):
+            errors.append(
+                DamlForgeException(
+                    f"`@{cls.__name__}` on `{container.name}.{fn.name}` is only valid "
+                    "inside `interface`/`instance`, not `template`",
+                    fn,
+                    code=ErrorCodes.DF1207.value,
+                )
+            )
+
+
+@dataclasses.dataclass(frozen=True)
+class InterfaceMeta:
+    view: Any
+    requires: Tuple[Any, ...] = dataclasses.field(default_factory=tuple)
+
+
+def interface(*, view, requires=()):
+    def wrap(cls):
+        cls.__interface__ = InterfaceMeta(view=view, requires=tuple(requires))
+        return cls
+
+    return wrap
+
+
+@dataclasses.dataclass(frozen=True)
+class InstanceMeta:
+    interface: Any
+
+
+def instance(interface_cls):
+    def wrap(cls):
+        cls.__instance__ = InstanceMeta(interface=interface_cls)
+        return cls
+
+    return wrap
 
 
 @dataclasses.dataclass(frozen=True)

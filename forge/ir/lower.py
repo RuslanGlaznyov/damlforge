@@ -33,6 +33,7 @@ from forge.ir.nodes import (
     SourceSpan,
     TypeRef,
 )
+from forge.builtins import DamlName, choice
 from forge.models.decorators import Consuming
 
 
@@ -69,10 +70,6 @@ _COMPARE_OPS = {
     "In": "in",
     "NotIn": "not in",
 }
-
-CHOICE_DECORATOR = "choice"
-DAML_NAME_DECORATOR = "DamlName"
-
 
 def lower_type(node: vy_ast.VyperNode) -> TypeRef:
     if isinstance(node, vy_ast.Name):
@@ -196,7 +193,7 @@ def _choice_call(fn: vy_ast.FunctionDef):
     for dec in fn.decorator_list:
         if not isinstance(dec, vy_ast.Call):
             continue
-        if isinstance(dec.func, vy_ast.Name) and dec.func.id == CHOICE_DECORATOR:
+        if isinstance(dec.func, vy_ast.Name) and dec.func.id == choice.__name__:
             return dec
     return None
 
@@ -205,7 +202,7 @@ def _daml_name_override(fn: vy_ast.FunctionDef) -> "str | None":
     for dec in fn.decorator_list:
         if not isinstance(dec, vy_ast.Call):
             continue
-        if isinstance(dec.func, vy_ast.Name) and dec.func.id == DAML_NAME_DECORATOR:
+        if isinstance(dec.func, vy_ast.Name) and dec.func.id == DamlName.__name__:
             return dec.args[0].value
     return None
 
