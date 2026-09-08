@@ -69,31 +69,11 @@ def _check_bare_marker_decorator(
                 )
 
 
-def _check_daml_name_args(
-    container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
-) -> None:
-    if (
-        isinstance(dec, vy_ast.Call)
-        and len(dec.args) == 1
-        and not dec.keywords
-        and isinstance(dec.args[0], vy_ast.Str)
-    ):
-        return
-
-    errors.append(
-        DamlForgeException(
-            f"`@{DAML_NAME_DECORATOR}` on `{container.name}.{fn.name}` takes exactly one "
-            "string literal argument",
-            fn,
-            code=ErrorCodes.DF1221.value,
-        )
-    )
-
-
 def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    from forge.builtins import known_decorator_names
+    import forge.builtins as builtins_module
+    from forge.models import decorators as vy_decorators_module
 
-    known_decorators = known_decorator_names()
+    known_decorators = builtins_module.known_decorator_names()
 
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
@@ -113,8 +93,13 @@ def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) 
                 )
                 continue
 
-            if target.id == DAML_NAME_DECORATOR:
-                _check_daml_name_args(container, fn, dec, errors)
+            resolved = getattr(builtins_module, target.id, None) or getattr(
+                vy_decorators_module, target.id, None
+            )
+            target._metadata["_type"] = resolved
+
+            if isinstance(resolved, type) and issubclass(resolved, builtins_module.VyDecorator):
+                resolved.__post_vy_check__(container, fn, dec, errors)
 
 
 def check_choice_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:

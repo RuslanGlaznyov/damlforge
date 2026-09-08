@@ -5,23 +5,64 @@ import pkgutil
 import typing
 from functools import lru_cache
 from typing import Optional
+from abc import ABC, abstractmethod
 
 from forge.ir.nodes import TypeRef
+from forge.ast import nodes as vy_ast
+from forge.exceptions import DamlForgeException, ExceptionList
+from forge.models.error_codes import ErrorCodes
 
 
 @dataclasses.dataclass(frozen=True)
-class DamlName:
+class VyDecorator(ABC):
+    def __call__(self, fn):
+        fn.__vy_decorator__ = True
+        return fn
+
+    @classmethod
+    @abstractmethod
+    def __post_vy_check__(cls, container: vy_ast.TopLevel,
+                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+        pass  # This method can be overridden in subclasses to perform additional checks
+
+
+@dataclasses.dataclass(frozen=True)
+class DamlName(VyDecorator):
     name: str
     module: Optional[str] = None
     is_ledger_effect: bool = False
 
-    __vy_decorator__ = True
-
     def __call__(self, fn):
+        fn = super().__call__(fn)
+
         fn.__daml_name__ = self.name
         fn.__daml_module__ = self.module
         fn.__daml_ledger_effect__ = self.is_ledger_effect
         return fn
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("DamlName decorator requires a non-empty name")
+
+    @classmethod
+    def __post_vy_check__(cls, container: vy_ast.TopLevel,
+                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+        if (
+                isinstance(dec, vy_ast.Call)
+                and len(dec.args) == 1
+                and not dec.keywords
+                and isinstance(dec.args[0], vy_ast.Str)
+        ):
+            return
+
+        errors.append(
+            DamlForgeException(
+                f"`@{cls.__name__}` on `{container.name}.{fn.name}` takes exactly one "
+                "string literal argument",
+                fn,
+                code=ErrorCodes.DF1221.value,
+            )
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -58,9 +99,12 @@ def known_decorator_names() -> frozenset:
     own_module = importlib.import_module(__name__)
     names = set()
     for module in (own_module, vy_decorators_module):
-        names |= {
-            name for name, obj in vars(module).items() if getattr(obj, "__vy_decorator__", False)
-        }
+        for name, obj in vars(module).items():
+            is_decorator = getattr(obj, "__vy_decorator__", False) or (
+                isinstance(obj, type) and obj is not VyDecorator and issubclass(obj, VyDecorator)
+            )
+            if is_decorator:
+                names.add(name)
     return frozenset(names)
 
 
