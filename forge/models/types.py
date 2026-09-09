@@ -1,5 +1,7 @@
 from typing import Generic, NewType, TypeVar
 
+from forge.builtins.maps import GenMap, TextMap
+
 Party = NewType("Party", str)
 Text = NewType("Text", str)
 Int = NewType("Int", int)
@@ -8,17 +10,7 @@ Timestamp = NewType("Timestamp", str)
 RelTime = NewType("RelTime", str)
 
 T = TypeVar("T")
-K = TypeVar("K")
-V = TypeVar("V")
 
 
 class ContractId(Generic[T]):
-    pass
-
-
-class TextMap(Generic[T]):
-    pass
-
-
-class GenMap(Generic[K, V]):
     pass

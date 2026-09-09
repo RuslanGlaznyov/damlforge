@@ -9,6 +9,7 @@ from typing import Any, Optional, Tuple
 from abc import ABC, abstractmethod
 
 from forge.ast import nodes as vy_ast
+from forge.builtins.maps import DamlMapType, GenMap, TextMap, known_map_types
 from forge.exceptions import DamlForgeException, ExceptionList
 
 

@@ -230,6 +230,42 @@ template Asset:
 """
 
 
+GENMAP_FIELD_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    balances: GenMap[Party, Decimal]
+
+    signatory: list[Party] = [owner]
+"""
+
+
+TEXTMAP_FIELD_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    balances: TextMap[Decimal]
+
+    signatory: list[Party] = [owner]
+"""
+
+
+DICT_TYPE_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    balances: dict[Party, Decimal]
+
+    signatory: list[Party] = [owner]
+"""
+
+
+UNKNOWN_MAP_TYPE_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    balances: Map[Party, Decimal]
+
+    signatory: list[Party] = [owner]
+"""
+
+
 CHOICE_MISSING_CONSUMING = """
 template Asset:
     owner: Party
@@ -665,6 +701,8 @@ def test_valid_template_passes():
         LOCAL_VARIABLE_USED_AS_ATTRIBUTE_BASE_IS_ALLOWED,
         KNOWN_BUILTIN_AND_STRUCT_CONSTRUCTOR_CALL_TARGETS_ARE_ALLOWED,
         DAML_NAME_OVERRIDES_CHOICE_NAME_IS_ALLOWED,
+        GENMAP_FIELD_IS_ALLOWED,
+        TEXTMAP_FIELD_IS_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -691,6 +729,8 @@ def test_valid_decorator_usage_passes(source):
         (TEMPLATE_ENSURE_ARITHMETIC_EXPRESSION, ErrorCodes.DF1212.value),
         (TEMPLATE_ENSURE_WITHOUT_VALUE, ErrorCodes.DF1212.value),
         (MISSING_IMPORT, ErrorCodes.DF1213.value),
+        (DICT_TYPE_NOT_ALLOWED, ErrorCodes.DF1213.value),
+        (UNKNOWN_MAP_TYPE_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (WILDCARD_MISSING_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (AS_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (DOUBLE_IMPORTS_NOT_ALLOWED, ErrorCodes.DF1213.value),

@@ -146,7 +146,7 @@ def _lower_expr_Tuple(node):
 def _lower_expr_Dict(node):
     keys = tuple(lower_expr(k) for k in node.keys)
     values = tuple(lower_expr(v) for v in node.values)
-    return IRDict(keys, values)
+    return IRDict(keys, values, kind=node._metadata.get("map_kind"))
 
 
 def _lower_expr_BinOp(node):

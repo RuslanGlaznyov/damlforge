@@ -87,21 +87,15 @@ class TupleT(_GenericT):
     _id = "tuple"
 
 
-class TextMapT(_GenericT):
-    _id = "TextMap"
-
-
-class GenMapT(_GenericT):
-    _id = "GenMap"
-
-
 def _get_generic_types() -> dict:
-    types = [ContractIdT(), OptionalT(), ListT(), TupleT(), TextMapT(), GenMapT()]
+    types = [ContractIdT(), OptionalT(), ListT(), TupleT()]
     return {t._id: t for t in types}
 
 
 def daml_builtin_type_names() -> set:
-    return set(_get_primitive_types()) | set(_get_generic_types())
+    from forge.builtins.maps import known_map_types
+
+    return set(_get_primitive_types()) | set(_get_generic_types()) | set(known_map_types())
 
 
 _DECLARATION_TYPES = (
@@ -455,11 +449,21 @@ def _functions_and_enclosing_type(node: vy_ast.TopLevel):
     return [], None
 
 
+def _mark_dict_kind(value, target_type) -> None:
+    if target_type is None or not isinstance(value, vy_ast.Dict):
+        return
+    from forge.builtins.maps import known_map_types
+
+    if target_type.name in known_map_types():
+        value._metadata["map_kind"] = target_type.name
+
+
 def _mark_call_optional_conversions(call, enclosing_type, local_types: dict, field_types: dict, return_types: dict) -> None:
     if isinstance(call.func, vy_ast.Name) and call.func.id in field_types:
         fields = field_types[call.func.id]
         for kw in call.keywords:
             field_type = fields.get(kw.arg)
+            _mark_dict_kind(kw.value, field_type)
             if field_type is None or field_type.name != "Optional":
                 continue
             value_type = _infer_expr_type(kw.value, enclosing_type, local_types, field_types, return_types)
@@ -495,6 +499,7 @@ def _mark_stmts_optional_conversions(
         if isinstance(stmt, vy_ast.AnnAssign):
             _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
             target_type = lower_type(stmt.annotation)
+            _mark_dict_kind(stmt.value, target_type)
             if stmt.value is not None and target_type.name != "Optional":
                 value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
                 if value_type is not None and value_type.name == "Optional":
@@ -505,6 +510,7 @@ def _mark_stmts_optional_conversions(
             _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
             if isinstance(stmt.target, vy_ast.Name):
                 existing_type = local_types.get(stmt.target.id)
+                _mark_dict_kind(stmt.value, existing_type)
                 if existing_type is not None and existing_type.name == "Optional":
                     value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
                     if value_type is not None and value_type.name not in ("Optional", "None"):
@@ -538,6 +544,7 @@ def _mark_stmts_optional_conversions(
             _mark_stmts_optional_conversions(stmt.body, enclosing_type, body_types, field_types, return_types, return_type)
         elif isinstance(stmt, vy_ast.Return):
             _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            _mark_dict_kind(stmt.value, return_type)
             if stmt.value is not None and return_type is not None and return_type.name != "Optional":
                 value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
                 if value_type is not None and value_type.name == "Optional":

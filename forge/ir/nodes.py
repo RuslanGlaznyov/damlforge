@@ -73,6 +73,7 @@ class IRTuple:
 class IRDict:
     keys: tuple["IRExpr", ...]
     values: tuple["IRExpr", ...]
+    kind: Optional[str] = None
 
 
 @dataclass(frozen=True)
