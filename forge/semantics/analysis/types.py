@@ -31,6 +31,10 @@ class PyFloatT(_PrimT):
     _id = "float"
 
 
+class PyStrT(_PrimT):
+    _id = "str"
+
+
 class DecimalT(_PrimT):
     _id = "Decimal"
 
@@ -58,6 +62,7 @@ def _get_primitive_types() -> dict:
         IntT(),
         PyIntT(),
         PyFloatT(),
+        PyStrT(),
         DecimalT(),
         DateT(),
         TimestampT(),

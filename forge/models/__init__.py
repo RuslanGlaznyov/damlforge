@@ -21,7 +21,6 @@ from forge.models.types import (
     Int,
     Party,
     RelTime,
-    Text,
     TextMap,
     Timestamp,
 )
@@ -39,7 +38,6 @@ __all__ = [
     "InterfaceMeta",
     "InstanceMeta",
     "Party",
-    "Text",
     "Int",
     "Decimal",
     "Optional",

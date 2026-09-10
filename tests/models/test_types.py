@@ -1,14 +1,10 @@
 from decimal import Decimal as PyDecimal
 
-from forge.models import ContractId, Decimal, GenMap, Int, Party, Text, TextMap
+from forge.models import ContractId, Decimal, GenMap, Int, Party, TextMap
 
 
 def test_party_wraps_and_returns_underlying_value():
     assert Party("Alice") == "Alice"
-
-
-def test_text_wraps_and_returns_underlying_value():
-    assert Text("hello") == "hello"
 
 
 def test_int_wraps_and_returns_underlying_value():
