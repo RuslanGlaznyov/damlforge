@@ -266,6 +266,42 @@ template Asset:
 """
 
 
+SET_FIELD_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    tags: set[Party]
+
+    signatory: list[Party] = [owner]
+"""
+
+
+FROZENSET_FIELD_IS_ALLOWED = """
+template Asset:
+    owner: Party
+    tags: frozenset[Party]
+
+    signatory: list[Party] = [owner]
+"""
+
+
+BYTES_TYPE_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    data: bytes
+
+    signatory: list[Party] = [owner]
+"""
+
+
+COMPLEX_TYPE_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    data: complex
+
+    signatory: list[Party] = [owner]
+"""
+
+
 CHOICE_MISSING_CONSUMING = """
 template Asset:
     owner: Party
@@ -703,6 +739,8 @@ def test_valid_template_passes():
         DAML_NAME_OVERRIDES_CHOICE_NAME_IS_ALLOWED,
         GENMAP_FIELD_IS_ALLOWED,
         TEXTMAP_FIELD_IS_ALLOWED,
+        SET_FIELD_IS_ALLOWED,
+        FROZENSET_FIELD_IS_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -731,6 +769,8 @@ def test_valid_decorator_usage_passes(source):
         (MISSING_IMPORT, ErrorCodes.DF1213.value),
         (DICT_TYPE_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (UNKNOWN_MAP_TYPE_NOT_ALLOWED, ErrorCodes.DF1213.value),
+        (BYTES_TYPE_NOT_ALLOWED, ErrorCodes.DF1222.value),
+        (COMPLEX_TYPE_NOT_ALLOWED, ErrorCodes.DF1222.value),
         (WILDCARD_MISSING_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (AS_IMPORT_NOT_ALLOWED, ErrorCodes.DF1213.value),
         (DOUBLE_IMPORTS_NOT_ALLOWED, ErrorCodes.DF1213.value),

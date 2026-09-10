@@ -86,11 +86,6 @@ _CONSUMING_KEYWORD = {
     Consuming.POST_CONSUMING: "postconsuming ",
 }
 
-# Daml's positional tuple accessors are 1-indexed (._1, ._2, ...). We render any
-# IRSubscript with a small constant integer index as a tuple accessor rather than
-# list indexing (Daml's `!!` is rare/discouraged) because every real usage in our
-# examples is tuple-field access (`for entry: tuple[...] in xs: entry[0]`). This is
-# a documented heuristic, not a type-checked decision - see codegen design doc.
 _MAX_TUPLE_ACCESSOR_INDEX = 8
 
 
@@ -110,15 +105,14 @@ def _render_type_inner(t: TypeRef) -> str:
         return f"[{render_type(t.args[0])}]"
     if t.name == "tuple":
         return "(" + ", ".join(render_type(a) for a in t.args) + ")"
-    if t.name == "Optional":
-        return f"Optional {render_type(t.args[0], as_arg=True)}"
+    if is_optional_type(t.name):
+        return render_optional_type(t, render_type)
     if t.name == "ContractId":
         return f"ContractId {render_type(t.args[0], as_arg=True)}"
-    if t.name == "TextMap":
-        return f"TextMap {render_type(t.args[0], as_arg=True)}"
-    if t.name == "GenMap":
-        key, value = t.args
-        return f"GenMap {render_type(key, as_arg=True)} {render_type(value, as_arg=True)}"
+    if is_map_type(t.name):
+        return render_map_type(t, render_type)
+    if is_set_type(t.name):
+        return render_set_type(t, render_type)
     return _PRIMITIVE_TYPE_MAP.get(t.name, t.name)
 
 
@@ -135,11 +129,6 @@ def render_constant(value) -> str:
     return str(value)
 
 
-# Function application binds tighter than any infix operator in Daml/Haskell,
-# so a call/attribute-access used as an *infix operand* never needs parens
-# (`f x > y` already means `(f x) > y`). But nested application does need
-# parens as a *call argument* (`f (g x)` vs `f g x` differ), and so does any
-# compound infix expression used as a call argument.
 _NEEDS_PARENS_AS_INFIX_OPERAND = (IRBinOp, IRBoolOp, IRUnaryOp, IRCompare)
 _NEEDS_PARENS_AS_CALL_ARG = (IRCall, IRBinOp, IRBoolOp, IRUnaryOp, IRCompare)
 

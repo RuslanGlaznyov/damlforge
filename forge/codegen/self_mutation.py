@@ -1,6 +1,7 @@
 from forge.builtins.maps import known_map_types
 from forge.codegen.maps import map_method_call
 from forge.codegen.optional import is_optional_type, optional_method_call
+from forge.codegen.sets import is_set_type, known_set_methods, set_method_call
 from forge.exceptions import CompilerPanic
 from forge.ir.nodes import (
     IRAssert,
@@ -143,6 +144,16 @@ class SelfFieldRewriter:
                     call = optional_method_call(e.func.attr, args, receiver)
                     if call is not None:
                         return call
+                if recv_type is not None and is_set_type(recv_type.name):
+                    receiver = cls.rewrite_expr(e.func.value, field_types, local_types)
+                    args = tuple(cls.rewrite_expr(a, field_types, local_types) for a in e.args)
+                    call = set_method_call(e.func.attr, args, receiver)
+                    if call is None:
+                        raise CompilerPanic(
+                            f"rewrite_expr: `{e.func.attr}` is not a supported {recv_type.name} "
+                            f"method (supported: {sorted(known_set_methods())})"
+                        )
+                    return call
             return IRCall(
                 cls.rewrite_expr(e.func, field_types, local_types),
                 tuple(cls.rewrite_expr(a, field_types, local_types) for a in e.args),

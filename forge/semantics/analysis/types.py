@@ -92,8 +92,16 @@ class TupleT(_GenericT):
     _id = "tuple"
 
 
+class SetT(_GenericT):
+    _id = "set"
+
+
+class FrozenSetT(_GenericT):
+    _id = "frozenset"
+
+
 def _get_generic_types() -> dict:
-    types = [ContractIdT(), OptionalT(), ListT(), TupleT()]
+    types = [ContractIdT(), OptionalT(), ListT(), TupleT(), SetT(), FrozenSetT()]
     return {t._id: t for t in types}
 
 
@@ -317,8 +325,21 @@ def mark_list_subscripts(node: vy_ast.TopLevel, list_returning_fns: frozenset) -
         _mark_list_subscripts_in_body(fn.body, list_returning_fns, set())
 
 
+_UNMAPPABLE_PYTHON_TYPES = frozenset(
+    {"bytes", "bytearray", "memoryview", "complex", "type", "object", "slice"}
+)
+
+
 def _walk_type_ref(type_ref: TypeRef, known_names: set, node, context: str, errors: ExceptionList) -> None:
-    if type_ref.name not in known_names:
+    if type_ref.name in _UNMAPPABLE_PYTHON_TYPES:
+        errors.append(
+            DamlForgeException(
+                f"`{type_ref.name}` has no Daml equivalent and cannot be used as a type ({context})",
+                node,
+                code=ErrorCodes.DF1222.value,
+            )
+        )
+    elif type_ref.name not in known_names:
         errors.append(
             DamlForgeException(
                 f"No builtin or user-defined type named `{type_ref.name}` ({context})",
