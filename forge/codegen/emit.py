@@ -3,7 +3,15 @@ from functools import lru_cache
 from typing import Optional
 
 from forge.builtins import collect_daml_builtins
+from forge.codegen.doc import concat, line, nest, render, text
+from forge.codegen.maps import is_map_type, render_map_literal, render_map_type
+from forge.codegen.maps import required_imports as required_map_imports
+from forge.codegen.optional import is_optional_type, render_optional_type
+from forge.codegen.optional import required_imports as required_optional_imports
+from forge.codegen.sets import is_set_type, render_set_type
+from forge.codegen.sets import required_imports as required_set_imports
 from forge.exceptions import CompilerPanic
+from forge.utils import daml_choice_name
 from forge.ir.nodes import (
     IRAssert,
     IRAssign,
@@ -36,19 +44,8 @@ from forge.ir.nodes import (
     TypeRef,
 )
 from forge.models.decorators import Consuming
-from forge.codegen.loops import (
-    LoopNamer,
-    body_has_ledger_effect,
-    collect_accumulators,
-    is_effect_call,
-    rewrite_appends,
-)
-from forge.codegen.self_mutation import (
-    SELF,
-    body_mutates_self,
-    inject_self_create,
-    rewrite_self_stmts,
-)
+from forge.codegen.loops import LoopAnalysis, LoopNamer
+from forge.codegen.self_mutation import SELF, SelfFieldRewriter, SelfMutationInjector
 
 _PRIMITIVE_TYPE_MAP = {
     "int": "Int",
@@ -56,6 +53,7 @@ _PRIMITIVE_TYPE_MAP = {
     "float": "Decimal",
     "bool": "Bool",
     "Text": "Text",
+    "str": "Text",
     "Decimal": "Decimal",
     "Date": "Date",
     "Timestamp": "Time",
@@ -78,6 +76,10 @@ _COMPARE_OP_MAP = {
 _BOOL_OP_MAP = {"and": "&&", "or": "||"}
 _UNARY_OP_MAP = {"not": "not ", "-": "-"}
 _BIN_OP_MAP = {"+": "+", "-": "-", "*": "*", "/": "/", "%": "%", "**": "**"}
+
+
+def _is_text_literal(e) -> bool:
+    return isinstance(e, IRConstant) and isinstance(e.value, str)
 _CONSUMING_KEYWORD = {
     None: "",
     Consuming.CONSUMING: "",
@@ -147,7 +149,7 @@ def _render_call_arg(e) -> str:
     return rendered
 
 
-_LANGUAGE_BUILTIN_RENAMES = {"len": "length"}
+_LANGUAGE_BUILTIN_RENAMES = {"len": "length", "ceil": "ceiling", "from_some": "fromSome"}
 
 
 @lru_cache(maxsize=1)
@@ -163,6 +165,11 @@ def _external_field_renames() -> dict:
 @lru_cache(maxsize=1)
 def _builtin_import_modules() -> dict:
     return collect_daml_builtins().function_import_modules
+
+
+@lru_cache(maxsize=1)
+def _case_accessors() -> dict:
+    return collect_daml_builtins().case_accessors
 
 
 def render_expr(e) -> str:
@@ -181,12 +188,11 @@ def render_expr(e) -> str:
     if isinstance(e, IRTuple):
         return "(" + ", ".join(render_expr(el) for el in e.elements) + ")"
     if isinstance(e, IRDict):
-        pairs = ", ".join(
-            f"({render_expr(k)}, {render_expr(v)})" for k, v in zip(e.keys, e.values)
-        )
-        return f"TextMap.fromList [{pairs}]"
+        return render_map_literal(e.keys, e.values, render_expr, e.kind)
     if isinstance(e, IRBinOp):
         op = _BIN_OP_MAP.get(e.op, e.op)
+        if e.op == "+" and (_is_text_literal(e.left) or _is_text_literal(e.right)):
+            op = "<>"
         return f"{_render_infix_operand(e.left)} {op} {_render_infix_operand(e.right)}"
     if isinstance(e, IRBoolOp):
         op = f" {_BOOL_OP_MAP.get(e.op, e.op)} "
@@ -209,7 +215,7 @@ def _render_atom_for_attr(value) -> str:
 
 
 def _render_subscript(e: IRSubscript) -> str:
-    if isinstance(e.index, IRConstant) and isinstance(e.index.value, int) and e.index.value >= 0:
+    if not e.is_list and isinstance(e.index, IRConstant) and isinstance(e.index.value, int) and e.index.value >= 0:
         if e.index.value <= _MAX_TUPLE_ACCESSOR_INDEX:
             return f"{_render_atom_for_attr(e.value)}._{e.index.value + 1}"
     return f"({render_expr(e.value)}) !! ({render_expr(e.index)})"
@@ -221,27 +227,26 @@ def _render_decimal_literal(value) -> str:
 
 
 def _render_call(e: IRCall) -> str:
-    # DamlForge source constructs Decimal values by calling `Decimal(N)`, but real
-    # Daml has no such constructor function - it just uses numeric literals (`0.0`).
-    if (
-        isinstance(e.func, IRName)
-        and e.func.id == "Decimal"
-        and len(e.args) == 1
-        and not e.keywords
-        and isinstance(e.args[0], IRConstant)
-    ):
-        return _render_decimal_literal(e.args[0].value)
+    if isinstance(e.func, IRName) and e.func.id == "Decimal" and len(e.args) == 1 and not e.keywords:
+        if isinstance(e.args[0], IRConstant):
+            return _render_decimal_literal(e.args[0].value)
+        return f"intToDecimal {_render_call_arg(e.args[0])}"
 
-    # `range(stop)` / `range(start, stop)` is a `for`-loop-iterable idiom with no
-    # Daml callable equivalent - it becomes a real Daml enumeration list.
     if isinstance(e.func, IRName) and e.func.id == "range" and not e.keywords and len(e.args) in (1, 2):
         start = e.args[0] if len(e.args) == 2 else IRConstant(0)
         stop = e.args[-1]
         return f"[{render_expr(start)} .. ({render_expr(stop)}) - 1]"
 
+    if isinstance(e.func, IRName) and not e.keywords and len(e.args) == 1:
+        constructor = _case_accessors().get(e.func.id)
+        if constructor is not None:
+            scrutinee = _render_call_arg(e.args[0])
+            return f"(case {scrutinee} of {constructor} _damlforge_case_val -> Some _damlforge_case_val; _ -> None)"
+
     func_name = render_expr(e.func)
     if e.keywords:
-        kw_str = ", ".join(f"{k} = {render_expr(v)}" for k, v in e.keywords)
+        renames = _external_field_renames()
+        kw_str = ", ".join(f"{renames.get(k, k)} = {render_expr(v)}" for k, v in e.keywords)
         return f"{func_name} with {kw_str}"
     if not e.args:
         return func_name
@@ -249,190 +254,284 @@ def _render_call(e: IRCall) -> str:
     return f"{func_name} {args_str}"
 
 
-def _render_leaf(s, indent: int, monadic: bool) -> list:
-    """Render one non-control-flow statement. In monadic (do-block) context these are
-    ordinary statements; in pure context, `let`-bindings need a trailing `in` since a
-    pure function body is one expression, not a sequence of statements."""
-    pad = "  " * indent
-    if isinstance(s, IRAssert):
-        if s.msg is not None:
-            return [f"{pad}assertMsg {render_expr(s.msg)} ({render_expr(s.test)})"]
-        return [f"{pad}assert ({render_expr(s.test)})"]
-    if isinstance(s, IRAssign):
-        if monadic and is_effect_call(s.value):
-            # `create`/`fetch`/`exercise`/`archive`/`lookup` are `Update` actions,
-            # not pure values - binding their result needs `<-`, not `let =`.
-            return [f"{pad}{render_expr(s.target)} <- {render_expr(s.value)}"]
-        binding = f"let {render_expr(s.target)} = {render_expr(s.value)}"
-        return [f"{pad}{binding} in" if not monadic else f"{pad}{binding}"]
-    if isinstance(s, IRPass):
-        # `pure ()` only type-checks when the enclosing return type is really `()` -
-        # DamlForge's `pass` marks an abstract/unimplemented body (e.g. an interface's
-        # choice declaration) whose return type is usually something else entirely.
-        # `error` unifies with any type, so this always type-checks; it only fails at
-        # runtime if the (unimplemented) body is ever actually exercised.
-        return [f'{pad}error "damlforge: not implemented"']
-    if isinstance(s, IRExprStmt):
-        return [f"{pad}{render_expr(s.value)}"]
-    raise CompilerPanic(f"_render_leaf: unsupported IR statement {type(s).__name__}")
+class BodyTranslator:
+    def __init__(
+        self,
+        namer: LoopNamer,
+        hoisted: list,
+        known_effect_fns: frozenset = frozenset(),
+        self_type: Optional[str] = None,
+    ):
+        self.namer = namer
+        self.hoisted = hoisted
+        self.known_effect_fns = known_effect_fns
+        self.self_type = self_type
 
+    def render_body(self, stmts, indent: int, monadic: bool = True, known=frozenset()) -> list:
+        rewritten = LoopAnalysis.rewrite_appends(list(stmts), self.namer, self.known_effect_fns)
+        tail = lambda i, extra_known=frozenset(), renames=None: self._final_tail(i, monadic)
+        return self._translate(rewritten, indent, monadic, tail, known)
 
-def translate_sequence(stmts, indent: int, monadic: bool, make_tail, namer: LoopNamer, known=frozenset()) -> list:
-    """
-    Continuation-passing translation of a statement sequence into Daml lines.
+    def render_stmt(self, stmt, indent: int, monadic: bool = True) -> list:
+        return self.render_body([stmt], indent, monadic)
 
-    `make_tail(indent, extra_known=frozenset())` supplies the lines - rendered
-    at the given indent, with `extra_known` names additionally treated as bound
-    - for "what happens when this sequence completes normally" (falls off the
-    end without an explicit `return`): threaded into both branches of every
-    `if` and the "list exhausted" base case of every `for` loop. Taking
-    `indent` as a parameter (rather than closing over a fixed one) lets the
-    same tail be re-rendered at whatever depth it ends up nested at - e.g.
-    inside a loop helper's base case, one level deeper than where the loop
-    itself sits. An explicit `return` ends the sequence immediately, ignoring
-    `make_tail` entirely - exactly Python's own semantics, and exactly what
-    lets a `for` loop compose correctly with code that follows it (the code
-    after a loop is just the loop's own "list exhausted" continuation).
+    @staticmethod
+    def _final_tail(i: int, monadic: bool) -> list:
+        pad = "  " * i
+        return [f"{pad}pure ()"] if monadic else [f"{pad}()"]
 
-    `known` is the set of names already bound before this sequence starts -
-    used to tell a genuine loop-carried accumulator (a name mutated that
-    already existed outside the loop/if it's mutated in) apart from a name's
-    first binding in this scope (e.g. a per-iteration local reset every time),
-    which must never be threaded as a recursion parameter since no outer
-    binding for it exists to pass in.
-    """
-    pad = "  " * indent
-    if not stmts:
-        return make_tail(indent)
+    @staticmethod
+    def _resolve_all(names, renames: dict) -> list:
+        return [renames.get(n, n) for n in names]
 
-    first, rest = stmts[0], stmts[1:]
+    @staticmethod
+    def _render_assign_target(s: IRAssign) -> str:
+        rendered = render_expr(s.target)
+        if s.type is None or not isinstance(s.target, IRName):
+            return rendered
+        return f"({rendered} : {render_type(s.type)})"
 
-    if isinstance(first, IRReturn):
-        if first.value is None:
-            return [f"{pad}pure ()"] if monadic else [f"{pad}()"]
-        value_expr = render_expr(first.value)
-        # a tuple/unit value already renders its own parens - don't add a second pair
-        already_parenthesized = isinstance(first.value, IRTuple)
-        wrapped = value_expr if already_parenthesized else f"({value_expr})"
-        return [f"{pad}pure {wrapped}"] if monadic else [f"{pad}{value_expr}"]
+    def _render_leaf(self, s, indent: int, monadic: bool, renames: dict) -> list:
+        pad = "  " * indent
+        if isinstance(s, IRAssert):
+            test = LoopAnalysis.apply_renames(s.test, renames)
+            if s.msg is not None:
+                msg = LoopAnalysis.apply_renames(s.msg, renames)
+                return [f"{pad}assertMsg {render_expr(msg)} ({render_expr(test)})"]
+            return [f"{pad}assert ({render_expr(test)})"]
+        if isinstance(s, IRAssign):
+            value = LoopAnalysis.apply_renames(s.value, renames)
+            target = self._render_assign_target(s)
+            if monadic and LoopAnalysis.is_effect_call(s.value, self.known_effect_fns):
+                return [f"{pad}{target} <- {render_expr(value)}"]
+            binding = f"let {target} = {render_expr(value)}"
+            return [f"{pad}{binding} in" if not monadic else f"{pad}{binding}"]
+        if isinstance(s, IRExprStmt):
+            return [f"{pad}{render_expr(LoopAnalysis.apply_renames(s.value, renames))}"]
+        raise CompilerPanic(f"_render_leaf: unsupported IR statement {type(s).__name__}")
 
-    if isinstance(first, IRIf):
-        branch_tail = make_tail
-        cont_lines = []
-        if rest:
-            # `rest` (everything after this `if`) is this branch's continuation,
-            # and BOTH the then- and else-branch need it - render it exactly once,
-            # bound to a shared helper, instead of inlining it into both branches
-            # (which would duplicate its size on every branch point, compounding
-            # exponentially across sequential/nested `if`s).
-            cont_vars = collect_accumulators(list(first.body) + list(first.orelse), known)
-            cont_name = namer.next_cont()
-            params = " ".join(cont_vars)
-            header = f"{cont_name} {params}".rstrip()
-            cont_lines = [f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="]
-            cont_lines.extend(translate_sequence(rest, indent + 3, monadic, make_tail, namer, known | set(cont_vars)))
+    def _translate(self, stmts, indent, monadic, make_tail, known=frozenset(), renames=None) -> list:
+        renames = renames or {}
+        pad = "  " * indent
+        if not stmts:
+            return make_tail(indent, frozenset(), renames)
 
-            def branch_tail(i, extra_known=frozenset()):
-                return [f"{'  ' * i}{header}"]
+        first, rest = stmts[0], stmts[1:]
 
-        lines = [f"{pad}if {render_expr(first.test)}", f"{pad}  then do" if monadic else f"{pad}  then"]
-        lines.extend(translate_sequence(list(first.body), indent + 2, monadic, branch_tail, namer, known))
-        lines.append(f"{pad}  else do" if monadic else f"{pad}  else")
-        lines.extend(translate_sequence(list(first.orelse), indent + 2, monadic, branch_tail, namer, known))
-        return cont_lines + lines
+        if isinstance(first, IRReturn):
+            if first.value is None:
+                return [f"{pad}pure ()"] if monadic else [f"{pad}()"]
+            value_expr = render_expr(LoopAnalysis.apply_renames(first.value, renames))
+            if monadic and LoopAnalysis.is_effect_call(first.value, self.known_effect_fns):
+                return [f"{pad}{value_expr}"]
+            already_parenthesized = isinstance(first.value, IRTuple)
+            wrapped = value_expr if already_parenthesized else f"({value_expr})"
+            return [f"{pad}pure {wrapped}"] if monadic else [f"{pad}{value_expr}"]
 
-    if isinstance(first, IRFor):
-        def rest_tail(i, extra_known=frozenset()):
-            return translate_sequence(rest, i, monadic, make_tail, namer, known | extra_known)
+        if isinstance(first, IRPass):
+            return [f'{pad}error "damlforge: not implemented"']
 
-        return _translate_for(first, indent, monadic, rest_tail, namer, known)
+        if isinstance(first, IRIf):
+            branch_tail = make_tail
+            cont_lines = []
+            if rest:
+                branch_stmts = list(first.body) + list(first.orelse)
+                cont_vars = LoopAnalysis.collect_accumulators(branch_stmts, known)
+                free_after = LoopAnalysis.collect_free_names(rest)
+                new_vars = sorted(
+                    n
+                    for n in LoopAnalysis.collect_assigned_names(branch_stmts)
+                    if n not in known and n in free_after and n not in cont_vars
+                )
+                cont_vars = cont_vars + new_vars
+                cont_name = self.namer.next_cont()
+                params = " ".join(cont_vars)
+                header = f"{cont_name} {params}".rstrip()
+                cont_lines = [f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="]
+                cont_renames = {k: v for k, v in renames.items() if k not in cont_vars}
+                cont_lines.extend(
+                    self._translate(rest, indent + 3, monadic, make_tail, known | set(cont_vars), cont_renames)
+                )
+                if not monadic:
+                    cont_lines.append(f"{pad}in")
 
-    if isinstance(first, IRAssign) and isinstance(first.target, IRName):
-        known = known | {first.target.id}
+                def branch_tail(i, extra_known=frozenset(), br_renames=None):
+                    args = " ".join(self._resolve_all(cont_vars, br_renames or {}))
+                    call = f"{cont_name} {args}".rstrip()
+                    return [f"{'  ' * i}{call}"]
 
-    return _render_leaf(first, indent, monadic) + translate_sequence(rest, indent, monadic, make_tail, namer, known)
+            test_expr = render_expr(LoopAnalysis.apply_renames(first.test, renames))
+            lines = [f"{pad}if {test_expr}", f"{pad}  then do" if monadic else f"{pad}  then"]
+            lines.extend(self._translate(list(first.body), indent + 2, monadic, branch_tail, known, renames))
+            lines.append(f"{pad}  else do" if monadic else f"{pad}  else")
+            lines.extend(self._translate(list(first.orelse), indent + 2, monadic, branch_tail, known, renames))
+            return cont_lines + lines
 
+        if isinstance(first, IRFor):
+            def rest_tail(i, extra_known=frozenset(), for_renames=None):
+                return self._translate(rest, i, monadic, make_tail, known | extra_known, for_renames or {})
 
-def _translate_for(node: IRFor, indent: int, monadic: bool, make_tail, namer: LoopNamer, known=frozenset()) -> list:
-    pad = "  " * indent
-    body = rewrite_appends(list(node.body))
-    accumulators = collect_accumulators(body, known)
-    loop_is_monadic = monadic and body_has_ledger_effect(body)
-    helper = namer.next()
-    rest_name = "_damlforge_rest"
-    acc_params = " ".join(accumulators)
-    header_params = f"{acc_params} " if acc_params else ""
-    case_head = f"{pad}    {helper} {header_params}({node.target} : {rest_name})"
-    case_arrow = " = do" if loop_is_monadic else " ="
-    inner_known = known | {node.target} | set(accumulators)
+            return self._translate_for(first, indent, monadic, rest_tail, known, renames)
 
-    if accumulators:
-        # loop-carried state is mutated: the helper returns the final accumulator
-        # values, and code after the loop is a *separate* continuation once we
-        # have them back - so its base case is just "return what we're holding",
-        # never the outer continuation itself.
-        acc_tuple = ", ".join(accumulators) if len(accumulators) > 1 else accumulators[0]
-        bind_target = f"({acc_tuple})" if len(accumulators) > 1 else acc_tuple
-        base_rhs = f"pure {bind_target}" if loop_is_monadic else bind_target
+        if isinstance(first, IRAssign) and isinstance(first.target, IRName):
+            if first.target.id in known:
+                value = LoopAnalysis.apply_renames(first.value, renames)
+                fresh = self.namer.next_rebind(first.target.id)
+                fresh_target = f"({fresh} : {render_type(first.type)})" if first.type is not None else fresh
+                binding = f"let {fresh_target} = {render_expr(value)}"
+                line = f"{pad}{binding}" if monadic else f"{pad}{binding} in"
+                new_renames = {**renames, first.target.id: fresh}
+                return [line] + self._translate(rest, indent, monadic, make_tail, known, new_renames)
+            known = known | {first.target.id}
 
-        def recursive_tail(i, extra_known=frozenset()):
-            call = f"{helper} {acc_params} {rest_name}".strip()
+        return self._render_leaf(first, indent, monadic, renames) + self._translate(
+            rest, indent, monadic, make_tail, known, renames
+        )
+
+    def _wrap_returns_as_some(self, stmts):
+        result = []
+        for s in stmts:
+            if isinstance(s, IRReturn):
+                value = s.value if s.value is not None else IRTuple(())
+                result.append(IRReturn(IRCall(IRName("Some"), (value,)), src=s.src))
+            elif isinstance(s, IRIf):
+                result.append(
+                    IRIf(
+                        s.test,
+                        tuple(self._wrap_returns_as_some(s.body)),
+                        tuple(self._wrap_returns_as_some(s.orelse)),
+                        src=s.src,
+                    )
+                )
+            else:
+                result.append(s)
+        return result
+
+    def _translate_for(self, node: IRFor, indent, monadic, make_tail, known=frozenset(), renames=None) -> list:
+        renames = renames or {}
+        pad = "  " * indent
+        body = LoopAnalysis.rewrite_appends(list(node.body), self.namer, self.known_effect_fns)
+        accumulators = LoopAnalysis.collect_accumulators(body, known)
+        has_return = LoopAnalysis.body_has_return(body)
+        if accumulators and has_return:
+            raise CompilerPanic(
+                "_translate_for: a `for` loop with both loop-carried accumulator "
+                "mutation and an early `return` inside its body is not supported"
+            )
+        loop_is_monadic = monadic and LoopAnalysis.body_has_ledger_effect(body, self.known_effect_fns)
+        helper = self.namer.next()
+        rest_name = "_damlforge_rest"
+        captured = sorted((LoopAnalysis.collect_free_names(body) & known) - set(accumulators) - {node.target})
+        inner_known = known | {node.target} | set(accumulators)
+        fresh_here = set(accumulators) | set(captured) | {node.target}
+        inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
+        param_names = captured + accumulators
+        base_params = [f"({p} : {self.self_type})" if p == SELF and self.self_type else p for p in param_names]
+        base_head = f"{helper} {' '.join(base_params + ['[]'])}".strip()
+        rec_head = f"{helper} {' '.join(param_names + [f'({node.target} :: {rest_name})'])}"
+        resolved_captured = self._resolve_all(captured, renames)
+        iter_expr = render_expr(LoopAnalysis.apply_renames(node.iter, renames))
+
+        if accumulators:
+            acc_tuple = f"({', '.join(accumulators)})" if len(accumulators) > 1 else accumulators[0]
+            base_rhs = f"pure {acc_tuple}" if loop_is_monadic else acc_tuple
+
+            def recursive_tail(i, extra_known=frozenset(), rec_renames=None):
+                args = captured + self._resolve_all(accumulators, rec_renames or {})
+                call = f"{helper} {' '.join(args)} {rest_name}".strip()
+                return [f"{'  ' * i}{call}"]
+
+            def_lines = [f"{base_head} = {base_rhs}", f"{rec_head} = do" if loop_is_monadic else f"{rec_head} ="]
+            def_lines.extend(self._translate(body, 1, loop_is_monadic, recursive_tail, inner_known, inner_renames))
+            self.hoisted.extend(def_lines)
+            self.hoisted.append("")
+
+            resolved_acc = self._resolve_all(accumulators, renames)
+            call_expr = f"{helper} {' '.join(resolved_captured + resolved_acc)} {iter_expr}".strip()
+            fresh_names = [self.namer.next_rebind(a) for a in accumulators]
+            fresh_tuple = ", ".join(fresh_names) if len(fresh_names) > 1 else fresh_names[0]
+            fresh_bind_target = f"({fresh_tuple})" if len(fresh_names) > 1 else fresh_tuple
+            lines = []
+            if loop_is_monadic:
+                lines.append(f"{pad}{fresh_bind_target} <- {call_expr}")
+            else:
+                suffix = "" if monadic else " in"
+                lines.append(f"{pad}let {fresh_bind_target} = {call_expr}{suffix}")
+            post_renames = {**renames, **dict(zip(accumulators, fresh_names))}
+            lines.extend(make_tail(indent, set(accumulators), post_renames))
+            return lines
+
+        if has_return:
+            wrapped_body = self._wrap_returns_as_some(body)
+            base_rhs = "pure None" if loop_is_monadic else "None"
+
+            def recursive_tail_b(i, extra_known=frozenset(), rec_renames=None):
+                call = f"{helper} {' '.join(captured)} {rest_name}".strip()
+                return [f"{'  ' * i}{call}"]
+
+            def_lines = [f"{base_head} = {base_rhs}", f"{rec_head} = do" if loop_is_monadic else f"{rec_head} ="]
+            def_lines.extend(
+                self._translate(wrapped_body, 1, loop_is_monadic, recursive_tail_b, inner_known, inner_renames)
+            )
+            self.hoisted.extend(def_lines)
+            self.hoisted.append("")
+
+            call_expr = f"{helper} {' '.join(resolved_captured)} {iter_expr}".strip()
+            maybe_name = self.namer.next_rebind("maybe")
+            early_name = self.namer.next_rebind("early")
+            lines = [
+                f"{pad}{maybe_name} <- {call_expr}" if loop_is_monadic else f"{pad}let {maybe_name} = {call_expr}"
+            ]
+            lines.append(f"{pad}case {maybe_name} of")
+            lines.append(f"{pad}  Some {early_name} -> " + (f"pure {early_name}" if monadic else early_name))
+            lines.append(f"{pad}  None -> do" if monadic else f"{pad}  None ->")
+            lines.extend(make_tail(indent + 2, frozenset(), renames))
+            return lines
+
+        if not loop_is_monadic:
+            return make_tail(indent, frozenset(), renames)
+
+        def recursive_tail_c(i, extra_known=frozenset(), rec_renames=None):
+            call = f"{helper} {' '.join(captured)} {rest_name}".strip()
             return [f"{'  ' * i}{call}"]
 
-        lines = [f"{pad}let {helper} {header_params}[] = {base_rhs}", case_head + case_arrow]
-        lines.extend(translate_sequence(body, indent + 3, loop_is_monadic, recursive_tail, namer, inner_known))
+        def_lines = [f"{base_head} = pure ()", f"{rec_head} = do"]
+        def_lines.extend(self._translate(body, 1, loop_is_monadic, recursive_tail_c, inner_known, inner_renames))
+        self.hoisted.extend(def_lines)
+        self.hoisted.append("")
 
-        call_expr = f"{helper} {acc_params} {render_expr(node.iter)}".strip()
-        if loop_is_monadic:
-            lines.append(f"{pad}{bind_target} <- {call_expr}")
-        else:
-            suffix = "" if monadic else " in"
-            lines.append(f"{pad}let {bind_target} = {call_expr}{suffix}")
-        lines.extend(make_tail(indent, set(accumulators)))
+        call_expr = f"{helper} {' '.join(resolved_captured)} {iter_expr}".strip()
+        lines = [f"{pad}_ <- {call_expr}"]
+        lines.extend(make_tail(indent, frozenset(), renames))
         return lines
 
-    # no loop-carried state: this loop's only purpose is control flow (an early
-    # `return` search, or pure side effects) - so "what happens after the loop"
-    # becomes the helper's own base case directly, and invoking the helper *is*
-    # the terminal action for this branch of the sequence.
-    # the base case's body must sit deeper than the column `helper` starts at
-    # (pad + len("let ")) or Daml/Haskell's layout rule would read it as closing
-    # this `let` block early instead of continuing the first equation's RHS -
-    # indent + 3 matches the recursive-case body below and is always safely past it.
-    lines = [f"{pad}let {helper} [] = do" if loop_is_monadic else f"{pad}let {helper} [] ="]
-    lines.extend(make_tail(indent + 3))
-    lines.append(case_head + case_arrow)
 
-    def recursive_tail_no_acc(i, extra_known=frozenset()):
-        return [f"{'  ' * i}{helper} {rest_name}"]
-
-    lines.extend(translate_sequence(body, indent + 3, loop_is_monadic, recursive_tail_no_acc, namer, inner_known))
-    lines.append(f"{pad}{helper} {render_expr(node.iter)}")
-    return lines
-
-
-def _final_tail(i: int, monadic: bool, extra_known=frozenset()) -> list:
-    pad = "  " * i
-    return [f"{pad}pure ()"] if monadic else [f"{pad}()"]
-
-
-def render_body(stmts, indent: int, monadic: bool = True, known=frozenset()) -> list:
-    namer = LoopNamer()
-    rewritten = rewrite_appends(list(stmts))
-    tail = lambda i, extra_known=frozenset(): _final_tail(i, monadic)
-    return translate_sequence(rewritten, indent, monadic, tail, namer, known)
+def render_body(
+    stmts,
+    indent: int,
+    monadic: bool = True,
+    known=frozenset(),
+    hoisted: list = None,
+    namer: LoopNamer = None,
+    self_type: str = None,
+    known_effect_fns: frozenset = frozenset(),
+) -> list:
+    namer = namer if namer is not None else LoopNamer()
+    translator = BodyTranslator(namer, hoisted if hoisted is not None else [], known_effect_fns, self_type)
+    return translator.render_body(stmts, indent, monadic, known)
 
 
 def render_stmt(stmt, indent: int, monadic: bool = True) -> list:
-    """Single-statement convenience wrapper over `translate_sequence`, used by
-    unit tests that exercise one IR statement kind at a time."""
     return render_body([stmt], indent, monadic)
 
 
 class Emitter:
-    def __init__(self):
+    def __init__(self, known_effect_fns: frozenset = frozenset()):
         self.lines: list = []
         self.mappings: list = []
+        self.namer = LoopNamer()
+        self.hoisted: list = []
+        self.known_effect_fns = known_effect_fns
 
     def line(self, text: str = "") -> None:
         self.lines.append(text)
@@ -457,164 +556,215 @@ class Emitter:
             }
         )
 
+    def _translator(self, self_type: Optional[str] = None) -> BodyTranslator:
+        return BodyTranslator(self.namer, self.hoisted, self.known_effect_fns, self_type)
 
-def emit_struct(em: Emitter, s: IRStruct) -> None:
-    start = len(em.lines) + 1
-    em.line(f"data {s.name} = {s.name}")
-    if s.fields:
-        em.line("  with")
-        for f in s.fields:
-            em.line(f"    {f.name} : {render_type(f.type)}")
-    em.line("  deriving (Eq, Show)")
-    em.record(s.src, "struct", s.name, start)
+    def emit_struct(self, s: IRStruct) -> None:
+        start = len(self.lines) + 1
+        parts = [text(f"data {s.name} = {s.name}")]
+        if s.fields:
+            field_lines = concat(
+                concat([line(), text(f"{f.name} : {render_type(f.type)}")]) for f in s.fields
+            )
+            parts.append(nest(2, concat([line(), text("with"), nest(2, field_lines)])))
+        parts.append(nest(2, concat([line(), text("deriving (Eq, Show)")])))
+        self.lines_block(render(concat(parts)))
+        self.record(s.src, "struct", s.name, start)
+
+    def emit_flag(self, f: IRFlag) -> None:
+        start = len(self.lines) + 1
+        if not f.values:
+            doc = text(f"data {f.name}")
+        else:
+            doc = concat([
+                text(f"data {f.name} = " + " | ".join(f.values)),
+                nest(2, concat([line(), text("deriving (Eq, Show)")])),
+            ])
+        self.lines_block(render(doc))
+        self.record(f.src, "flag", f.name, start)
+
+    def emit_choice(self, c: IRChoice, container_name: str, indent: int, field_types=None) -> None:
+        start = len(self.lines) + 1
+        is_template_choice = field_types is not None
+        known = frozenset(a.name for a in c.args)
+
+        body = c.body
+        display_return_type = c.return_type
+        if is_template_choice:
+            body = SelfFieldRewriter.rewrite_stmts(list(body), field_types)
+            known = known | {SELF}
+            if SelfMutationInjector.body_mutates_self(body):
+                body = SelfMutationInjector.inject_self_create(body)
+                original = c.return_type if c.return_type is not None else TypeRef("tuple", ())
+                display_return_type = TypeRef("tuple", (TypeRef("ContractId", (TypeRef(container_name),)), original))
+
+        consuming_kw = _CONSUMING_KEYWORD.get(c.consuming, "")
+        return_type = render_type(display_return_type) if display_return_type is not None else "()"
+        controller_expr = render_expr(c.controller) if c.controller is not None else "-- MISSING controller"
+
+        parts = [text(f"{consuming_kw}choice {daml_choice_name(c.name)} : {return_type}")]
+        if c.args:
+            arg_lines = concat(
+                concat([line(), text(f"{a.name} : {render_type(a.type) if a.type is not None else '()'}")])
+                for a in c.args
+            )
+            parts.append(nest(2, concat([line(), text("with"), nest(2, arg_lines)])))
+        parts.append(nest(2, concat([line(), text(f"controller {controller_expr}")])))
+        if c.observer is not None:
+            parts.append(nest(2, concat([line(), text(f"observer {render_expr(c.observer)}")])))
+        parts.append(nest(2, concat([line(), text("do")])))
+        self.lines_block(render(concat(parts), initial_indent=indent * 2))
+
+        body_lines = [f"{'  ' * indent}    let {SELF} = this"] if is_template_choice else []
+        translator = self._translator(self_type=container_name if is_template_choice else None)
+        body_lines.extend(translator.render_body(body, indent + 2, known=known))
+        self.lines_block(body_lines)
+        self.record(c.src, "choice", f"{container_name}.{c.name}", start)
+
+    def emit_function(self, fn: IRFunction) -> None:
+        start = len(self.lines) + 1
+        is_monadic = "ledger_effect" in fn.decorators
+        return_type = render_type(fn.return_type, as_arg=True) if fn.return_type is not None else "()"
+        full_return = f"Update {return_type}" if is_monadic else return_type
+        arg_types = [render_type(a.type, as_arg=True) if a.type is not None else "()" for a in fn.args]
+        self.line(f"{fn.name} : {' -> '.join(arg_types + [full_return])}")
+        header = f"{fn.name} {' '.join(a.name for a in fn.args)}".rstrip()
+        self.line(f"{header} = do" if is_monadic else f"{header} =")
+        translator = self._translator()
+        self.lines_block(
+            translator.render_body(fn.body, 1, monadic=is_monadic, known=frozenset(a.name for a in fn.args))
+        )
+        self.record(fn.src, "function", fn.name, start)
+
+    def emit_template(self, t: IRTemplate) -> None:
+        start = len(self.lines) + 1
+        parts = [text(f"template {t.name}")]
+        if t.fields:
+            field_lines = concat(
+                concat([line(), text(f"{f.name} : {render_type(f.type)}")]) for f in t.fields
+            )
+            parts.append(nest(2, concat([line(), text("with"), nest(2, field_lines)])))
+
+        signatory_expr = render_expr(t.signatory) if t.signatory is not None else "-- MISSING signatory"
+        where_parts = [line(), text(f"signatory {signatory_expr}")]
+        if t.observer is not None:
+            where_parts.extend([line(), text(f"observer {render_expr(t.observer)}")])
+
+        ensure_conditions = []
+        if t.init:
+            for b in t.init.body:
+                if (
+                    isinstance(b, IRExprStmt)
+                    and isinstance(b.value, IRCall)
+                    and isinstance(b.value.func, IRName)
+                    and b.value.func.id in ("ensure", "assert")
+                    and b.value.args
+                ):
+                    ensure_conditions.append(render_expr(b.value.args[0]))
+                if isinstance(b, IRAssert) and b.test is not None:
+                    ensure_conditions.append(render_expr(b.test))
+        if ensure_conditions:
+            where_parts.extend([line(), text("ensure " + " && ".join(ensure_conditions))])
+
+        parts.append(nest(2, concat([line(), text("where"), nest(2, concat(where_parts))])))
+        self.lines_block(render(concat(parts)))
+
+        field_types = {f.name: f.type for f in t.fields}
+        for c in t.choices:
+            self.line("")
+            self.emit_choice(c, t.name, indent=2, field_types=field_types)
+        self.record(t.src, "template", t.name, start)
+
+    def emit_interface(self, i: IRInterface) -> None:
+        start = len(self.lines) + 1
+        requires_clause = f" requires {', '.join(i.requires)}" if i.requires else ""
+        view_type = render_type(i.view) if i.view is not None else "()"
+
+        header = concat([
+            text(f"interface {i.name}{requires_clause} where"),
+            nest(2, concat([line(), text(f"viewtype {view_type}")])),
+        ])
+        self.lines_block(render(header))
+
+        for c in i.choices:
+            self.line("")
+            self.emit_choice(c, i.name, indent=1)
+        self.record(i.src, "interface", i.name, start)
+
+    def _render_header(self, imports, body_source: str, module_name: Optional[str]) -> str:
+        header = f"module {module_name} where\n\n" if module_name is not None else ""
+        builtins = collect_daml_builtins()
+        for imp in imports:
+            if imp.names is None:
+                header += f"import {imp.module}\n\n"
+                continue
+            present = set(imp.names)
+            rendered_names = []
+            for n in imp.names:
+                constructor_of = builtins.constructor_of.get(n)
+                if constructor_of is not None and constructor_of in present:
+                    continue
+                renamed = _external_builtin_renames().get(n, n)
+                if renamed in builtins.constructor_types or n in imp.constructor_names:
+                    renamed = f"{renamed}(..)"
+                rendered_names.append(renamed)
+            header += f"import {imp.module} ({', '.join(rendered_names)})\n\n"
+        for import_line in required_map_imports(body_source):
+            header += import_line
+        for import_line in required_set_imports(body_source):
+            header += import_line
+        if " !! " in body_source:
+            header += "import DA.List ((!!))\n\n"
+        for import_line in required_optional_imports(body_source):
+            header += import_line
+        required_modules = {
+            module for daml_name, module in _builtin_import_modules().items() if daml_name in body_source
+        }
+        for module in sorted(required_modules):
+            header += f"import {module}\n\n"
+        return header
+
+    def generate(self, module: IRModule, module_name: Optional[str] = None):
+        for s in module.structs:
+            self.emit_struct(s)
+            self.line("")
+        for f in module.flags:
+            self.emit_flag(f)
+            self.line("")
+        for fn in module.functions:
+            self.emit_function(fn)
+            self.line("")
+        for i in module.interfaces:
+            self.emit_interface(i)
+            self.line("")
+        for t in module.templates:
+            self.emit_template(t)
+            self.line("")
+        if self.hoisted:
+            self.lines_block(self.hoisted)
+
+        body_source = "\n".join(self.lines).rstrip("\n") + "\n"
+        mappings = self.mappings
+        header = self._render_header(module.imports, body_source, module_name)
+        if header:
+            offset = header.count("\n")
+            mappings = [
+                {
+                    **m,
+                    "generated": {
+                        "startLine": m["generated"]["startLine"] + offset,
+                        "endLine": m["generated"]["endLine"] + offset,
+                    },
+                }
+                for m in mappings
+            ]
+        source = header + body_source
+        return source, {"mappings": mappings}
 
 
-def emit_flag(em: Emitter, f: IRFlag) -> None:
-    start = len(em.lines) + 1
-    if not f.values:
-        em.line(f"data {f.name}")
-    else:
-        em.line(f"data {f.name} = " + " | ".join(f.values))
-        em.line("  deriving (Eq, Show)")
-    em.record(f.src, "flag", f.name, start)
-
-
-def emit_choice(em: Emitter, c: IRChoice, container_name: str, indent: int, field_types=None) -> None:
-    pad = "  " * indent
-    start = len(em.lines) + 1
-    is_template_choice = field_types is not None
-    known = frozenset(a.name for a in c.args)
-
-    body = c.body
-    display_return_type = c.return_type
-    if is_template_choice:
-        body = rewrite_self_stmts(list(body), field_types)
-        known = known | {SELF}
-        if body_mutates_self(body):
-            body = inject_self_create(body)
-            original = c.return_type if c.return_type is not None else TypeRef("tuple", ())
-            display_return_type = TypeRef("tuple", (TypeRef("ContractId", (TypeRef(container_name),)), original))
-
-    consuming_kw = _CONSUMING_KEYWORD.get(c.consuming, "")
-    return_type = render_type(display_return_type) if display_return_type is not None else "()"
-    em.line(f"{pad}{consuming_kw}choice {c.name} : {return_type}")
-    if c.args:
-        em.line(f"{pad}  with")
-        for a in c.args:
-            arg_type = render_type(a.type) if a.type is not None else "()"
-            em.line(f"{pad}    {a.name} : {arg_type}")
-    controller_expr = render_expr(c.controller) if c.controller is not None else "-- MISSING controller"
-    em.line(f"{pad}  controller {controller_expr}")
-    if c.observer is not None:
-        em.line(f"{pad}  observer {render_expr(c.observer)}")
-    em.line(f"{pad}  do")
-    body_lines = [f"{pad}    let {SELF} = this"] if is_template_choice else []
-    body_lines.extend(render_body(body, indent + 2, known=known))
-    em.lines_block(body_lines)
-    em.record(c.src, "choice", f"{container_name}.{c.name}", start)
-
-
-def emit_function(em: Emitter, fn: IRFunction) -> None:
-    start = len(em.lines) + 1
-    is_monadic = "ledger_effect" in fn.decorators
-    return_type = render_type(fn.return_type, as_arg=True) if fn.return_type is not None else "()"
-    full_return = f"Update {return_type}" if is_monadic else return_type
-    arg_types = [render_type(a.type, as_arg=True) if a.type is not None else "()" for a in fn.args]
-    em.line(f"{fn.name} : {' -> '.join(arg_types + [full_return])}")
-    header = f"{fn.name} {' '.join(a.name for a in fn.args)}".rstrip()
-    em.line(f"{header} = do" if is_monadic else f"{header} =")
-    em.lines_block(render_body(fn.body, 1, monadic=is_monadic, known=frozenset(a.name for a in fn.args)))
-    em.record(fn.src, "function", fn.name, start)
-
-
-def emit_template(em: Emitter, t: IRTemplate) -> None:
-    start = len(em.lines) + 1
-    em.line(f"template {t.name}")
-    if t.fields:
-        em.line("  with")
-        for f in t.fields:
-            em.line(f"    {f.name} : {render_type(f.type)}")
-    em.line("  where")
-    signatory_expr = render_expr(t.signatory) if t.signatory is not None else "-- MISSING signatory"
-    em.line(f"    signatory {signatory_expr}")
-    if t.observer is not None:
-        em.line(f"    observer {render_expr(t.observer)}")
-
-    ensure_conditions = []
-    if t.init:
-        for b in t.init.body:
-            if (
-                isinstance(b, IRExprStmt)
-                and isinstance(b.value, IRCall)
-                and isinstance(b.value.func, IRName)
-                and b.value.func.id == "ensure"
-                and b.value.args
-            ):
-                ensure_conditions.append(render_expr(b.value.args[0]))
-    if ensure_conditions:
-        em.line("    ensure " + " && ".join(ensure_conditions))
-
-    field_types = {f.name: f.type for f in t.fields}
-    for c in t.choices:
-        em.line("")
-        emit_choice(em, c, t.name, indent=2, field_types=field_types)
-    em.record(t.src, "template", t.name, start)
-
-
-def emit_interface(em: Emitter, i: IRInterface) -> None:
-    start = len(em.lines) + 1
-    requires_clause = f" requires {', '.join(i.requires)}" if i.requires else ""
-    em.line(f"interface {i.name}{requires_clause} where")
-    view_type = render_type(i.view) if i.view is not None else "()"
-    em.line(f"  viewtype {view_type}")
-    for c in i.choices:
-        em.line("")
-        emit_choice(em, c, i.name, indent=1)
-    em.record(i.src, "interface", i.name, start)
-
-
-def generate_daml(module: IRModule):
-    em = Emitter()
-
-    for s in module.structs:
-        emit_struct(em, s)
-        em.line("")
-
-    for f in module.flags:
-        emit_flag(em, f)
-        em.line("")
-
-    for fn in module.functions:
-        emit_function(em, fn)
-        em.line("")
-
-    for i in module.interfaces:
-        emit_interface(em, i)
-        em.line("")
-
-    for t in module.templates:
-        emit_template(em, t)
-        em.line("")
-
-    body_source = "\n".join(em.lines).rstrip("\n") + "\n"
-    mappings = em.mappings
-    # a small, deliberate exception to "no import emission yet" (see codegen
-    # design doc): `Map.lookup`/`Map.member`/`Map.insert` (from dict-typed
-    # `self.field` operations) need `DA.Map` in scope to resolve at all.
-    header = ""
-    if "Map." in body_source:
-        header = "import DA.Map as Map\n\n"
-        offset = header.count("\n")
-        mappings = [
-            {
-                **m,
-                "generated": {
-                    "startLine": m["generated"]["startLine"] + offset,
-                    "endLine": m["generated"]["endLine"] + offset,
-                },
-            }
-            for m in mappings
-        ]
-    source = header + body_source
-    source_map = {"mappings": mappings}
-    return source, source_map
+def generate_daml(module: IRModule, module_name: Optional[str] = None):
+    known_effect_fns = (
+        frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
+        | collect_daml_builtins().ledger_effect_fns
+    )
+    return Emitter(known_effect_fns).generate(module, module_name)

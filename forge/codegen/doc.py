@@ -44,8 +44,8 @@ def concat(docs) -> Doc:
     return Concat(docs)
 
 
-def render(doc: Doc) -> list:
-    out = [""]
+def render(doc: Doc, initial_indent: int = 0) -> list:
+    out = [" " * initial_indent]
 
     def go(node: Doc, indent: int) -> None:
         if isinstance(node, Text):
@@ -58,5 +58,5 @@ def render(doc: Doc) -> list:
             for child in node.docs:
                 go(child, indent)
 
-    go(doc, 0)
+    go(doc, initial_indent)
     return out
