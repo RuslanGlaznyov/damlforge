@@ -12,7 +12,7 @@ from typing import Annotated, Optional
 
 from forge.models.types import ContractId
 from ...Api.Token.HoldingV1 import Holding
-from ...Api.Token.MetadataV1 import Metadata
+from ...Api.Token.MetadataV1 import ChoiceContext, ExtraArgs, Metadata
 from .... import DamlName
 
 
@@ -59,32 +59,4 @@ class TransferInstruction_Update:
     """
 
     extra_actors: Annotated[list, DamlName("extraActors")]
-    extra_args: Annotated["ExtraArgs", DamlName("extraArgs")]
-
-
-@dataclass(frozen=True)
-class ExtraArgs:
-    """The real Daml `Splice.Api.Token.MetadataV1.ExtraArgs` record - extra
-    context/metadata passed alongside a token-standard choice exercise.
-    Real Daml definition:
-
-        data ExtraArgs = ExtraArgs with
-            context : ChoiceContext
-            meta : Metadata
-    """
-
-    context: "ChoiceContext"
-    meta: Metadata
-
-
-@dataclass(frozen=True)
-class ChoiceContext:
-    """The real Daml `Splice.Api.Token.MetadataV1.ChoiceContext` record -
-    implementation-specific key/value data a caller must pass back into a
-    token-standard choice. Real Daml definition:
-
-        data ChoiceContext = ChoiceContext with
-            values : TextMap AnyValue
-    """
-
-    values: dict
+    extra_args: Annotated[ExtraArgs, DamlName("extraArgs")]
