@@ -24,8 +24,6 @@ from forge.ir.nodes import (
 
 
 class LoopAnalysis:
-    LEDGER_EFFECT_BUILTINS = frozenset({"create", "fetch", "exercise", "archive", "lookup"})
-
     @classmethod
     def rewrite_appends(cls, stmts, namer=None, known_effect_fns: frozenset = frozenset()):
         rewritten = []
@@ -106,8 +104,10 @@ class LoopAnalysis:
 
     @classmethod
     def is_effect_call(cls, expr, known_effect_fns: frozenset = frozenset()) -> bool:
-        return isinstance(expr, IRCall) and isinstance(expr.func, IRName) and (
-            expr.func.id in cls.LEDGER_EFFECT_BUILTINS or expr.func.id in known_effect_fns
+        return (
+            isinstance(expr, IRCall)
+            and isinstance(expr.func, IRName)
+            and expr.func.id in known_effect_fns
         )
 
     @classmethod

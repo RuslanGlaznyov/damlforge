@@ -115,7 +115,16 @@ def _render_type_inner(t: TypeRef) -> str:
         return render_map_type(t, render_type)
     if is_set_type(t.name):
         return render_set_type(t, render_type)
-    return _PRIMITIVE_TYPE_MAP.get(t.name, t.name)
+    if t.name in _PRIMITIVE_TYPE_MAP:
+        return _PRIMITIVE_TYPE_MAP[t.name]
+    return _external_builtin_renames().get(t.name, t.name)
+
+
+def _type_ref_references_non_derivable_type(t: TypeRef) -> bool:
+    bare_name = t.name.rsplit(".", 1)[-1]
+    if bare_name in collect_daml_builtins().no_derive_types:
+        return True
+    return any(_type_ref_references_non_derivable_type(a) for a in t.args)
 
 
 def render_constant(value) -> str:
@@ -569,7 +578,8 @@ class Emitter:
                 concat([line(), text(f"{f.name} : {render_type(f.type)}")]) for f in s.fields
             )
             parts.append(nest(2, concat([line(), text("with"), nest(2, field_lines)])))
-        parts.append(nest(2, concat([line(), text("deriving (Eq, Show)")])))
+        if not any(_type_ref_references_non_derivable_type(f.type) for f in s.fields):
+            parts.append(nest(2, concat([line(), text("deriving (Eq, Show)")])))
         self.lines_block(render(concat(parts)))
         self.record(s.src, "struct", s.name, start)
 
@@ -611,9 +621,9 @@ class Emitter:
                 for a in c.args
             )
             parts.append(nest(2, concat([line(), text("with"), nest(2, arg_lines)])))
-        parts.append(nest(2, concat([line(), text(f"controller {controller_expr}")])))
         if c.observer is not None:
             parts.append(nest(2, concat([line(), text(f"observer {render_expr(c.observer)}")])))
+        parts.append(nest(2, concat([line(), text(f"controller {controller_expr}")])))
         parts.append(nest(2, concat([line(), text("do")])))
         self.lines_block(render(concat(parts), initial_indent=indent * 2))
 
@@ -697,6 +707,9 @@ class Emitter:
         header = f"module {module_name} where\n\n" if module_name is not None else ""
         builtins = collect_daml_builtins()
         for imp in imports:
+            if imp.alias is not None:
+                header += f"import qualified {imp.module} as {imp.alias}\n\n"
+                continue
             if imp.names is None:
                 header += f"import {imp.module}\n\n"
                 continue

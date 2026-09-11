@@ -78,6 +78,8 @@ def lower_type(node: vy_ast.VyperNode) -> TypeRef:
         return TypeRef(node.value)
     if isinstance(node, vy_ast.NameConstant) and node.value is None:
         return TypeRef("None")
+    if isinstance(node, vy_ast.Attribute) and isinstance(node.value, vy_ast.Name):
+        return TypeRef(f"{node.value.id}.{node.attr}")
     if isinstance(node, vy_ast.Subscript):
         base = lower_type(node.value)
         if isinstance(node.slice, vy_ast.Tuple):
@@ -444,11 +446,11 @@ def _lower_imports(body, import_graph=None) -> tuple:
                 imports.append(IRImport(_daml_module_ref(node.module), names, constructor_names))
         elif isinstance(node, vy_ast.Import):
             for alias in node.names:
-                if alias.asname is not None:
-                    continue
                 if ImportsBuilder.is_annotation_only_root(alias.name.split(".", 1)[0]):
                     continue
-                imports.append(IRImport(_daml_module_ref(alias.name), names=None))
+                imports.append(
+                    IRImport(_daml_module_ref(alias.name), names=None, alias=alias.asname)
+                )
     return tuple(imports)
 
 

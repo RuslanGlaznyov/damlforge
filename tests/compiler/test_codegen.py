@@ -182,6 +182,26 @@ def test_generate_daml_struct():
     assert "deriving (Eq, Show)" in source
 
 
+def test_generate_daml_struct_with_no_derive_field_type_skips_deriving():
+    module = IRModule(
+        structs=(
+            IRStruct(
+                "Wrapper",
+                (
+                    Field(
+                        "value",
+                        TypeRef("list", (TypeRef("FAR.FeaturedAppRight_CreateActivityMarkerResult"),)),
+                    ),
+                ),
+            ),
+        )
+    )
+    source, _ = generate_daml(module)
+    assert "data Wrapper = Wrapper" in source
+    assert "value : [FAR.FeaturedAppRight_CreateActivityMarkerResult]" in source
+    assert "deriving (Eq, Show)" not in source
+
+
 def test_generate_daml_flag():
     module = IRModule(flags=(IRFlag("Status", ("PENDING", "DONE")),))
     source, _ = generate_daml(module)
@@ -219,6 +239,34 @@ def test_generate_daml_template_with_choice_and_source_map():
     assert "pure (new_owner)" in source
     # no src was set on this hand-built fixture, so no mapping entries expected
     assert source_map["mappings"] == []
+
+
+def test_generate_daml_choice_observer_precedes_controller():
+    choice = IRChoice(
+        name="transfer",
+        controller=IRName("owner"),
+        consuming=Consuming.CONSUMING,
+        observer=IRName("issuer"),
+        args=(Field("new_owner", TypeRef("Party")),),
+        return_type=TypeRef("ContractId", (TypeRef("Asset"),)),
+        body=(IRReturn(IRName("new_owner")),),
+        src=None,
+    )
+    template = IRTemplate(
+        name="Asset",
+        fields=(Field("owner", TypeRef("Party")),),
+        signatory=IRName("owner"),
+        observer=None,
+        ensure=None,
+        init=None,
+        choices=(choice,),
+    )
+    module = IRModule(templates=(template,))
+    source, _ = generate_daml(module)
+
+    observer_index = source.index("observer issuer")
+    controller_index = source.index("controller owner")
+    assert observer_index < controller_index
 
 
 def test_generate_daml_interface_with_requires():

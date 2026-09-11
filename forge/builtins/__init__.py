@@ -254,6 +254,11 @@ class DamlCaseAccessor:
         return fn
 
 
+def no_derive(cls):
+    cls.__daml_no_derive__ = True
+    return cls
+
+
 @dataclasses.dataclass(frozen=True)
 class BuiltinMetadata:
     function_renames: dict
@@ -265,6 +270,7 @@ class BuiltinMetadata:
     case_accessors: dict
     field_types: dict
     function_return_types: dict
+    no_derive_types: frozenset
 
 
 def _walk_submodules(package_name: str):
@@ -322,6 +328,7 @@ def collect_daml_builtins() -> BuiltinMetadata:
     case_accessors: dict = {}
     field_types: dict = {}
     function_return_types: dict = {}
+    no_derive_types: set = set()
 
     for module in _walk_submodules("forge.builtins"):
         for name, obj in vars(module).items():
@@ -342,6 +349,8 @@ def collect_daml_builtins() -> BuiltinMetadata:
                 case_accessors[name] = case_constructor
 
             if isinstance(obj, type):
+                if getattr(obj, "__daml_no_derive__", False):
+                    no_derive_types.add(name)
                 if dataclasses.is_dataclass(obj):
                     marked_constructor_types.add(name)
                     hints = typing.get_type_hints(obj, include_extras=True)
@@ -375,4 +384,5 @@ def collect_daml_builtins() -> BuiltinMetadata:
         case_accessors=case_accessors,
         field_types=field_types,
         function_return_types=function_return_types,
+        no_derive_types=frozenset(no_derive_types),
     )

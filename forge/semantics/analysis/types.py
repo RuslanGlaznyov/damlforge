@@ -129,11 +129,32 @@ def known_declarations(modules) -> dict:
     return declarations
 
 
+def _qualified_import_type_names(modules) -> set:
+    names = set()
+    for module in _reachable_modules(modules):
+        for stmt in module.body:
+            if not isinstance(stmt, vy_ast.Import):
+                continue
+            for alias in stmt.names:
+                if alias.asname is None:
+                    continue
+                mod = ImportsBuilder._import_real_module(alias.name)
+                if mod is None:
+                    continue
+                for attr_name, obj in vars(mod).items():
+                    if getattr(obj, "__module__", None) != mod.__name__:
+                        continue
+                    if isinstance(obj, type):
+                        names.add(f"{alias.asname}.{attr_name}")
+    return names
+
+
 def known_type_names(modules) -> set:
     names = daml_builtin_type_names()
     for module in _reachable_modules(modules):
         names |= ImportsBuilder.imported_names(module)
     names |= known_declarations(modules).keys()
+    names |= _qualified_import_type_names(modules)
     return names
 
 
@@ -173,7 +194,6 @@ _NON_VARIABLE_DECLARATION_TYPES = (
     vy_ast.InstanceDef,
 )
 
-_LEDGER_EFFECT_BUILTINS = frozenset({"create", "fetch", "exercise", "archive", "lookup"})
 _LANGUAGE_BUILTIN_NAMES = frozenset({"len", "ceil", "floor", "range"})
 
 
@@ -186,7 +206,6 @@ def known_global_names(modules) -> frozenset:
         for node in module.body:
             if isinstance(node, vy_ast.FunctionDef):
                 names.add(node.name)
-    names |= _LEDGER_EFFECT_BUILTINS
     names |= _LANGUAGE_BUILTIN_NAMES
     names |= set(collect_daml_builtins().function_renames.keys())
     return frozenset(names)
@@ -484,9 +503,18 @@ def _mark_dict_kind(value, target_type) -> None:
         value._metadata["map_kind"] = target_type.name
 
 
+def _call_constructor_name(func) -> "str | None":
+    if isinstance(func, vy_ast.Name):
+        return func.id
+    if isinstance(func, vy_ast.Attribute):
+        return func.attr
+    return None
+
+
 def _mark_call_optional_conversions(call, enclosing_type, local_types: dict, field_types: dict, return_types: dict) -> None:
-    if isinstance(call.func, vy_ast.Name) and call.func.id in field_types:
-        fields = field_types[call.func.id]
+    constructor_name = _call_constructor_name(call.func)
+    if constructor_name is not None and constructor_name in field_types:
+        fields = field_types[constructor_name]
         for kw in call.keywords:
             field_type = fields.get(kw.arg)
             _mark_dict_kind(kw.value, field_type)

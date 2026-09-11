@@ -3,13 +3,11 @@ from collections import defaultdict
 from typing import Optional
 
 from forge.ast import nodes as vy_ast
-from forge.builtins import choice, ledger_effect
+from forge.builtins import choice, collect_daml_builtins, ledger_effect
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 
 FLAG_MEMBER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
-
-LEDGER_EFFECT_BUILTINS = {"create", "fetch", "exercise", "archive", "lookup"}
 
 # preconsuming/postconsuming are template-only; not supported on interface choices
 # (compiler/damlc/daml-lf-conversion/src/DA/Daml/LFConversion.hs, "Preconsuming/Postconsuming
@@ -99,7 +97,7 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
             continue
 
         for call in fn.get_descendants(vy_ast.Call):
-            if isinstance(call.func, vy_ast.Name) and call.func.id in LEDGER_EFFECT_BUILTINS:
+            if isinstance(call.func, vy_ast.Name) and call.func.id in collect_daml_builtins().ledger_effect_fns:
                 errors.append(
                     DamlForgeException(
                         f"`{container.name}.{fn.name}` calls `{call.func.id}` but is not "

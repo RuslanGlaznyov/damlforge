@@ -258,6 +258,7 @@ class IRImport:
     module: str
     names: Optional[tuple[str, ...]] = None
     constructor_names: frozenset = frozenset()
+    alias: Optional[str] = None
 
 
 @dataclass(frozen=True)
