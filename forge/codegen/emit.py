@@ -193,6 +193,8 @@ def render_expr(e) -> str:
         op = _BIN_OP_MAP.get(e.op, e.op)
         if e.op == "+" and (_is_text_literal(e.left) or _is_text_literal(e.right)):
             op = "<>"
+        elif e.op == "+" and (isinstance(e.left, IRList) or isinstance(e.right, IRList)):
+            op = "++"
         return f"{_render_infix_operand(e.left)} {op} {_render_infix_operand(e.right)}"
     if isinstance(e, IRBoolOp):
         op = f" {_BOOL_OP_MAP.get(e.op, e.op)} "
