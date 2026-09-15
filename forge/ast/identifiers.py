@@ -64,16 +64,12 @@ RESERVED_KEYWORDS = _PYTHON_RESERVED_KEYWORDS | {
     "internal",
     "payable",
     "nonreentrant",
-    "staticcall",
-    "extcall",
     # "class" keywords
     "interface",
     "struct",
     "event",
     "enum",
     # "flag", # allowed since it's useful as an identifier per user feedback
-    # EVM operations
-    "unreachable",
     # special functions (no name mangling)
     "init",
     "_init_",
@@ -87,20 +83,6 @@ RESERVED_KEYWORDS = _PYTHON_RESERVED_KEYWORDS | {
     "range",
     # more special operations
     "indexed",
-    # denominations
-    "ether",
-    "wei",
-    "finney",
-    "szabo",
-    "shannon",
-    "lovelace",
-    "ada",
-    "babbage",
-    "gwei",
-    "kwei",
-    "mwei",
-    "twei",
-    "pwei",
     # constants
     "inf",
     # sentinel constant values
@@ -112,5 +94,4 @@ RESERVED_KEYWORDS = _PYTHON_RESERVED_KEYWORDS | {
     "max_decimal",
     "min_decimal",
     "max_uint256",
-    "zero_wei",
 }

@@ -219,8 +219,6 @@ VYPER_CLASS_TYPES = {
 
 # simple statements that are replaced with `yield`
 CUSTOM_STATEMENT_TYPES = {"log": "Log"}
-# expression types that are replaced with `await`
-CUSTOM_EXPRESSION_TYPES = {"extcall": "ExtCall", "staticcall": "StaticCall"}
 
 
 class PreParser:
@@ -326,9 +324,6 @@ class PreParser:
                 elif string in CUSTOM_STATEMENT_TYPES:
                     new_keyword = "yield"
                     vyper_type = CUSTOM_STATEMENT_TYPES[string]
-                elif string in CUSTOM_EXPRESSION_TYPES:
-                    new_keyword = "await"
-                    vyper_type = CUSTOM_EXPRESSION_TYPES[string]
 
                 if new_keyword is not None:
                     keyword_translations[newstart] = vyper_type

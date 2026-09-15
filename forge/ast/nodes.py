@@ -1299,66 +1299,6 @@ class NotIn(Operator):
 class Call(ExprNode):
     __slots__ = ("func", "args", "keywords")
 
-    @property
-    def is_extcall(self):
-        return isinstance(self._parent, ExtCall)
-
-    @property
-    def is_staticcall(self):
-        return isinstance(self._parent, StaticCall)
-
-    @property
-    def is_plain_call(self):
-        return not (self.is_extcall or self.is_staticcall)
-
-    @property
-    def kind_str(self):
-        if self.is_extcall:
-            return "extcall"
-        if self.is_staticcall:
-            return "staticcall"
-        raise CompilerPanic("unreachable!")  # pragma: nocover
-
-    @property
-    def is_terminus(self):
-        # cursed import cycle!
-        from vyper.builtins.functions import get_builtin_functions
-
-        if not isinstance(self.func, Name):
-            return False
-
-        funcname = self.func.id
-        builtin_t = get_builtin_functions().get(funcname)
-        if builtin_t is None:
-            return False
-
-        return builtin_t._is_terminus
-
-
-class ExtCall(ExprNode):
-    __slots__ = ("value",)
-
-    def validate(self):
-        if not isinstance(self.value, Call):
-            # TODO: investigate wrong col_offset for `self.value`
-            raise StructureException(
-                "`extcall` must be followed by a function call",
-                self.value,
-                hint="did you forget parentheses?",
-            )
-
-
-class StaticCall(ExprNode):
-    __slots__ = ("value",)
-
-    def validate(self):
-        if not isinstance(self.value, Call):
-            raise StructureException(
-                "`staticcall` must be followed by a function call",
-                self.value,
-                hint="did you forget parentheses?",
-            )
-
 
 class keyword(VyperNode):
     __slots__ = ("arg", "value")

@@ -91,13 +91,6 @@ def _parse_to_ast(
 
         new_e = SyntaxException(str(e), vyper_source, e.lineno, offset)
 
-        likely_errors = ("staticall", "staticcal")
-        tmp = str(new_e)
-        for s in likely_errors:
-            if s in tmp:
-                new_e._hint = "did you mean `staticcall`?"
-                break
-
         raise new_e from None
 
     annotate_python_ast(
