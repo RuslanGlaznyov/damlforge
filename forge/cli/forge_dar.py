@@ -156,13 +156,14 @@ def build_dar(
 
     config = check_project_structure(input_dir)
 
-    vy_files = sorted(input_dir.glob("*.vy"))
-    if not vy_files:
-        raise ValueError(f"No .vy files found in: {input_dir}")
-
-    resolved_dpm = _resolve_dpm_path(dpm_path)
     source_dir = (input_dir / str(config["source"])).resolve()
     source_dir.mkdir(parents=True, exist_ok=True)
+
+    vy_files = sorted(source_dir.rglob("*.vy"))
+    if not vy_files:
+        raise ValueError(f"No .vy files found under: {source_dir}")
+
+    resolved_dpm = _resolve_dpm_path(dpm_path)
 
     package_name = config["name"]
     package_version = config["version"]
@@ -178,9 +179,13 @@ def build_dar(
         module = parse_to_ast(source, module_path=file.name, resolved_path=str(file))
         import_graph = analyze_module(module)
         ir = lower_module(module, import_graph=import_graph)
-        mod_name = daml_module_name(file.stem)
+        rel = file.relative_to(source_dir)
+        mod_stem = daml_module_name(rel.stem)
+        mod_name = ".".join((*rel.parent.parts, mod_stem))
         daml_source, _ = generate_daml(ir, module_name=mod_name)
-        (source_dir / f"{mod_name}.daml").write_text(daml_source)
+        out_dir = source_dir / rel.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / f"{mod_stem}.daml").write_text(daml_source)
 
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Running dpm build (package: {package_name}, version: {package_version})")

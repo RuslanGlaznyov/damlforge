@@ -165,6 +165,80 @@ class choice(VyDecorator):
                 )
             )
 
+        cls._check_controller_observer_names(container, fn, kwargs, qualified_name, errors)
+
+    @staticmethod
+    def _check_controller_observer_names(
+        container: vy_ast.TopLevel,
+        fn: vy_ast.FunctionDef,
+        kwargs: dict,
+        qualified_name: str,
+        errors: ExceptionList,
+    ) -> None:
+        from forge.models.error_codes import ErrorCodes
+
+        if not isinstance(container, vy_ast.TemplateDef):
+            # interface/instance choices commonly reference the interface's view
+            # type (e.g. Daml's `(view this).admin`), which `.vy` has no bare-name
+            # equivalent for yet - only template choices have concrete fields and
+            # with-arguments to validate names against.
+            return
+
+        with_arg_names = {a.arg for a in fn.args.args if a.arg != "self"}
+
+        reserved = ("signatory", "observer", "key", "maintainer", "ensure")
+        field_names = {
+            stmt.target.id
+            for stmt in container.body
+            if (
+                isinstance(stmt, vy_ast.AnnAssign)
+                and isinstance(stmt.target, vy_ast.Name)
+                and stmt.target.id not in reserved
+            )
+        }
+
+        valid_names = with_arg_names | field_names | {"self"}
+
+        for kw_name in ("controller", "observer"):
+            expr = kwargs.get(kw_name)
+            if expr is None:
+                continue
+            for name in expr.get_descendants(vy_ast.Name, include_self=True):
+                parent = name.parent
+                if isinstance(parent, vy_ast.Call) and parent.func is name:
+                    continue
+                if isinstance(parent, vy_ast.Attribute) and parent.value is name:
+                    if name.id == "self" and parent.attr not in field_names:
+                        errors.append(
+                            DamlForgeException(
+                                f"`{kw_name}=` of choice `{qualified_name}` references "
+                                f"`self.{parent.attr}`, but `{parent.attr}` is not a field of "
+                                f"template `{container.name}` ({sorted(field_names)!r}) - "
+                                "Daml would either resolve it to an unrelated field of the "
+                                "same name elsewhere in the module, or fail with a confusing "
+                                "'Ambiguous occurrence'/'not in scope' error at `damlc` time",
+                                parent,
+                                code=ErrorCodes.DF1224.value,
+                            )
+                        )
+                    continue
+                if name.id in valid_names:
+                    continue
+                errors.append(
+                    DamlForgeException(
+                        f"`{kw_name}=` of choice `{qualified_name}` references `{name.id}`, "
+                        f"which is not one of this choice's own arguments "
+                        f"({sorted(with_arg_names)!r})"
+                        + (f", the template's fields ({sorted(field_names)!r})" if field_names else "")
+                        + " or `self` - Daml's own field resolution would otherwise "
+                        "either silently pick a different, unrelated field of the same "
+                        "name elsewhere in the module, or fail with a confusing "
+                        "'Ambiguous occurrence'/'not in scope' error at `damlc` time",
+                        name,
+                        code=ErrorCodes.DF1224.value,
+                    )
+                )
+
 
 class ledger_effect(VyDecorator):
     def __new__(cls, fn):

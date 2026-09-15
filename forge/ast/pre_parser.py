@@ -2,7 +2,7 @@ import enum
 import io
 import re
 from collections import defaultdict
-from tokenize import COMMENT, NAME, OP, STRING, TokenError, TokenInfo, tokenize, untokenize
+from tokenize import COMMENT, NAME, NEWLINE, OP, STRING, TokenError, TokenInfo, tokenize, untokenize
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
@@ -186,6 +186,24 @@ class HexStringParser:
         return True
 
 
+def _is_bare_decorated_class(token_list, class_index: int, decorator_name: str) -> bool:
+    if class_index < 3:
+        return False
+    newline_tok, name_tok, at_tok = (
+        token_list[class_index - 1],
+        token_list[class_index - 2],
+        token_list[class_index - 3],
+    )
+    return (
+        newline_tok.type == NEWLINE
+        and name_tok.type == NAME
+        and name_tok.string == decorator_name
+        and at_tok.type == OP
+        and at_tok.string == "@"
+        and at_tok.start[1] == 0
+    )
+
+
 # compound statements that are replaced with `class`
 # TODO remove enum in favor of flag
 VYPER_CLASS_TYPES = {
@@ -264,7 +282,7 @@ class PreParser:
         code_bytes = code.encode("utf-8")
         token_list = list(tokenize(io.BytesIO(code_bytes).readline))
 
-        for token in token_list:
+        for i, token in enumerate(token_list):
             toks = [token]
 
             typ = token.type
@@ -291,7 +309,10 @@ class PreParser:
                 if contents.startswith("pragma "):
                     _parse_pragma(contents, settings, self._is_interface, code, start)
 
-            if typ == NAME and string in ("class", "yield"):
+            if typ == NAME and string == "class" and _is_bare_decorated_class(token_list, i, "template"):
+                keyword_translations[newstart] = "TemplateDef"
+
+            elif typ == NAME and string in ("class", "yield"):
                 raise SyntaxException(
                     f"The `{string}` keyword is not allowed. ", code, start[0], start[1]
                 )

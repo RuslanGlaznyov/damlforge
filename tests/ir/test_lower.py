@@ -34,8 +34,14 @@ def _lower(source):
     return lower_module(module)
 
 
+_DECORATOR_PREAMBLE = (
+    "from forge.models import choice, ledger_effect, template, view\n"
+    "from forge.builtins import DamlName\n"
+)
+
+
 def _analyze_and_lower(source):
-    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    module = parse_to_ast(_DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy")
     analyze_module(module)
     return lower_module(module)
 

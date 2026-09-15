@@ -2,7 +2,10 @@ import pytest
 
 from forge.ast.nodes import InstanceDef, InterfaceDef, NameConstant, TemplateDef
 from forge.ast.parse import parse_to_ast
+from forge.codegen import generate_daml
 from forge.exceptions import SyntaxException
+from forge.ir import lower_module
+from forge.semantics import analyze_module
 
 
 def _parse(source):
@@ -78,3 +81,55 @@ def test_none_literal_is_accepted_for_optional_fields():
 
     assert isinstance(assigned_value, NameConstant)
     assert assigned_value.value is None
+
+
+def test_template_decorator_on_class_produces_template_def():
+    module = _parse("@template\nclass Asset:\n    owner: Party\n")
+
+    template = module.body[0]
+
+    assert isinstance(template, TemplateDef)
+    assert template.name == "Asset"
+    assert len(template.body) == 1
+
+
+def test_bare_class_without_template_decorator_is_still_rejected():
+    with pytest.raises(SyntaxException):
+        _parse("class Asset:\n    owner: Party\n")
+
+
+def test_class_with_unrelated_decorator_is_still_rejected():
+    with pytest.raises(SyntaxException):
+        _parse("@view\nclass Asset:\n    owner: Party\n")
+
+
+def _compile_to_daml(source: str) -> str:
+    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    import_graph = analyze_module(module)
+    ir = lower_module(module, import_graph=import_graph)
+    daml_source, _ = generate_daml(ir, module_name="Test")
+    return daml_source
+
+
+def test_template_decorator_on_class_compiles_identically_to_template_keyword():
+    keyword_source = (
+        "from forge.models import Party, choice\n\n"
+        "template Asset:\n"
+        "    owner: Party\n\n"
+        "    signatory: list[Party] = [owner]\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def transfer(self, new_owner: Party) -> bool:\n"
+        "        pass\n"
+    )
+    decorator_source = (
+        "from forge.models import Party, choice, template\n\n"
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n\n"
+        "    signatory: list[Party] = [owner]\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def transfer(self, new_owner: Party) -> bool:\n"
+        "        pass\n"
+    )
+
+    assert _compile_to_daml(keyword_source) == _compile_to_daml(decorator_source)

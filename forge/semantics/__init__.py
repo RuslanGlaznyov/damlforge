@@ -3,11 +3,14 @@ from forge.exceptions import ExceptionList
 from forge.semantics.analysis.imports import ImportsBuilder
 from forge.semantics.analysis.structure import _RecursionContext, check_container
 from forge.semantics.analysis.types import (
+    check_call_argument_types,
+    check_call_arity,
     check_container_type_annotations,
     check_flag_value_access,
     check_unresolved_names,
     known_declarations,
     known_field_types,
+    known_function_param_types,
     known_global_names,
     known_list_returning_functions,
     known_return_types,
@@ -52,6 +55,7 @@ def analyze_modules(modules):
     declarations = known_declarations(module_list)
     list_returning_fns = known_list_returning_functions(module_list)
     global_names = known_global_names(module_list)
+    function_param_types = known_function_param_types(module_list)
     for module in module_list:
         for node in module.body:
             check_container(node, errors, recursion_context)
@@ -59,6 +63,8 @@ def analyze_modules(modules):
             check_flag_value_access(node, declarations, errors)
             mark_list_subscripts(node, list_returning_fns)
             check_unresolved_names(node, declarations, global_names, errors)
+            check_call_arity(node, function_param_types, errors)
+            check_call_argument_types(node, function_param_types, errors)
             mark_optional_conversions(node, field_types, return_types)
     errors.raise_if_not_empty()
 

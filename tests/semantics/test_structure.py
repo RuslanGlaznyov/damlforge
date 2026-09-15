@@ -1,14 +1,20 @@
 import pytest
 
 from forge.ast.parse import parse_to_ast
-from forge.exceptions import DamlForgeException, ExceptionList
+from forge.exceptions import ExceptionList
 from forge.semantics import analyze_module
 from forge.semantics.analysis.imports import ImportsBuilder
 from forge.models.error_codes import ErrorCodes
 
 
+_DECORATOR_PREAMBLE = (
+    "from forge.models import choice, ledger_effect, template, view\n"
+    "from forge.builtins import DamlName\n"
+)
+
+
 def _analyze(source):
-    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    module = parse_to_ast(_DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy")
     analyze_module(module)
 
 
@@ -26,6 +32,30 @@ template Asset:
 
 TEMPLATE_MISSING_SIGNATORY = """
 template Asset:
+    owner: Party
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party) -> bool:
+        pass
+"""
+
+
+VALID_TEMPLATE_VIA_DECORATOR = """
+@template
+class Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party) -> bool:
+        pass
+"""
+
+
+TEMPLATE_VIA_DECORATOR_MISSING_SIGNATORY = """
+@template
+class Asset:
     owner: Party
 
     @choice(controller=owner, consuming=True)
@@ -284,6 +314,23 @@ template Asset:
 """
 
 
+COMPATIBLE_FUNCTION_CALL_ARGUMENT_TYPES_ARE_ALLOWED = """
+def maybe_double(value: Optional[int]) -> int:
+    return 0
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(self, new_owner: Party) -> bool:
+        amount: int = 5
+        doubled = maybe_double(amount)
+        return doubled > 0
+"""
+
+
 BYTES_TYPE_NOT_ALLOWED = """
 template Asset:
     owner: Party
@@ -525,6 +572,77 @@ CHOICE_PRECONSUMING_ON_TEMPLATE_IS_ALLOWED = _choice_template('"preconsuming"')
 CHOICE_POSTCONSUMING_ON_TEMPLATE_IS_ALLOWED = _choice_template('"postconsuming"')
 CHOICE_STRING_CONSUMING_ON_TEMPLATE_IS_ALLOWED = _choice_template('"consuming"')
 CHOICE_WITH_OBSERVER_IS_ALLOWED = _choice_template("True", ", observer=issuer")
+CHOICE_OBSERVER_REFERENCES_UNRELATED_CHOICE_ARG_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+    issuer: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party) -> bool:
+        pass
+
+    @choice(controller=owner, consuming=True, observer=new_owner)
+    def rename(self, label: str) -> bool:
+        pass
+"""
+CHOICE_OBSERVER_REFERENCES_NON_FIELD_SELF_ATTRIBUTE_NOT_ALLOWED = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True, observer=self.signatory)
+    def transfer(self, new_owner: Party) -> bool:
+        pass
+"""
+FUNCTION_CALL_WITH_WRONG_ARGUMENT_COUNT_NOT_ALLOWED = """
+def add_two(a: int, b: int) -> int:
+    return a + b
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(self, new_owner: Party) -> bool:
+        total = add_two(1)
+        return total > 0
+"""
+FUNCTION_CALL_WITH_INCOMPATIBLE_ARGUMENT_TYPE_NOT_ALLOWED = """
+def sum_amounts(amounts: list[Decimal]) -> Decimal:
+    return Decimal(0)
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(self, new_owner: Party) -> bool:
+        flag: bool = True
+        total = sum_amounts(flag)
+        return total > Decimal(0)
+"""
+FUNCTION_CALL_WITH_MISMATCHED_LIST_ELEMENT_TYPE_NOT_ALLOWED = """
+struct Terms:
+    label: str
+
+def sum_amounts(amounts: list[Decimal]) -> Decimal:
+    return Decimal(0)
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(self, new_owner: Party, items: list[Terms]) -> bool:
+        total = sum_amounts(items)
+        return total > Decimal(0)
+"""
 
 
 CHOICE_PRECONSUMING_ON_INTERFACE = """
@@ -741,6 +859,8 @@ def test_valid_template_passes():
         TEXTMAP_FIELD_IS_ALLOWED,
         SET_FIELD_IS_ALLOWED,
         FROZENSET_FIELD_IS_ALLOWED,
+        VALID_TEMPLATE_VIA_DECORATOR,
+        COMPATIBLE_FUNCTION_CALL_ARGUMENT_TYPES_ARE_ALLOWED,
     ],
 )
 def test_valid_decorator_usage_passes(source):
@@ -751,6 +871,7 @@ def test_valid_decorator_usage_passes(source):
     "source,expected_code",
     [
         (TEMPLATE_MISSING_SIGNATORY, ErrorCodes.DF1201.value),
+        (TEMPLATE_VIA_DECORATOR_MISSING_SIGNATORY, ErrorCodes.DF1201.value),
         (CHOICE_MISSING_CONTROLLER, ErrorCodes.DF1203.value),
         (CHOICE_MISSING_CONSUMING, ErrorCodes.DF1203.value),
         (CHOICE_NON_LITERAL_CONSUMING, ErrorCodes.DF1203.value),
@@ -789,13 +910,18 @@ def test_valid_decorator_usage_passes(source):
         (UNKNOWN_DECORATOR_NOT_ALLOWED, ErrorCodes.DF1220.value),
         (DAML_NAME_WITH_NO_ARGUMENTS_NOT_ALLOWED, ErrorCodes.DF1221.value),
         (DAML_NAME_WITH_NON_LITERAL_ARGUMENT_NOT_ALLOWED, ErrorCodes.DF1221.value),
+        (CHOICE_OBSERVER_REFERENCES_UNRELATED_CHOICE_ARG_NOT_ALLOWED, ErrorCodes.DF1224.value),
+        (CHOICE_OBSERVER_REFERENCES_NON_FIELD_SELF_ATTRIBUTE_NOT_ALLOWED, ErrorCodes.DF1224.value),
+        (FUNCTION_CALL_WITH_WRONG_ARGUMENT_COUNT_NOT_ALLOWED, ErrorCodes.DF1225.value),
+        (FUNCTION_CALL_WITH_INCOMPATIBLE_ARGUMENT_TYPE_NOT_ALLOWED, ErrorCodes.DF1226.value),
+        (FUNCTION_CALL_WITH_MISMATCHED_LIST_ELEMENT_TYPE_NOT_ALLOWED, ErrorCodes.DF1226.value),
     ],
 )
 def test_invalid_template_raises(source, expected_code):
-    with pytest.raises(DamlForgeException) as exc_info:
+    with pytest.raises(Exception) as exc_info:
         _analyze(source)
 
-    assert exc_info.value.code == expected_code
+    assert expected_code in str(exc_info.value)
 
 
 def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
@@ -867,3 +993,36 @@ template Asset:
     message = str(exc_info.value)
     assert "DF1201" in message
     assert "DF1202" in message
+
+
+def test_decorator_used_without_import_is_not_defined():
+    source = """
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party) -> bool:
+        pass
+"""
+    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    with pytest.raises(Exception, match="DF1219"):
+        analyze_module(module)
+
+
+def test_decorator_used_with_import_passes():
+    source = """
+from forge.models import Party, choice
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party) -> bool:
+        pass
+"""
+    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    analyze_module(module)

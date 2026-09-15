@@ -116,10 +116,11 @@ class ImportsBuilder:
 
     @classmethod
     def imported_names(cls, module: vy_ast.Module) -> set:
+        from forge.builtins import known_decorator_names
         from forge.semantics.analysis.types import daml_builtin_type_names
 
         names = set()
-        builtins = daml_builtin_type_names()
+        allowed_from_annotation_only = daml_builtin_type_names() | known_decorator_names()
         for stmt in module.body:
             if isinstance(stmt, vy_ast.Import):
                 for alias in stmt.names:
@@ -130,7 +131,7 @@ class ImportsBuilder:
                     if alias.name == "*":
                         continue
                     bound = alias.asname or alias.name
-                    if cls.is_annotation_only_root(root) and alias.name not in builtins:
+                    if cls.is_annotation_only_root(root) and alias.name not in allowed_from_annotation_only:
                         continue
                     names.add(bound)
         return names

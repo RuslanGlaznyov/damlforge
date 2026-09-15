@@ -5,8 +5,14 @@ from forge.ir import lower_module
 from forge.semantics import analyze_module
 
 
+_DECORATOR_PREAMBLE = (
+    "from forge.models import choice, ledger_effect, template, view\n"
+    "from forge.builtins import DamlName\n"
+)
+
+
 def _compile(source):
-    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    module = parse_to_ast(_DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy")
     analyze_module(module)
     ir = lower_module(module)
     daml_source, _ = generate_daml(ir, module_name="Test")

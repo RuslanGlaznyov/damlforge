@@ -84,6 +84,8 @@ def test_render_type(type_ref, expected):
             "Asset with owner = o, amount = a",
         ),
         (IRTuple((IRName("a"), IRName("b"))), "(a, b)"),
+        (IRCall(IRName("Decimal"), (IRConstant(0),)), "(0.0 : Decimal)"),
+        (IRCall(IRName("Decimal"), (IRConstant(5),)), "(5.0 : Decimal)"),
     ],
 )
 def test_render_expr(expr, expected):
@@ -142,6 +144,24 @@ def test_render_stmt_for_with_no_accumulators_and_no_effects_is_dropped():
     joined = "\n".join(lines)
     assert "_damlforge_loop" not in joined
     assert hoisted == []
+
+
+def test_render_stmt_for_with_only_assert_is_preserved_not_dropped():
+    # unlike a `pass`-only loop, a loop whose only content is `assert` has a
+    # real, observable effect (it can abort the transaction) - it must never
+    # be silently elided just because it has no accumulator.
+    stmt = IRFor(
+        "item",
+        TypeRef("Party"),
+        IRName("xs"),
+        (IRAssert(IRConstant(True), IRConstant("must hold")),),
+    )
+    hoisted = []
+    lines = render_body([stmt], indent=0, hoisted=hoisted)
+    joined = "\n".join(lines)
+    hoisted_text = "\n".join(hoisted)
+    assert "_damlforge_loop" in joined
+    assert "assertMsg" in hoisted_text
 
 
 def test_render_body_for_with_accumulator_hoists_helper_and_calls_it():

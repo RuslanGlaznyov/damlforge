@@ -270,10 +270,7 @@ def check_unresolved_names(
                 )
             )
 
-        decorator_call_ids = {id(d) for d in fn.decorator_list if isinstance(d, vy_ast.Call)}
         for call in fn.get_descendants(vy_ast.Call):
-            if id(call) in decorator_call_ids:
-                continue
             if not isinstance(call.func, vy_ast.Name):
                 continue
             name = call.func.id
@@ -289,6 +286,117 @@ def check_unresolved_names(
                     code=ErrorCodes.DF1219.value,
                 )
             )
+
+
+def known_function_param_types(modules) -> dict:
+    types = {}
+    for module in _reachable_modules(modules):
+        for node in module.body:
+            if isinstance(node, vy_ast.FunctionDef):
+                types[node.name] = tuple(
+                    lower_type(a.annotation) if a.annotation is not None else None
+                    for a in node.args.args
+                    if a.arg != "self"
+                )
+    return types
+
+
+def _flat_local_types(fn: vy_ast.FunctionDef) -> dict:
+    types = {}
+    for arg in fn.args.args:
+        if arg.arg == "self" or arg.annotation is None:
+            continue
+        types[arg.arg] = lower_type(arg.annotation)
+    for assign in fn.get_descendants(vy_ast.AnnAssign):
+        if isinstance(assign.target, vy_ast.Name):
+            types[assign.target.id] = lower_type(assign.annotation)
+    for for_stmt in fn.get_descendants(vy_ast.For):
+        target = for_stmt.target.target if hasattr(for_stmt.target, "target") else for_stmt.target
+        annotation = getattr(for_stmt.target, "annotation", None)
+        if isinstance(target, vy_ast.Name) and annotation is not None:
+            types[target.id] = lower_type(annotation)
+    return types
+
+
+_TYPE_NAME_SYNONYMS = {"int": "Int", "str": "Text", "float": "Decimal"}
+
+
+def _normalize_type_name(name: str) -> str:
+    return _TYPE_NAME_SYNONYMS.get(name, name)
+
+
+def _types_compatible(actual: TypeRef, expected: TypeRef) -> bool:
+    if expected.name == "Optional":
+        if actual.name in ("Optional", "None"):
+            return True
+        return _types_compatible(actual, expected.args[0]) if expected.args else True
+    if _normalize_type_name(actual.name) != _normalize_type_name(expected.name):
+        return False
+    if len(actual.args) != len(expected.args):
+        return False
+    return all(_types_compatible(a, e) for a, e in zip(actual.args, expected.args))
+
+
+def _calls_to_check(fn: vy_ast.FunctionDef, param_types: dict):
+    decorator_call_ids = {id(d) for d in fn.decorator_list if isinstance(d, vy_ast.Call)}
+    for call in fn.get_descendants(vy_ast.Call):
+        if id(call) in decorator_call_ids:
+            continue
+        if not isinstance(call.func, vy_ast.Name) or call.keywords:
+            continue
+        expected_params = param_types.get(call.func.id)
+        if expected_params is None:
+            continue
+        yield call, expected_params
+
+
+def check_call_arity(node: vy_ast.TopLevel, param_types: dict, errors: ExceptionList) -> None:
+    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    for fn in fns:
+        for call, expected_params in _calls_to_check(fn, param_types):
+            expected = len(expected_params)
+            actual = len(call.args)
+            if actual == expected:
+                continue
+            errors.append(
+                DamlForgeException(
+                    f"`{call.func.id}(...)` called with {actual} argument"
+                    f"{'' if actual == 1 else 's'}, but `{call.func.id}` takes {expected} "
+                    f"argument{'' if expected == 1 else 's'}",
+                    call,
+                    code=ErrorCodes.DF1225.value,
+                )
+            )
+
+
+def _render_type_ref(t: TypeRef) -> str:
+    if not t.args:
+        return t.name
+    return f"{t.name}[{', '.join(_render_type_ref(a) for a in t.args)}]"
+
+
+def check_call_argument_types(node: vy_ast.TopLevel, param_types: dict, errors: ExceptionList) -> None:
+    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    for fn in fns:
+        local_types = _flat_local_types(fn)
+        for call, expected_params in _calls_to_check(fn, param_types):
+            if len(expected_params) != len(call.args):
+                continue
+            for arg, expected in zip(call.args, expected_params):
+                if expected is None or not isinstance(arg, vy_ast.Name):
+                    continue
+                actual = local_types.get(arg.id)
+                if actual is None or _types_compatible(actual, expected):
+                    continue
+                errors.append(
+                    DamlForgeException(
+                        f"`{call.func.id}(...)` passes `{arg.id}` (declared "
+                        f"`{_render_type_ref(actual)}`) for a parameter declared "
+                        f"`{_render_type_ref(expected)}` - these types are not compatible",
+                        arg,
+                        code=ErrorCodes.DF1226.value,
+                    )
+                )
 
 
 def _is_list_type_annotation(node) -> bool:

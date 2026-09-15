@@ -113,6 +113,8 @@ class LoopAnalysis:
     @classmethod
     def body_has_ledger_effect(cls, stmts, known_effect_fns: frozenset = frozenset()) -> bool:
         for s in stmts:
+            if isinstance(s, IRAssert):
+                return True
             if isinstance(s, IRExprStmt) and cls.is_effect_call(s.value, known_effect_fns):
                 return True
             if isinstance(s, IRAssign) and cls.is_effect_call(s.value, known_effect_fns):

@@ -234,7 +234,8 @@ def _render_subscript(e: IRSubscript) -> str:
 
 def _render_decimal_literal(value) -> str:
     text = str(value)
-    return text if "." in text else f"{text}.0"
+    text = text if "." in text else f"{text}.0"
+    return f"({text} : Decimal)"
 
 
 def _render_call(e: IRCall) -> str:
