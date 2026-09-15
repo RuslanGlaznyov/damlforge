@@ -372,20 +372,6 @@ def checksum_encode(addr):  # Expects an input of the form 0x<40 hex chars>
 
 
 # Returns lowest multiple of 32 >= the input
-def ceil32(x):
-    return x if x % 32 == 0 else x + 32 - (x % 32)
-
-
-# Calculates amount of gas needed for memory expansion
-def calc_mem_gas(memsize):
-    return (memsize // 32) * 3 + (memsize // 32) ** 2 // 512
-
-
-# Specific gas usage
-GAS_IDENTITY = 15
-GAS_IDENTITYWORD = 3
-GAS_COPY_WORD = 3  # i.e., W_copy from YP
-
 # A decimal value can store multiples of 1/DECIMAL_DIVISOR
 MAX_DECIMAL_PLACES = 10
 DECIMAL_DIVISOR = 10**MAX_DECIMAL_PLACES

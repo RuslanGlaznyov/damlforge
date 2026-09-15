@@ -354,12 +354,6 @@ class OverflowException(VyperException):
     """Numeric value out of range for the given type."""
 
 
-class EvmVersionException(VyperException):
-    """Invalid action for the active EVM ruleset."""
-
-
-class StorageLayoutException(VyperException):
-    """Invalid slot for the storage layout overrides"""
 
 
 class MemoryAllocationException(VyperException):

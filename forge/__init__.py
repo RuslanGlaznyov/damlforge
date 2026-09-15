@@ -2,8 +2,6 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 from pathlib import Path as _Path
 
-from forge.compiler import compile_code, compile_from_file_input
-
 __daml_annotation_only__ = True
 
 _commit_hash_file = _Path(__file__).parent.joinpath("damlforge_git_commithash.txt")
