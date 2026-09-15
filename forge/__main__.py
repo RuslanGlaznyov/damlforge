@@ -2,18 +2,19 @@
 # -*- coding: UTF-8 -*-
 import sys
 
-from vyper.cli import vyper_compile, vyper_ir
+from forge.cli import forge_daml, forge_dar, forge_json
 
 if __name__ == "__main__":
-    allowed_subcommands = ("--vyper-compile", "--vyper-ir")
+    allowed_subcommands = {
+        "--daml": forge_daml,
+        "--dar": forge_dar,
+        "--json": forge_json,
+    }
 
     if len(sys.argv) <= 1 or sys.argv[1] not in allowed_subcommands:
-        # default (no args, no switch in first arg): run vyper_compile
-        vyper_compile._parse_cli_args()
+        # default (no args, no switch in first arg): compile .vy -> .daml
+        forge_daml._parse_cli_args()
     else:
         # pop switch and forward args to subcommand
         subcommand = sys.argv.pop(1)
-        if subcommand == "--vyper-ir":
-            vyper_ir._parse_cli_args()
-        else:
-            vyper_compile._parse_cli_args()
+        allowed_subcommands[subcommand]._parse_cli_args()
