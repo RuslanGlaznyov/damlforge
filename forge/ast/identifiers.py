@@ -54,16 +54,6 @@ _PYTHON_RESERVED_KEYWORDS = {s.lower() for s in _PYTHON_RESERVED_KEYWORDS}
 
 # Cannot be used for variable or member naming
 RESERVED_KEYWORDS = _PYTHON_RESERVED_KEYWORDS | {
-    # decorators
-    "public",
-    "external",
-    "nonpayable",
-    "constant",
-    "immutable",
-    "transient",
-    "internal",
-    "payable",
-    "nonreentrant",
     # "class" keywords
     "interface",
     "struct",
@@ -85,13 +75,4 @@ RESERVED_KEYWORDS = _PYTHON_RESERVED_KEYWORDS | {
     "indexed",
     # constants
     "inf",
-    # sentinel constant values
-    # TODO remove when these are removed from the language
-    "zero_address",
-    "empty_bytes32",
-    "max_int128",
-    "min_int128",
-    "max_decimal",
-    "min_decimal",
-    "max_uint256",
 }
