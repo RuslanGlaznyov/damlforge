@@ -64,7 +64,7 @@ setup(
     setup_requires=["setuptools_scm>=7.1.0,<8.0.0"],
     entry_points={
         "console_scripts": [
-            "forge=forge.cli.forge_compile:_parse_cli_args",
+            "forge=forge.cli.forge_daml:_parse_cli_args",
         ]
     },
     classifiers=[
