@@ -101,6 +101,14 @@ def build_dar(
     if not input_dir.is_dir():
         raise ValueError(f"Input path is not a directory: {input_dir}")
 
+    if output_dar is not None:
+        if output_dar.is_dir():
+            raise ValueError(
+                f"-o must be a path to the .dar FILE to write, not a directory: {output_dar}"
+            )
+        if output_dar.suffix != ".dar":
+            raise ValueError(f"-o must end in `.dar`: {output_dar}")
+
     config = check_project_structure(input_dir)
 
     source_dir = (input_dir / str(config["source"])).resolve()

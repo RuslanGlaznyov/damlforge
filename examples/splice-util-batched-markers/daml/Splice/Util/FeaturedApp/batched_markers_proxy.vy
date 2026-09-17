@@ -98,7 +98,7 @@ class BatchedMarkersProxy:
         consuming=False,
         observer=[dso],
     )
-    def test_equal(self, val1: bool, val2: bool, parties: list[PartyWithWeigh]) -> bool:
+    def test_equal(self, val1: bool, val2: bool, parties: list[PartyWithWeight]) -> bool:
         for entry: PartyWithWeight in parties:
             assert entry.weight >= Decimal(10.0), "weight >= 10.0"
 
