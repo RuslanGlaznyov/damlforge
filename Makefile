@@ -60,4 +60,4 @@ clean-test:
 	@rm -fr .mypy_cache/
 
 test-project:
-	python3 -m forge.cli.forge_dar examples/splice-util-batched-markers --dpm /Users/artem_bogomaz/.dpm/bin/dpm
+	python3 -m forge dar examples/splice-util-batched-markers --dpm /Users/artem_bogomaz/.dpm/bin/dpm

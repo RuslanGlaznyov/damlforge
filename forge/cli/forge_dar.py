@@ -1,10 +1,6 @@
-#!/usr/bin/env python3
-
-import argparse
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
@@ -22,55 +18,6 @@ _REQUIRED_PACKAGE_CONFIG_FIELDS = ("name", "source", "version", "dependencies")
 
 class ProjectStructureError(ValueError):
     pass
-
-
-def _parse_cli_args():
-    return _parse_args(sys.argv[1:])
-
-
-def _parse_args(argv):
-    parser = argparse.ArgumentParser(
-        description="DamlForge programming language for .VY - build a .dar via the DPM manager",
-        formatter_class=argparse.RawTextHelpFormatter,
-    )
-    parser.add_argument(
-        "input_dir",
-        help="Path to a Daml project (a directory containing daml.yaml) whose .vy files "
-        "should be compiled to Daml and packaged into a .dar.",
-    )
-    parser.add_argument(
-        "-o",
-        help="Path to save the built .dar to. Defaults to <input_dir>/<name>-<version>.dar.",
-        default=None,
-        dest="output_dar",
-    )
-    parser.add_argument(
-        "--dpm",
-        help="Path to the dpm executable. Defaults to searching PATH, then ~/.dpm/bin/dpm.",
-        default=None,
-        dest="dpm_path",
-    )
-    parser.add_argument(
-        "--traceback",
-        help="Show python traceback on error instead of a short message.",
-        action="store_true",
-    )
-
-    args = parser.parse_args(argv)
-
-    try:
-        dar_path = build_dar(
-            input_dir=Path(args.input_dir),
-            output_dar=Path(args.output_dar).resolve() if args.output_dar else None,
-            dpm_path=args.dpm_path,
-        )
-    except Exception as e:
-        if args.traceback:
-            raise
-        logger.error(f"Error building .dar: {e}")
-        sys.exit(1)
-
-    logger.info(f"Built .dar: {dar_path}")
 
 
 def _resolve_dpm_path(dpm_path):
@@ -207,7 +154,3 @@ def build_dar(
         )
 
     return resolved_output
-
-
-if __name__ == "__main__":
-    _parse_cli_args()

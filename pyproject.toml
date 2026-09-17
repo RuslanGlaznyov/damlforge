@@ -30,6 +30,7 @@ dependencies = [
     "immutables",
     "loguru",
     "pyyaml",
+    "click>=8.1,<9",
 ]
 
 [tool.black]

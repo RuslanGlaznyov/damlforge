@@ -3,9 +3,10 @@
 `.vy` files are tokenized Python, re-keyworded by a pre-parser, then lowered straight to Daml source (`forge/ir`, `forge/codegen`). There is no runtime: nothing in a `.vy` file is ever executed by Python. Compile with:
 
 ```
-python -m forge <file_or_dir> -o <out_dir>        # .vy -> .daml
-python -m forge --dar <file_or_dir> -o <out_dir>  # .vy -> .daml -> real .dar via dpm build
-python -m forge --json <file_or_dir>              # .vy -> JSON AST
+python -m forge daml <file_or_dir> -o <out_dir>   # .vy -> .daml
+python -m forge dar <project_dir> -o <out.dar>    # .vy -> .daml -> real .dar via dpm build
+python -m forge json <file>                       # .vy -> JSON AST
+# `python -m forge <file_or_dir> -o <out_dir>` (no subcommand) is shorthand for `daml`
 ```
 
 ## 1. Container keywords
