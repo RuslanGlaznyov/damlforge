@@ -62,11 +62,7 @@ setup(
     packages=find_packages(include=["forge", "forge.*"]),
     python_requires=">=3.11,<4",
     setup_requires=["setuptools_scm>=7.1.0,<8.0.0"],
-    entry_points={
-        "console_scripts": [
-            "forge=forge.cli.forge_daml:_parse_cli_args",
-        ]
-    },
+    entry_points={"console_scripts": ["forge=forge.cli.forge_daml:_parse_cli_args"]},
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: Apache Software License",

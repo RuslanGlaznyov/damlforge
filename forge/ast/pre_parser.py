@@ -307,7 +307,11 @@ class PreParser:
                 if contents.startswith("pragma "):
                     _parse_pragma(contents, settings, self._is_interface, code, start)
 
-            if typ == NAME and string == "class" and _is_bare_decorated_class(token_list, i, "template"):
+            if (
+                typ == NAME
+                and string == "class"
+                and _is_bare_decorated_class(token_list, i, "template")
+            ):
                 keyword_translations[newstart] = "TemplateDef"
 
             elif typ == NAME and string in ("class", "yield"):

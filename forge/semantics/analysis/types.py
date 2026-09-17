@@ -166,7 +166,9 @@ def _flag_members(node: vy_ast.FlagDef) -> frozenset:
     )
 
 
-def check_flag_value_access(node: vy_ast.TopLevel, declarations: dict, errors: ExceptionList) -> None:
+def check_flag_value_access(
+    node: vy_ast.TopLevel, declarations: dict, errors: ExceptionList
+) -> None:
     for attr in node.get_descendants(vy_ast.Attribute):
         if not isinstance(attr.value, vy_ast.Name):
             continue
@@ -236,7 +238,9 @@ _CONSTRUCTIBLE_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.TemplateDef)
 def check_unresolved_names(
     node: vy_ast.TopLevel, declarations: dict, global_names: frozenset, errors: ExceptionList
 ) -> None:
-    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    fns = (
+        [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    )
     for fn in fns:
         local_names = _local_bound_names(fn)
         for attr in fn.get_descendants(vy_ast.Attribute):
@@ -351,7 +355,9 @@ def _calls_to_check(fn: vy_ast.FunctionDef, param_types: dict):
 
 
 def check_call_arity(node: vy_ast.TopLevel, param_types: dict, errors: ExceptionList) -> None:
-    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    fns = (
+        [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    )
     for fn in fns:
         for call, expected_params in _calls_to_check(fn, param_types):
             expected = len(expected_params)
@@ -375,8 +381,12 @@ def _render_type_ref(t: TypeRef) -> str:
     return f"{t.name}[{', '.join(_render_type_ref(a) for a in t.args)}]"
 
 
-def check_call_argument_types(node: vy_ast.TopLevel, param_types: dict, errors: ExceptionList) -> None:
-    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+def check_call_argument_types(
+    node: vy_ast.TopLevel, param_types: dict, errors: ExceptionList
+) -> None:
+    fns = (
+        [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    )
     for fn in fns:
         local_types = _flat_local_types(fn)
         for call, expected_params in _calls_to_check(fn, param_types):
@@ -447,7 +457,9 @@ def _mark_list_subscripts_in_body(stmts, list_returning_fns: frozenset, list_nam
 
 
 def mark_list_subscripts(node: vy_ast.TopLevel, list_returning_fns: frozenset) -> None:
-    fns = [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    fns = (
+        [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
+    )
     for fn in fns:
         _mark_list_subscripts_in_body(fn.body, list_returning_fns, set())
 
@@ -457,7 +469,9 @@ _UNMAPPABLE_PYTHON_TYPES = frozenset(
 )
 
 
-def _walk_type_ref(type_ref: TypeRef, known_names: set, node, context: str, errors: ExceptionList) -> None:
+def _walk_type_ref(
+    type_ref: TypeRef, known_names: set, node, context: str, errors: ExceptionList
+) -> None:
     if type_ref.name in _UNMAPPABLE_PYTHON_TYPES:
         errors.append(
             DamlForgeException(
@@ -498,7 +512,9 @@ def check_function_type_annotations(
         check_type_annotation(fn.returns, known_names, f"return type of `{fn.name}`", errors)
 
 
-def check_struct_type_annotations(node: vy_ast.StructDef, known_names: set, errors: ExceptionList) -> None:
+def check_struct_type_annotations(
+    node: vy_ast.StructDef, known_names: set, errors: ExceptionList
+) -> None:
     for stmt in node.body:
         if isinstance(stmt, vy_ast.AnnAssign):
             check_type_annotation(
@@ -556,7 +572,9 @@ def known_return_types(modules, field_types: dict) -> dict:
     return types
 
 
-def _infer_expr_type(expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict):
+def _infer_expr_type(
+    expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict
+):
     if isinstance(expr, vy_ast.NameConstant) and expr.value is None:
         return TypeRef("None")
     if isinstance(expr, vy_ast.List):
@@ -573,7 +591,9 @@ def _infer_expr_type(expr, enclosing_type, local_types: dict, field_types: dict,
         if isinstance(expr.value, vy_ast.Name) and expr.value.id == "self":
             base_type_name = enclosing_type
         else:
-            base_type = _infer_expr_type(expr.value, enclosing_type, local_types, field_types, return_types)
+            base_type = _infer_expr_type(
+                expr.value, enclosing_type, local_types, field_types, return_types
+            )
             base_type_name = base_type.name if base_type is not None else None
         if base_type_name is None:
             return None
@@ -581,12 +601,16 @@ def _infer_expr_type(expr, enclosing_type, local_types: dict, field_types: dict,
     if isinstance(expr, vy_ast.Call) and isinstance(expr.func, vy_ast.Name):
         fn = expr.func.id
         if fn == "fetch" and expr.args:
-            cid_type = _infer_expr_type(expr.args[0], enclosing_type, local_types, field_types, return_types)
+            cid_type = _infer_expr_type(
+                expr.args[0], enclosing_type, local_types, field_types, return_types
+            )
             if cid_type is not None and cid_type.name == "ContractId" and cid_type.args:
                 return cid_type.args[0]
             return None
         if fn == "create" and expr.args:
-            payload_type = _infer_expr_type(expr.args[0], enclosing_type, local_types, field_types, return_types)
+            payload_type = _infer_expr_type(
+                expr.args[0], enclosing_type, local_types, field_types, return_types
+            )
             return TypeRef("ContractId", (payload_type,) if payload_type is not None else ())
         return return_types.get(fn)
     return None
@@ -619,7 +643,9 @@ def _call_constructor_name(func) -> "str | None":
     return None
 
 
-def _mark_call_optional_conversions(call, enclosing_type, local_types: dict, field_types: dict, return_types: dict) -> None:
+def _mark_call_optional_conversions(
+    call, enclosing_type, local_types: dict, field_types: dict, return_types: dict
+) -> None:
     constructor_name = _call_constructor_name(call.func)
     if constructor_name is not None and constructor_name in field_types:
         fields = field_types[constructor_name]
@@ -628,7 +654,9 @@ def _mark_call_optional_conversions(call, enclosing_type, local_types: dict, fie
             _mark_dict_kind(kw.value, field_type)
             if field_type is None or field_type.name != "Optional":
                 continue
-            value_type = _infer_expr_type(kw.value, enclosing_type, local_types, field_types, return_types)
+            value_type = _infer_expr_type(
+                kw.value, enclosing_type, local_types, field_types, return_types
+            )
             if value_type is not None and value_type.name not in ("Optional", "None"):
                 kw.value._metadata["needs_some_wrap"] = True
 
@@ -642,16 +670,22 @@ def _mark_call_optional_conversions(call, enclosing_type, local_types: dict, fie
         if list_type is not None and list_type.name == "list" and list_type.args:
             element_type = list_type.args[0]
             if element_type.name != "Optional":
-                value_type = _infer_expr_type(call.args[0], enclosing_type, local_types, field_types, return_types)
+                value_type = _infer_expr_type(
+                    call.args[0], enclosing_type, local_types, field_types, return_types
+                )
                 if value_type is not None and value_type.name == "Optional":
                     call.args[0]._metadata["needs_from_some_unwrap"] = True
 
 
-def _mark_expr_optional_conversions(expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict) -> None:
+def _mark_expr_optional_conversions(
+    expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict
+) -> None:
     if expr is None:
         return
     for call in expr.get_descendants(vy_ast.Call, include_self=True):
-        _mark_call_optional_conversions(call, enclosing_type, local_types, field_types, return_types)
+        _mark_call_optional_conversions(
+            call, enclosing_type, local_types, field_types, return_types
+        )
 
 
 def _mark_stmts_optional_conversions(
@@ -659,30 +693,42 @@ def _mark_stmts_optional_conversions(
 ) -> None:
     for stmt in stmts:
         if isinstance(stmt, vy_ast.AnnAssign):
-            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(
+                stmt.value, enclosing_type, local_types, field_types, return_types
+            )
             target_type = lower_type(stmt.annotation)
             _mark_dict_kind(stmt.value, target_type)
             if stmt.value is not None and target_type.name != "Optional":
-                value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+                value_type = _infer_expr_type(
+                    stmt.value, enclosing_type, local_types, field_types, return_types
+                )
                 if value_type is not None and value_type.name == "Optional":
                     stmt.value._metadata["needs_from_some_unwrap"] = True
             if isinstance(stmt.target, vy_ast.Name):
                 local_types[stmt.target.id] = target_type
         elif isinstance(stmt, vy_ast.Assign):
-            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(
+                stmt.value, enclosing_type, local_types, field_types, return_types
+            )
             if isinstance(stmt.target, vy_ast.Name):
                 existing_type = local_types.get(stmt.target.id)
                 _mark_dict_kind(stmt.value, existing_type)
                 if existing_type is not None and existing_type.name == "Optional":
-                    value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+                    value_type = _infer_expr_type(
+                        stmt.value, enclosing_type, local_types, field_types, return_types
+                    )
                     if value_type is not None and value_type.name not in ("Optional", "None"):
                         stmt.value._metadata["needs_some_wrap"] = True
                 elif existing_type is None:
-                    value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+                    value_type = _infer_expr_type(
+                        stmt.value, enclosing_type, local_types, field_types, return_types
+                    )
                     if value_type is not None:
                         local_types[stmt.target.id] = value_type
         elif isinstance(stmt, vy_ast.If):
-            _mark_expr_optional_conversions(stmt.test, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(
+                stmt.test, enclosing_type, local_types, field_types, return_types
+            )
             body_types = dict(local_types)
             orelse_types = dict(local_types)
             _mark_stmts_optional_conversions(
@@ -697,25 +743,43 @@ def _mark_stmts_optional_conversions(
                 if orelse_types.get(target_name) == body_type:
                     local_types[target_name] = body_type
         elif isinstance(stmt, vy_ast.For):
-            _mark_expr_optional_conversions(stmt.iter, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(
+                stmt.iter, enclosing_type, local_types, field_types, return_types
+            )
             body_types = dict(local_types)
             target = stmt.target.target if hasattr(stmt.target, "target") else stmt.target
             annotation = getattr(stmt.target, "annotation", None)
             if isinstance(target, vy_ast.Name) and annotation is not None:
                 body_types[target.id] = lower_type(annotation)
-            _mark_stmts_optional_conversions(stmt.body, enclosing_type, body_types, field_types, return_types, return_type)
+            _mark_stmts_optional_conversions(
+                stmt.body, enclosing_type, body_types, field_types, return_types, return_type
+            )
         elif isinstance(stmt, vy_ast.Return):
-            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(
+                stmt.value, enclosing_type, local_types, field_types, return_types
+            )
             _mark_dict_kind(stmt.value, return_type)
-            if stmt.value is not None and return_type is not None and return_type.name != "Optional":
-                value_type = _infer_expr_type(stmt.value, enclosing_type, local_types, field_types, return_types)
+            if (
+                stmt.value is not None
+                and return_type is not None
+                and return_type.name != "Optional"
+            ):
+                value_type = _infer_expr_type(
+                    stmt.value, enclosing_type, local_types, field_types, return_types
+                )
                 if value_type is not None and value_type.name == "Optional":
                     stmt.value._metadata["needs_from_some_unwrap"] = True
         elif isinstance(stmt, vy_ast.Assert):
-            _mark_expr_optional_conversions(stmt.test, enclosing_type, local_types, field_types, return_types)
-            _mark_expr_optional_conversions(stmt.msg, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(
+                stmt.test, enclosing_type, local_types, field_types, return_types
+            )
+            _mark_expr_optional_conversions(
+                stmt.msg, enclosing_type, local_types, field_types, return_types
+            )
         elif isinstance(stmt, vy_ast.Expr):
-            _mark_expr_optional_conversions(stmt.value, enclosing_type, local_types, field_types, return_types)
+            _mark_expr_optional_conversions(
+                stmt.value, enclosing_type, local_types, field_types, return_types
+            )
 
 
 def mark_optional_conversions(node: vy_ast.TopLevel, field_types: dict, return_types: dict) -> None:
@@ -727,10 +791,14 @@ def mark_optional_conversions(node: vy_ast.TopLevel, field_types: dict, return_t
                 continue
             local_types[arg.arg] = lower_type(arg.annotation)
         return_type = lower_type(fn.returns) if fn.returns is not None else None
-        _mark_stmts_optional_conversions(fn.body, enclosing_type, local_types, field_types, return_types, return_type)
+        _mark_stmts_optional_conversions(
+            fn.body, enclosing_type, local_types, field_types, return_types, return_type
+        )
 
 
-def check_container_type_annotations(node: vy_ast.TopLevel, known_names: set, errors: ExceptionList) -> None:
+def check_container_type_annotations(
+    node: vy_ast.TopLevel, known_names: set, errors: ExceptionList
+) -> None:
     if isinstance(node, vy_ast.StructDef):
         check_struct_type_annotations(node, known_names, errors)
         return

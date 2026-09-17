@@ -9,7 +9,6 @@ from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 from forge.utils import sha256sum
 
-
 BUILTIN_MODULE_ROOTS = {"Splice": "forge.builtins.Splice"}
 
 
@@ -74,7 +73,7 @@ class ImportsBuilder:
     def _remap_builtin(cls, module_path: str) -> str:
         root = cls._root_of(module_path)
         target_root = BUILTIN_MODULE_ROOTS[root]
-        return target_root + module_path[len(root):]
+        return target_root + module_path[len(root) :]
 
     @classmethod
     def _import_real_module(cls, module_path: str):
@@ -131,7 +130,10 @@ class ImportsBuilder:
                     if alias.name == "*":
                         continue
                     bound = alias.asname or alias.name
-                    if cls.is_annotation_only_root(root) and alias.name not in allowed_from_annotation_only:
+                    if (
+                        cls.is_annotation_only_root(root)
+                        and alias.name not in allowed_from_annotation_only
+                    ):
                         continue
                     names.add(bound)
         return names

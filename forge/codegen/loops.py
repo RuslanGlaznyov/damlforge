@@ -17,6 +17,7 @@ from forge.ir.nodes import (
     IRPass,
     IRRecordUpdate,
     IRReturn,
+    IRStmt,
     IRSubscript,
     IRTuple,
     IRUnaryOp,
@@ -26,7 +27,7 @@ from forge.ir.nodes import (
 class LoopAnalysis:
     @classmethod
     def rewrite_appends(cls, stmts, namer=None, known_effect_fns: frozenset = frozenset()):
-        rewritten = []
+        rewritten: list[IRStmt] = []
         for s in stmts:
             if isinstance(s, IRIf):
                 rewritten.append(
@@ -55,7 +56,11 @@ class LoopAnalysis:
                     rewritten.append(IRAssign(IRName(temp), item, src=s.src))
                     item = IRName(temp)
                 rewritten.append(
-                    IRAssign(IRName(target_name), IRBinOp("<>", IRName(target_name), IRList((item,))), src=s.src)
+                    IRAssign(
+                        IRName(target_name),
+                        IRBinOp("<>", IRName(target_name), IRList((item,))),
+                        src=s.src,
+                    )
                 )
             else:
                 rewritten.append(s)
@@ -119,7 +124,11 @@ class LoopAnalysis:
                 return True
             if isinstance(s, IRAssign) and cls.is_effect_call(s.value, known_effect_fns):
                 return True
-            if isinstance(s, IRReturn) and s.value is not None and cls.is_effect_call(s.value, known_effect_fns):
+            if (
+                isinstance(s, IRReturn)
+                and s.value is not None
+                and cls.is_effect_call(s.value, known_effect_fns)
+            ):
                 return True
             if isinstance(s, IRIf) and (
                 cls.body_has_ledger_effect(s.body, known_effect_fns)
@@ -201,7 +210,9 @@ class LoopAnalysis:
             elif isinstance(s, IRPass):
                 pass
             else:
-                raise CompilerPanic(f"collect_free_names: unsupported IR statement {type(s).__name__}")
+                raise CompilerPanic(
+                    f"collect_free_names: unsupported IR statement {type(s).__name__}"
+                )
         return acc
 
     @classmethod
@@ -209,7 +220,9 @@ class LoopAnalysis:
         for s in stmts:
             if isinstance(s, IRReturn):
                 return True
-            if isinstance(s, IRIf) and (cls.body_has_return(s.body) or cls.body_has_return(s.orelse)):
+            if isinstance(s, IRIf) and (
+                cls.body_has_return(s.body) or cls.body_has_return(s.orelse)
+            ):
                 return True
         return False
 
@@ -223,7 +236,9 @@ class LoopAnalysis:
             return IRAttribute(cls.apply_renames(e.value, renames), e.attr)
         if isinstance(e, IRSubscript):
             return IRSubscript(
-                cls.apply_renames(e.value, renames), cls.apply_renames(e.index, renames), is_list=e.is_list
+                cls.apply_renames(e.value, renames),
+                cls.apply_renames(e.index, renames),
+                is_list=e.is_list,
             )
         if isinstance(e, IRCall):
             return IRCall(
@@ -243,13 +258,17 @@ class LoopAnalysis:
                 tuple(cls.apply_renames(v, renames) for v in e.values),
             )
         if isinstance(e, IRBinOp):
-            return IRBinOp(e.op, cls.apply_renames(e.left, renames), cls.apply_renames(e.right, renames))
+            return IRBinOp(
+                e.op, cls.apply_renames(e.left, renames), cls.apply_renames(e.right, renames)
+            )
         if isinstance(e, IRBoolOp):
             return IRBoolOp(e.op, tuple(cls.apply_renames(v, renames) for v in e.values))
         if isinstance(e, IRUnaryOp):
             return IRUnaryOp(e.op, cls.apply_renames(e.operand, renames))
         if isinstance(e, IRCompare):
-            return IRCompare(cls.apply_renames(e.left, renames), e.op, cls.apply_renames(e.right, renames))
+            return IRCompare(
+                cls.apply_renames(e.left, renames), e.op, cls.apply_renames(e.right, renames)
+            )
         if isinstance(e, IRRecordUpdate):
             return IRRecordUpdate(
                 cls.apply_renames(e.base, renames),

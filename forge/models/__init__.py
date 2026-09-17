@@ -14,16 +14,7 @@ from forge.models.decorators import (
     template,
     view,
 )
-from forge.models.types import (
-    ContractId,
-    Date,
-    GenMap,
-    Int,
-    Party,
-    RelTime,
-    TextMap,
-    Timestamp,
-)
+from forge.models.types import ContractId, Date, GenMap, Int, Party, RelTime, TextMap, Timestamp
 
 __all__ = [
     "choice",

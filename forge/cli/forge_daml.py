@@ -10,8 +10,10 @@ from forge.ir import lower_module
 from forge.codegen import daml_module_name, generate_daml
 from loguru import logger
 
+
 def _parse_cli_args():
     return _parse_args(sys.argv[1:])
+
 
 def _parse_args(argv):
     parser = argparse.ArgumentParser(
@@ -30,22 +32,20 @@ def _parse_args(argv):
         dest="output_dir",
     )
     parser.add_argument("--pretty-json", help="Output JSON in pretty format.", action="store_true")
-    parser.add_argument("--i", 
-                        help="Ignore compilation errors", 
-                        default=True)
-    
+    parser.add_argument("--i", help="Ignore compilation errors", default=True)
+
     parser.add_argument(
         "--traceback",
         help="Show python traceback on error instead of returning JSON",
         action="store_true",
     )
-    
+
     args = parser.parse_args(argv)
-    
+
     if args.input_dir is None:
         logger.error("Error: No input path provided.")
         sys.exit(1)
-    
+
     output_dir = Path(args.input_dir)
     if args.output_dir is not None:
         output_dir = Path(args.output_dir).resolve()
@@ -54,30 +54,36 @@ def _parse_args(argv):
     folder_path = Path(args.input_dir)
     for file in sorted(folder_path.glob("*.vy")):
         logger.info(f"Processing file: {file}")
-        
-        try:
-          path = Path(file).resolve()
-          source = Path(file).read_text()
-          module = parse_to_ast(source, module_path=path.name, resolved_path=str(path))
-          import_graph = analyze_module(module)
-          ir = lower_module(module, import_graph=import_graph)
-          module_name = daml_module_name(path.stem)
-          daml_source, source_map = generate_daml(ir, module_name=module_name)
 
-          output_file = output_dir / (module_name + ".daml")
-          with output_file.open("w") as fh:
-              logger.info(f"writing DAML output to: {output_file}")
-              fh.write(daml_source)
-          output_map_file = output_dir / (module_name + ".map.json")
-          with output_map_file.open("w") as fh:
-              logger.info(f"writing source map to: {output_map_file}")
-              json.dump(source_map, fh, indent=2 if args.pretty_json else None, sort_keys=True, default=str)
+        try:
+            path = Path(file).resolve()
+            source = Path(file).read_text()
+            module = parse_to_ast(source, module_path=path.name, resolved_path=str(path))
+            import_graph = analyze_module(module)
+            ir = lower_module(module, import_graph=import_graph)
+            module_name = daml_module_name(path.stem)
+            daml_source, source_map = generate_daml(ir, module_name=module_name)
+
+            output_file = output_dir / (module_name + ".daml")
+            with output_file.open("w") as fh:
+                logger.info(f"writing DAML output to: {output_file}")
+                fh.write(daml_source)
+            output_map_file = output_dir / (module_name + ".map.json")
+            with output_map_file.open("w") as fh:
+                logger.info(f"writing source map to: {output_map_file}")
+                json.dump(
+                    source_map,
+                    fh,
+                    indent=2 if args.pretty_json else None,
+                    sort_keys=True,
+                    default=str,
+                )
         except Exception as e:
-          if args.traceback:
-              raise
-          logger.error(f"Error processing file {file}: {e}")
-          if not args.i:
-              sys.exit(1)
+            if args.traceback:
+                raise
+            logger.error(f"Error processing file {file}: {e}")
+            if not args.i:
+                sys.exit(1)
 
 
 if __name__ == "__main__":

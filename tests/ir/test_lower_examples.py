@@ -33,11 +33,6 @@ def test_funding_campaign_invest_choice_lowers_correctly():
     (campaign,) = [t for t in ir.templates if t.name == "FundingCampaign"]
     (invest,) = [c for c in campaign.choices if c.name == "invest"]
 
-    assert [f.name for f in invest.args] == [
-        "investor",
-        "inputs",
-        "amount",
-        "app_transfer_context",
-    ]
+    assert [f.name for f in invest.args] == ["investor", "inputs", "amount", "app_transfer_context"]
     assert invest.return_type.name == "ContractId"
     assert invest.return_type.args[0].name == "FundingCampaign"

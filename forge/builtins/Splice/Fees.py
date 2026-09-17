@@ -15,7 +15,7 @@ from .. import DamlName
 class FixedFee:
     """The real Daml `FixedFee` newtype - a flat fee. Real Daml definition:
 
-        newtype FixedFee = FixedFee with fee : Decimal
+    newtype FixedFee = FixedFee with fee : Decimal
     """
 
     fee: Decimal

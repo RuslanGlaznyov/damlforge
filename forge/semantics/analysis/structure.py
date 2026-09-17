@@ -80,7 +80,7 @@ def check_consuming_variant_scope(container: vy_ast.TopLevel, errors: ExceptionL
                 errors.append(
                     DamlForgeException(
                         f"Choice `{container.name}.{fn.name}` declares "
-                        f"`consuming=\"{variant}\"`, which is not supported on "
+                        f'`consuming="{variant}"`, which is not supported on '
                         "interface/instance choices — only `consuming`/`nonconsuming` are",
                         fn,
                         code=ErrorCodes.DF1208.value,
@@ -97,7 +97,10 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
             continue
 
         for call in fn.get_descendants(vy_ast.Call):
-            if isinstance(call.func, vy_ast.Name) and call.func.id in collect_daml_builtins().ledger_effect_fns:
+            if (
+                isinstance(call.func, vy_ast.Name)
+                and call.func.id in collect_daml_builtins().ledger_effect_fns
+            ):
                 errors.append(
                     DamlForgeException(
                         f"`{container.name}.{fn.name}` calls `{call.func.id}` but is not "
@@ -302,17 +305,22 @@ def _reachable_modules(modules) -> list[vy_ast.Module]:
     return ordered
 
 
+_FnKey = tuple[str, tuple[str, ...], str]
+
+
 class _RecursionContext:
     def __init__(self, modules) -> None:
         self.modules = _reachable_modules(modules)
-        self.functions_by_key = {}
-        self.functions_by_module_name = {}
-        self.top_level_by_module = defaultdict(dict)
-        self.methods_by_scope = defaultdict(dict)
-        self.module_aliases = defaultdict(dict)
-        self.direct_imports = defaultdict(dict)
-        self.edges = defaultdict(list)
-        self._recursive_calls = None
+        self.functions_by_key: dict[_FnKey, vy_ast.FunctionDef] = {}
+        self.functions_by_module_name: dict[str, str] = {}
+        self.top_level_by_module: defaultdict[str, dict[str, _FnKey]] = defaultdict(dict)
+        self.methods_by_scope: defaultdict[tuple[str, tuple[str, ...]], dict[str, _FnKey]] = (
+            defaultdict(dict)
+        )
+        self.module_aliases: defaultdict[str, dict[str, str]] = defaultdict(dict)
+        self.direct_imports: defaultdict[str, dict[str, _FnKey]] = defaultdict(dict)
+        self.edges: defaultdict[_FnKey, list[tuple[_FnKey, vy_ast.Call]]] = defaultdict(list)
+        self._recursive_calls: Optional[list[tuple[vy_ast.FunctionDef, vy_ast.Call]]] = None
 
         self._index_modules()
         self._index_imports()
@@ -346,7 +354,9 @@ class _RecursionContext:
                     for alias in stmt.names:
                         imported_key = self._find_module_key(alias.name)
                         if imported_key is not None:
-                            self.module_aliases[module_key][alias.asname or alias.name] = imported_key
+                            self.module_aliases[module_key][
+                                alias.asname or alias.name
+                            ] = imported_key
                 elif isinstance(stmt, vy_ast.ImportFrom):
                     imported_key = self._find_module_key(stmt.module)
                     if imported_key is None:
@@ -354,7 +364,9 @@ class _RecursionContext:
                     for alias in stmt.names:
                         imported_fn = self.top_level_by_module[imported_key].get(alias.name)
                         if imported_fn is not None:
-                            self.direct_imports[module_key][alias.asname or alias.name] = imported_fn
+                            self.direct_imports[module_key][
+                                alias.asname or alias.name
+                            ] = imported_fn
 
     def _resolve_call(
         self, fn: vy_ast.FunctionDef, call: vy_ast.Call

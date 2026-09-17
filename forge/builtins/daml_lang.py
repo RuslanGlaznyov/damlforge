@@ -64,7 +64,7 @@ def to_interface_contract_id(template_cid: ContractId[_T1]) -> ContractId[_T2]:
 
 
 @DamlName("toInterface")
-def to_interface(value: _T1) -> _T2:
+def to_interface(value: _T1) -> _T2:  # type: ignore[type-var]
     raise NotImplementedError(
         "to_interface is a real Daml-language builtin - only meaningful "
         "inside compiled .vy source, not callable directly from Python"
@@ -72,7 +72,7 @@ def to_interface(value: _T1) -> _T2:
 
 
 @DamlName("view")
-def view(interface_value: _T1) -> _T2:
+def view(interface_value: _T1) -> _T2:  # type: ignore[type-var]
     raise NotImplementedError(
         "view is a real Daml-language builtin - only meaningful inside "
         "compiled .vy source, not callable directly from Python"

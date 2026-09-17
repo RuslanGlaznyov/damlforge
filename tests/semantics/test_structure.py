@@ -6,7 +6,6 @@ from forge.semantics import analyze_module
 from forge.semantics.analysis.imports import ImportsBuilder
 from forge.models.error_codes import ErrorCodes
 
-
 _DECORATOR_PREAMBLE = (
     "from forge.models import choice, ledger_effect, template, view\n"
     "from forge.builtins import DamlName\n"
@@ -14,7 +13,9 @@ _DECORATOR_PREAMBLE = (
 
 
 def _analyze(source):
-    module = parse_to_ast(_DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy")
+    module = parse_to_ast(
+        _DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy"
+    )
     analyze_module(module)
 
 

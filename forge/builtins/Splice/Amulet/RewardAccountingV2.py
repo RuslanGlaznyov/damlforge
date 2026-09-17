@@ -118,7 +118,9 @@ class ProcessRewardsV2_ProcessBatch:
     """
 
     batch: Batch
-    providers_with_wrong_vetting_state: Annotated[frozenset[Party], DamlName("providersWithWrongVettingState")]
+    providers_with_wrong_vetting_state: Annotated[
+        frozenset[Party], DamlName("providersWithWrongVettingState")
+    ]
 
 
 @dataclass(frozen=True)

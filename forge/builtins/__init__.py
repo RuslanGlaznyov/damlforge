@@ -5,12 +5,15 @@ import pkgutil
 import typing
 from enum import Enum
 from functools import lru_cache
-from typing import Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 from abc import ABC, abstractmethod
 
 from forge.ast import nodes as vy_ast
 from forge.builtins.maps import DamlMapType, GenMap, TextMap, known_map_types
 from forge.exceptions import DamlForgeException, ExceptionList
+
+if TYPE_CHECKING:
+    from forge.ir.nodes import TypeRef
 
 
 @dataclasses.dataclass(frozen=True)
@@ -21,8 +24,9 @@ class VyDecorator(ABC):
 
     @classmethod
     @abstractmethod
-    def __post_vy_check__(cls, container: vy_ast.TopLevel,
-                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+    def __post_vy_check__(
+        cls, container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+    ):
         pass  # This method can be overridden in subclasses to perform additional checks
 
 
@@ -45,15 +49,16 @@ class DamlName(VyDecorator):
             raise ValueError("DamlName decorator requires a non-empty name")
 
     @classmethod
-    def __post_vy_check__(cls, container: vy_ast.TopLevel,
-                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+    def __post_vy_check__(
+        cls, container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+    ):
         from forge.models.error_codes import ErrorCodes
 
         if (
-                isinstance(dec, vy_ast.Call)
-                and len(dec.args) == 1
-                and not dec.keywords
-                and isinstance(dec.args[0], vy_ast.Str)
+            isinstance(dec, vy_ast.Call)
+            and len(dec.args) == 1
+            and not dec.keywords
+            and isinstance(dec.args[0], vy_ast.Str)
         ):
             return
 
@@ -126,8 +131,9 @@ class choice(VyDecorator):
         return fn
 
     @classmethod
-    def __post_vy_check__(cls, container: vy_ast.TopLevel,
-                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+    def __post_vy_check__(
+        cls, container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+    ):
         from forge.models.error_codes import ErrorCodes
 
         kwargs = {kw.arg: kw.value for kw in dec.keywords} if isinstance(dec, vy_ast.Call) else {}
@@ -229,7 +235,11 @@ class choice(VyDecorator):
                         f"`{kw_name}=` of choice `{qualified_name}` references `{name.id}`, "
                         f"which is not one of this choice's own arguments "
                         f"({sorted(with_arg_names)!r})"
-                        + (f", the template's fields ({sorted(field_names)!r})" if field_names else "")
+                        + (
+                            f", the template's fields ({sorted(field_names)!r})"
+                            if field_names
+                            else ""
+                        )
                         + " or `self` - Daml's own field resolution would otherwise "
                         "either silently pick a different, unrelated field of the same "
                         "name elsewhere in the module, or fail with a confusing "
@@ -247,8 +257,9 @@ class ledger_effect(VyDecorator):
         return fn
 
     @classmethod
-    def __post_vy_check__(cls, container: vy_ast.TopLevel,
-                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+    def __post_vy_check__(
+        cls, container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+    ):
         from forge.models.error_codes import ErrorCodes
 
         if isinstance(dec, vy_ast.Call):
@@ -268,8 +279,9 @@ class view(VyDecorator):
         return fn
 
     @classmethod
-    def __post_vy_check__(cls, container: vy_ast.TopLevel,
-                          fn: vy_ast.FunctionDef, dec, errors: ExceptionList):
+    def __post_vy_check__(
+        cls, container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+    ):
         from forge.models.error_codes import ErrorCodes
 
         if isinstance(dec, vy_ast.Call):

@@ -33,7 +33,9 @@ class IssuanceConfig:
     featured_app_reward_cap: Annotated[Decimal, DamlName("featuredAppRewardCap")]
     unfeatured_app_reward_cap: Annotated[Decimal, DamlName("unfeaturedAppRewardCap")]
     opt_validator_faucet_cap: Annotated[Optional[Decimal], DamlName("optValidatorFaucetCap")] = None
-    opt_development_fund_percentage: Annotated[Optional[Decimal], DamlName("optDevelopmentFundPercentage")] = None
+    opt_development_fund_percentage: Annotated[
+        Optional[Decimal], DamlName("optDevelopmentFundPercentage")
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,10 @@ class OpenMiningRoundSummary:
 
     total_validator_reward_coupons: Annotated[Decimal, DamlName("totalValidatorRewardCoupons")]
     total_featured_app_reward_coupons: Annotated[Decimal, DamlName("totalFeaturedAppRewardCoupons")]
-    total_unfeatured_app_reward_coupons: Annotated[Decimal, DamlName("totalUnfeaturedAppRewardCoupons")]
+    total_unfeatured_app_reward_coupons: Annotated[
+        Decimal, DamlName("totalUnfeaturedAppRewardCoupons")
+    ]
     total_sv_reward_weight: Annotated[int, DamlName("totalSvRewardWeight")]
-    opt_total_validator_faucet_coupons: Annotated[Optional[int], DamlName("optTotalValidatorFaucetCoupons")] = None
+    opt_total_validator_faucet_coupons: Annotated[
+        Optional[int], DamlName("optTotalValidatorFaucetCoupons")
+    ] = None

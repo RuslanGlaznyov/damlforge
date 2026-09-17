@@ -36,4 +36,6 @@ class ExternalPartyConfigState:
     amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
     transfer_config: Annotated[TransferConfigV2[USD], DamlName("transferConfig")]
     target_archive_after: Annotated[Timestamp, DamlName("targetArchiveAfter")]
-    reward_calculation_version: Annotated[Optional[RewardVersion], DamlName("rewardCalculationVersion")] = None
+    reward_calculation_version: Annotated[
+        Optional[RewardVersion], DamlName("rewardCalculationVersion")
+    ] = None

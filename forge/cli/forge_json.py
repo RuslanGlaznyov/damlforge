@@ -7,8 +7,10 @@ from pathlib import Path
 from forge.semantics import analyze_module
 from forge.ast.parse import parse_to_ast
 
+
 def _parse_cli_args():
     return _parse_args(sys.argv[1:])
+
 
 def _parse_args(argv):
     parser = argparse.ArgumentParser(
@@ -49,10 +51,7 @@ def _parse_args(argv):
         sys.exit(1)
 
     output_json = json.dumps(
-        result,
-        indent=2 if args.pretty_json else None,
-        sort_keys=True,
-        default=str,
+        result, indent=2 if args.pretty_json else None, sort_keys=True, default=str
     )
 
     if args.output_file is not None:
@@ -64,12 +63,10 @@ def _parse_args(argv):
         print(output_json)
 
 
-def compile_json(
-    input_vy: str,
-) -> dict:
+def compile_json(input_vy: str) -> dict:
     ast = parse_to_ast(input_vy)
     analyze_module(ast)
-    
+
     return ast.to_dict()
 
 

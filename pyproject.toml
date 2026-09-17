@@ -116,6 +116,7 @@ lint = [
     "flake8-use-fstring==1.4",
     "isort==5.13.2",
     "mypy==1.19",
+    "types-PyYAML",
 ]
 docs = [
     "Pygments==2.18.0",

@@ -101,7 +101,9 @@ def _load_package_config(daml_yaml: Path) -> dict:
 def check_package_config(config: dict, daml_yaml: Path) -> None:
     missing = [field for field in _REQUIRED_PACKAGE_CONFIG_FIELDS if field not in config]
     if missing:
-        raise ProjectStructureError(f"{daml_yaml} is missing required field(s): {', '.join(missing)}")
+        raise ProjectStructureError(
+            f"{daml_yaml} is missing required field(s): {', '.join(missing)}"
+        )
 
     name = str(config["name"])
     if not _PACKAGE_NAME_REGEX.match(name):
@@ -146,9 +148,7 @@ def check_project_structure(project_dir: Path) -> dict:
 
 
 def build_dar(
-    input_dir: Path,
-    output_dar: "Path | None" = None,
-    dpm_path: "str | None" = None,
+    input_dir: Path, output_dar: "Path | None" = None, dpm_path: "str | None" = None
 ) -> Path:
     input_dir = input_dir.resolve()
     if not input_dir.is_dir():
@@ -196,11 +196,15 @@ def build_dar(
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"dpm build failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}")
+        raise RuntimeError(
+            f"dpm build failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        )
     logger.info(result.stdout.strip())
 
     if not resolved_output.is_file():
-        raise RuntimeError(f"dpm build reported success but no .dar was found at: {resolved_output}")
+        raise RuntimeError(
+            f"dpm build reported success but no .dar was found at: {resolved_output}"
+        )
 
     return resolved_output
 

@@ -59,7 +59,9 @@ class AmuletExpireSummary:
 
     owner: Party
     round: Round
-    change_to_initial_amount_as_of_round_zero: Annotated[Decimal, DamlName("changeToInitialAmountAsOfRoundZero")]
+    change_to_initial_amount_as_of_round_zero: Annotated[
+        Decimal, DamlName("changeToInitialAmountAsOfRoundZero")
+    ]
     change_to_holding_fees_rate: Annotated[Decimal, DamlName("changeToHoldingFeesRate")]
 
 
@@ -67,10 +69,10 @@ class AmuletExpireSummary:
 class AmuletExpireV2Summary:
     """The real Daml `AmuletExpireV2Summary` record. Real Daml definition:
 
-        data AmuletExpireV2Summary = AmuletExpireV2Summary
-          with
-            owner : Party
-          deriving (Eq, Show)
+    data AmuletExpireV2Summary = AmuletExpireV2Summary
+      with
+        owner : Party
+      deriving (Eq, Show)
     """
 
     owner: Party
@@ -128,8 +130,12 @@ class Amulet_ExpireV2:
           controller dso
     """
 
-    external_party_config_state0_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState0Cid")]
-    external_party_config_state1_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState1Cid")]
+    external_party_config_state0_cid: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState0Cid")
+    ]
+    external_party_config_state1_cid: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState1Cid")
+    ]
 
 
 @dataclass(frozen=True)
@@ -259,8 +265,12 @@ class LockedAmulet_ExpireAmuletV2:
           controller amulet.dso
     """
 
-    external_party_config_state0_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState0Cid")]
-    external_party_config_state1_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState1Cid")]
+    external_party_config_state0_cid: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState0Cid")
+    ]
+    external_party_config_state1_cid: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState1Cid")
+    ]
 
 
 @dataclass(frozen=True)
@@ -655,7 +665,9 @@ class DevelopmentFundCoupon_WithdrawResult:
     """Real Daml: `data DevelopmentFundCoupon_WithdrawResult` with
     `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
+    unclaimed_development_fund_coupon_cid: Annotated[
+        ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")
+    ]
 
 
 @dataclass(frozen=True)
@@ -677,7 +689,9 @@ class DevelopmentFundCoupon_RejectResult:
     """Real Daml: `data DevelopmentFundCoupon_RejectResult` with
     `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
+    unclaimed_development_fund_coupon_cid: Annotated[
+        ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")
+    ]
 
 
 @dataclass(frozen=True)
@@ -692,7 +706,9 @@ class DevelopmentFundCoupon_DsoExpireResult:
     """Real Daml: `data DevelopmentFundCoupon_DsoExpireResult` with
     `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
+    unclaimed_development_fund_coupon_cid: Annotated[
+        ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")
+    ]
 
 
 @dataclass(frozen=True)

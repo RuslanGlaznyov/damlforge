@@ -41,7 +41,9 @@ _DECORATOR_PREAMBLE = (
 
 
 def _analyze_and_lower(source):
-    module = parse_to_ast(_DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy")
+    module = parse_to_ast(
+        _DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy"
+    )
     analyze_module(module)
     return lower_module(module)
 
@@ -51,10 +53,7 @@ def test_struct_lowers_to_fields_with_type_refs():
 
     (point,) = ir.structs
     assert point.name == "Point"
-    assert point.fields == (
-        Field("x", TypeRef("int128")),
-        Field("y", TypeRef("Party")),
-    )
+    assert point.fields == (Field("x", TypeRef("int128")), Field("y", TypeRef("Party")))
 
 
 def test_flag_lowers_to_values():
@@ -79,10 +78,7 @@ def test_validated_flag_value_access_lowers_to_bare_name():
 
 
 def test_unvalidated_attribute_access_lowers_to_ir_attribute():
-    ir = _lower(
-        "def f(x: int128) -> bool:\n"
-        "    return x.PENDING\n"
-    )
+    ir = _lower("def f(x: int128) -> bool:\n" "    return x.PENDING\n")
 
     (fn,) = ir.functions
     assert fn.body[0] == IRReturn(IRAttribute(IRName("x"), "PENDING"))
@@ -97,7 +93,9 @@ def test_bare_value_assigned_to_optional_field_auto_wraps_in_some():
     )
 
     (fn,) = ir.functions
-    assert fn.body[0] == IRReturn(IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),)))
+    assert fn.body[0] == IRReturn(
+        IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),))
+    )
 
 
 def test_optional_field_read_with_non_optional_annotation_auto_unwraps():
@@ -154,10 +152,7 @@ def test_manual_some_call_in_vy_source_is_rejected():
 
 def test_manual_from_some_call_in_vy_source_is_rejected():
     with pytest.raises(Exception, match="DF1219"):
-        _analyze_and_lower(
-            "def f(x: Optional[Decimal]) -> Decimal:\n"
-            "    return from_some(x)\n"
-        )
+        _analyze_and_lower("def f(x: Optional[Decimal]) -> Decimal:\n" "    return from_some(x)\n")
 
 
 def test_nested_attribute_chain_auto_unwraps():
@@ -233,10 +228,12 @@ def test_list_append_of_optional_value_auto_unwraps():
         "    return out\n"
     )
 
-    (_maybe_text, fn) = ir.functions
+    _maybe_text, fn = ir.functions
     append_stmt = fn.body[2]
     assert append_stmt == IRExprStmt(
-        IRCall(IRAttribute(IRName("out"), "append"), (IRCall(IRName("from_some"), (IRName("value"),)),))
+        IRCall(
+            IRAttribute(IRName("out"), "append"), (IRCall(IRName("from_some"), (IRName("value"),)),)
+        )
     )
 
 
@@ -274,7 +271,9 @@ def test_fetch_infers_contract_payload_type_from_contract_id_argument():
     (choice,) = tracker.choices
     terms_assign = choice.body[1]
     assert isinstance(terms_assign, IRAssign)
-    assert terms_assign.value == IRCall(IRName("from_some"), (IRAttribute(IRName("data"), "terms"),))
+    assert terms_assign.value == IRCall(
+        IRName("from_some"), (IRAttribute(IRName("data"), "terms"),)
+    )
 
 
 def test_create_infers_bare_contract_id_result_type():
@@ -292,7 +291,9 @@ def test_create_infers_bare_contract_id_result_type():
     (fn,) = ir.functions
     final_return = fn.body[-1]
     assert final_return == IRReturn(
-        IRCall(IRName("Holder"), (), (("tracker_cid", IRCall(IRName("Some"), (IRName("new_cid"),))),))
+        IRCall(
+            IRName("Holder"), (), (("tracker_cid", IRCall(IRName("Some"), (IRName("new_cid"),))),)
+        )
     )
 
 
@@ -363,11 +364,10 @@ def test_template_lowers_ensure_and_excludes_it_from_fields():
     )
 
     (asset,) = ir.templates
-    assert asset.ensure == IRCompare(IRName("amount"), ">", IRCall(IRName("Decimal"), (IRConstant(0),)))
-    assert asset.fields == (
-        Field("owner", TypeRef("Party")),
-        Field("amount", TypeRef("Decimal")),
+    assert asset.ensure == IRCompare(
+        IRName("amount"), ">", IRCall(IRName("Decimal"), (IRConstant(0),))
     )
+    assert asset.fields == (Field("owner", TypeRef("Party")), Field("amount", TypeRef("Decimal")))
 
 
 def test_template_without_ensure_lowers_to_none():
@@ -413,8 +413,7 @@ def test_choice_consuming_string_variant_lowers():
 
 def test_interface_lowers_view_and_requires():
     ir = _lower(
-        "interface Base:\n    pass\n"
-        "interface Holding(Base, view=HoldingView):\n    pass\n"
+        "interface Base:\n    pass\n" "interface Holding(Base, view=HoldingView):\n    pass\n"
     )
 
     holding = ir.interfaces[1]
@@ -458,11 +457,7 @@ def test_init_lowers_as_dedicated_function():
 
 
 def test_module_level_function_lowers_with_decorators():
-    ir = _lower(
-        "@ledger_effect\n"
-        "def helper(x: int128) -> int128:\n"
-        "    return x\n"
-    )
+    ir = _lower("@ledger_effect\n" "def helper(x: int128) -> int128:\n" "    return x\n")
 
     (fn,) = ir.functions
     assert fn.name == "helper"

@@ -117,13 +117,21 @@ class IssuingMiningRound:
 
     dso: Party
     round: Round
-    issuance_per_validator_reward_coupon: Annotated[Decimal, DamlName("issuancePerValidatorRewardCoupon")]
-    issuance_per_featured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerFeaturedAppRewardCoupon")]
-    issuance_per_unfeatured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerUnfeaturedAppRewardCoupon")]
+    issuance_per_validator_reward_coupon: Annotated[
+        Decimal, DamlName("issuancePerValidatorRewardCoupon")
+    ]
+    issuance_per_featured_app_reward_coupon: Annotated[
+        Decimal, DamlName("issuancePerFeaturedAppRewardCoupon")
+    ]
+    issuance_per_unfeatured_app_reward_coupon: Annotated[
+        Decimal, DamlName("issuancePerUnfeaturedAppRewardCoupon")
+    ]
     issuance_per_sv_reward_coupon: Annotated[Decimal, DamlName("issuancePerSvRewardCoupon")]
     opens_at: Annotated[Timestamp, DamlName("opensAt")]
     target_closes_at: Annotated[Timestamp, DamlName("targetClosesAt")]
-    opt_issuance_per_validator_faucet_coupon: Annotated[Optional[Decimal], DamlName("optIssuancePerValidatorFaucetCoupon")] = None
+    opt_issuance_per_validator_faucet_coupon: Annotated[
+        Optional[Decimal], DamlName("optIssuancePerValidatorFaucetCoupon")
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -147,8 +155,16 @@ class ClosedMiningRound:
 
     dso: Party
     round: Round
-    issuance_per_validator_reward_coupon: Annotated[Decimal, DamlName("issuancePerValidatorRewardCoupon")]
-    issuance_per_featured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerFeaturedAppRewardCoupon")]
-    issuance_per_unfeatured_app_reward_coupon: Annotated[Decimal, DamlName("issuancePerUnfeaturedAppRewardCoupon")]
+    issuance_per_validator_reward_coupon: Annotated[
+        Decimal, DamlName("issuancePerValidatorRewardCoupon")
+    ]
+    issuance_per_featured_app_reward_coupon: Annotated[
+        Decimal, DamlName("issuancePerFeaturedAppRewardCoupon")
+    ]
+    issuance_per_unfeatured_app_reward_coupon: Annotated[
+        Decimal, DamlName("issuancePerUnfeaturedAppRewardCoupon")
+    ]
     issuance_per_sv_reward_coupon: Annotated[Decimal, DamlName("issuancePerSvRewardCoupon")]
-    opt_issuance_per_validator_faucet_coupon: Annotated[Optional[Decimal], DamlName("optIssuancePerValidatorFaucetCoupon")] = None
+    opt_issuance_per_validator_faucet_coupon: Annotated[
+        Optional[Decimal], DamlName("optIssuancePerValidatorFaucetCoupon")
+    ] = None

@@ -119,19 +119,9 @@ def test_render_stmt_simple(stmt, expected_lines):
 
 
 def test_render_stmt_if_else():
-    stmt = IRIf(
-        IRName("cond"),
-        (IRReturn(IRConstant(True)),),
-        (IRReturn(IRConstant(False)),),
-    )
+    stmt = IRIf(IRName("cond"), (IRReturn(IRConstant(True)),), (IRReturn(IRConstant(False)),))
     lines = render_stmt(stmt, indent=0)
-    assert lines == [
-        "if cond",
-        "  then do",
-        "    pure (True)",
-        "  else do",
-        "    pure (False)",
-    ]
+    assert lines == ["if cond", "  then do", "    pure (True)", "  else do", "    pure (False)"]
 
 
 def test_render_stmt_for_with_no_accumulators_and_no_effects_is_dropped():
@@ -175,7 +165,9 @@ def test_render_body_for_with_accumulator_hoists_helper_and_calls_it():
         (IRExprStmt(IRCall(IRAttribute(IRName("total"), "append"), (IRName("item"),))),),
     )
     hoisted = []
-    lines = render_body([loop, IRReturn(IRName("total"))], indent=0, known={"total"}, hoisted=hoisted)
+    lines = render_body(
+        [loop, IRReturn(IRName("total"))], indent=0, known={"total"}, hoisted=hoisted
+    )
     joined = "\n".join(lines)
     hoisted_text = "\n".join(hoisted)
 
@@ -210,7 +202,9 @@ def test_generate_daml_struct_with_no_derive_field_type_skips_deriving():
                 (
                     Field(
                         "value",
-                        TypeRef("list", (TypeRef("FAR.FeaturedAppRight_CreateActivityMarkerResult"),)),
+                        TypeRef(
+                            "list", (TypeRef("FAR.FeaturedAppRight_CreateActivityMarkerResult"),)
+                        ),
                     ),
                 ),
             ),

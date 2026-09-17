@@ -98,7 +98,10 @@ def test_simple_example_mutates_self_via_create_and_dict_via_map():
     assert "`elem`" not in daml_source
     assert "!!" not in daml_source
     # `SimpleTemplate_Mint` mutates self - its real Daml return type must reflect the new contract
-    assert "choice SimpleTemplate_Mint : (ContractId SimpleTemplate, ContractId SimpleTemplate)" in daml_source
+    assert (
+        "choice SimpleTemplate_Mint : (ContractId SimpleTemplate, ContractId SimpleTemplate)"
+        in daml_source
+    )
     # every self-rebind must mint a fresh SSA name (`_damlforge_selfN`), never
     # literally reusing `self` - real damlc rejects local `let X = f(X)` as
     # illegal recursion, even when `X` was originally bound by `this`

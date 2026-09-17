@@ -182,7 +182,9 @@ class AmuletRules:
     dso: Party
     config_schedule: Annotated[Schedule[Timestamp, AmuletConfig[USD]], DamlName("configSchedule")]
     is_dev_net: Annotated[bool, DamlName("isDevNet")]
-    contract_state_schema_version: Annotated[Optional[int], DamlName("contractStateSchemaVersion")] = None
+    contract_state_schema_version: Annotated[
+        Optional[int], DamlName("contractStateSchemaVersion")
+    ] = None
 
 
 # Every type imported above (`OpenMiningRound`/`SummarizingMiningRound`/
@@ -215,7 +217,9 @@ class BalanceChange:
           deriving (Show, Eq)
     """
 
-    change_to_initial_amount_as_of_round_zero: Annotated[Decimal, DamlName("changeToInitialAmountAsOfRoundZero")]
+    change_to_initial_amount_as_of_round_zero: Annotated[
+        Decimal, DamlName("changeToInitialAmountAsOfRoundZero")
+    ]
     change_to_holding_fees_rate: Annotated[Decimal, DamlName("changeToHoldingFeesRate")]
 
 
@@ -379,9 +383,7 @@ class TransferResult:
     round: Round
     summary: TransferSummary
     created_amulets: Annotated[list[CreatedAmulet], DamlName("createdAmulets")]
-    sender_change_amulet: Annotated[
-        Optional[ContractId[Amulet]], DamlName("senderChangeAmulet")
-    ]
+    sender_change_amulet: Annotated[Optional[ContractId[Amulet]], DamlName("senderChangeAmulet")]
     meta: Optional[Metadata] = None
 
 
@@ -449,8 +451,12 @@ class TransferContext:
     """
 
     open_mining_round: Annotated[ContractId[OpenMiningRound], DamlName("openMiningRound")]
-    issuing_mining_rounds: Annotated[GenMap[Round, ContractId[IssuingMiningRound]], DamlName("issuingMiningRounds")]
-    validator_rights: Annotated[GenMap[Party, ContractId[ValidatorRight]], DamlName("validatorRights")]
+    issuing_mining_rounds: Annotated[
+        GenMap[Round, ContractId[IssuingMiningRound]], DamlName("issuingMiningRounds")
+    ]
+    validator_rights: Annotated[
+        GenMap[Party, ContractId[ValidatorRight]], DamlName("validatorRights")
+    ]
     featured_app_right: Annotated[
         Optional[ContractId[FeaturedAppRight]], DamlName("featuredAppRight")
     ] = None
@@ -472,7 +478,9 @@ class ExternalPartyTransferContext:
           deriving (Show, Eq)
     """
 
-    external_party_config_state: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState")]
+    external_party_config_state: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigState")
+    ]
     featured_app_right: Annotated[
         Optional[ContractId[FeaturedAppRight]], DamlName("featuredAppRight")
     ] = None
@@ -554,7 +562,9 @@ class ExternalPartySetupProposal_AcceptResult:
     `validatorRightCid`, `transferPreapprovalCid`."""
 
     validator_right_cid: Annotated[ContractId[ValidatorRight], DamlName("validatorRightCid")]
-    transfer_preapproval_cid: Annotated[ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")]
+    transfer_preapproval_cid: Annotated[
+        ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")
+    ]
 
 
 @dataclass(frozen=True)
@@ -732,7 +742,9 @@ class TransferPreapproval_RenewResult:
     `transferPreapprovalCid`, `transferResult`, `receiver`, `provider`,
     `amuletPaid`, `meta`."""
 
-    transfer_preapproval_cid: Annotated[ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")]
+    transfer_preapproval_cid: Annotated[
+        ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")
+    ]
     transfer_result: Annotated[TransferResult, DamlName("transferResult")]
     receiver: Party
     provider: Party
@@ -786,7 +798,9 @@ class AmuletRules_ExpireTransferInstructionInput:
           deriving (Eq, Show)
     """
 
-    transfer_instruction_cid: Annotated[ContractId[TransferInstruction], DamlName("transferInstructionCid")]
+    transfer_instruction_cid: Annotated[
+        ContractId[TransferInstruction], DamlName("transferInstructionCid")
+    ]
     expire_lock: Annotated[bool, DamlName("expireLock")]
 
 
@@ -906,7 +920,9 @@ class AmuletRules_CreateTransferPreapprovalResult:
     """Real Daml: `data AmuletRules_CreateTransferPreapprovalResult` with
     `transferPreapprovalCid`, `transferResult`, `amuletPaid`, `meta`."""
 
-    transfer_preapproval_cid: Annotated[ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")]
+    transfer_preapproval_cid: Annotated[
+        ContractId[TransferPreapproval], DamlName("transferPreapprovalCid")
+    ]
     transfer_result: Annotated[TransferResult, DamlName("transferResult")]
     amulet_paid: Annotated[Decimal, DamlName("amuletPaid")]
     meta: Optional[Metadata] = None
@@ -1127,7 +1143,9 @@ class AmuletRules_AdvanceOpenMiningRoundsResult:
     """Real Daml: `data AmuletRules_AdvanceOpenMiningRoundsResult` with
     `summarizingRoundCid`, `openRoundCid`."""
 
-    summarizing_round_cid: Annotated[ContractId[SummarizingMiningRound], DamlName("summarizingRoundCid")]
+    summarizing_round_cid: Annotated[
+        ContractId[SummarizingMiningRound], DamlName("summarizingRoundCid")
+    ]
     open_round_cid: Annotated[ContractId[OpenMiningRound], DamlName("openRoundCid")]
 
 
@@ -1154,7 +1172,10 @@ class AmuletRules_MiningRound_StartIssuingResult:
     `issuingRoundCid`, `unclaimedDevelopmentFundCouponCid`."""
 
     issuing_round_cid: Annotated[ContractId[IssuingMiningRound], DamlName("issuingRoundCid")]
-    unclaimed_development_fund_coupon_cid: Annotated[Optional[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("unclaimedDevelopmentFundCouponCid")] = None
+    unclaimed_development_fund_coupon_cid: Annotated[
+        Optional[ContractId[UnclaimedDevelopmentFundCoupon]],
+        DamlName("unclaimedDevelopmentFundCouponCid"),
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -1216,13 +1237,20 @@ class AmuletRules_ClaimExpiredRewards:
     """
 
     closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
-    validator_reward_coupon_cids: Annotated[list[ContractId[ValidatorRewardCoupon]], DamlName("validatorRewardCouponCids")]
+    validator_reward_coupon_cids: Annotated[
+        list[ContractId[ValidatorRewardCoupon]], DamlName("validatorRewardCouponCids")
+    ]
     app_coupon_cids: Annotated[list[ContractId[AppRewardCoupon]], DamlName("appCouponCids")]
-    sv_reward_coupon_cids: Annotated[list[ContractId[SvRewardCoupon]], DamlName("svRewardCouponCids")]
-    opt_validator_faucet_coupon_cids: Annotated[Optional[list[ContractId[ValidatorFaucetCoupon]]], DamlName("optValidatorFaucetCouponCids")] = None
-    opt_validator_liveness_activity_record_cids: Annotated[Optional[
-        list[ContractId[ValidatorLivenessActivityRecord]]
-    ], DamlName("optValidatorLivenessActivityRecordCids")] = None
+    sv_reward_coupon_cids: Annotated[
+        list[ContractId[SvRewardCoupon]], DamlName("svRewardCouponCids")
+    ]
+    opt_validator_faucet_coupon_cids: Annotated[
+        Optional[list[ContractId[ValidatorFaucetCoupon]]], DamlName("optValidatorFaucetCouponCids")
+    ] = None
+    opt_validator_liveness_activity_record_cids: Annotated[
+        Optional[list[ContractId[ValidatorLivenessActivityRecord]]],
+        DamlName("optValidatorLivenessActivityRecordCids"),
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -1230,7 +1258,9 @@ class AmuletRules_ClaimExpiredRewardsResult:
     """Real Daml: `data AmuletRules_ClaimExpiredRewardsResult` with
     `unclaimedRewardCid`."""
 
-    unclaimed_reward_cid: Annotated[Optional[ContractId[UnclaimedReward]], DamlName("unclaimedRewardCid")] = None
+    unclaimed_reward_cid: Annotated[
+        Optional[ContractId[UnclaimedReward]], DamlName("unclaimedRewardCid")
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -1268,7 +1298,9 @@ class AmuletRules_StartProcessingRewardsV2:
             batchHash : CryptoHash.Hash
     """
 
-    calculate_rewards_cid: Annotated[ContractId[CalculateRewardsV2], DamlName("calculateRewardsCid")]
+    calculate_rewards_cid: Annotated[
+        ContractId[CalculateRewardsV2], DamlName("calculateRewardsCid")
+    ]
     batch_hash: Annotated[Hash, DamlName("batchHash")]
 
 
@@ -1310,8 +1342,12 @@ class AmuletRules_ArchiveDryRunRewardAccountingV2:
             processRewardsCids : [ContractId ProcessRewardsV2]
     """
 
-    calculate_rewards_cids: Annotated[list[ContractId[CalculateRewardsV2]], DamlName("calculateRewardsCids")]
-    process_rewards_cids: Annotated[list[ContractId[ProcessRewardsV2]], DamlName("processRewardsCids")]
+    calculate_rewards_cids: Annotated[
+        list[ContractId[CalculateRewardsV2]], DamlName("calculateRewardsCids")
+    ]
+    process_rewards_cids: Annotated[
+        list[ContractId[ProcessRewardsV2]], DamlName("processRewardsCids")
+    ]
 
 
 @dataclass(frozen=True)
@@ -1330,7 +1366,9 @@ class AmuletRules_MergeUnclaimedRewards:
             unclaimedRewardCids : [ContractId UnclaimedReward]
     """
 
-    unclaimed_reward_cids: Annotated[list[ContractId[UnclaimedReward]], DamlName("unclaimedRewardCids")]
+    unclaimed_reward_cids: Annotated[
+        list[ContractId[UnclaimedReward]], DamlName("unclaimedRewardCids")
+    ]
 
 
 @dataclass(frozen=True)
@@ -1352,7 +1390,10 @@ class AmuletRules_MergeUnclaimedDevelopmentFundCoupons:
             unclaimedDevelopmentFundCouponCids : [ContractId UnclaimedDevelopmentFundCoupon]
     """
 
-    unclaimed_development_fund_coupon_cids: Annotated[list[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("unclaimedDevelopmentFundCouponCids")]
+    unclaimed_development_fund_coupon_cids: Annotated[
+        list[ContractId[UnclaimedDevelopmentFundCoupon]],
+        DamlName("unclaimedDevelopmentFundCouponCids"),
+    ]
 
 
 @dataclass(frozen=True)
@@ -1360,7 +1401,9 @@ class AmuletRules_MergeUnclaimedDevelopmentFundCouponsResult:
     """Real Daml: `data AmuletRules_MergeUnclaimedDevelopmentFundCouponsResult`
     with `unclaimedDevelopmentFundCouponCid`."""
 
-    unclaimed_development_fund_coupon_cid: Annotated[ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")]
+    unclaimed_development_fund_coupon_cid: Annotated[
+        ContractId[UnclaimedDevelopmentFundCoupon], DamlName("unclaimedDevelopmentFundCouponCid")
+    ]
 
 
 @dataclass(frozen=True)
@@ -1380,7 +1423,10 @@ class AmuletRules_AllocateDevelopmentFundCoupon:
             fundManager : Party
     """
 
-    unclaimed_development_fund_coupon_cids: Annotated[list[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("unclaimedDevelopmentFundCouponCids")]
+    unclaimed_development_fund_coupon_cids: Annotated[
+        list[ContractId[UnclaimedDevelopmentFundCoupon]],
+        DamlName("unclaimedDevelopmentFundCouponCids"),
+    ]
     beneficiary: Party
     amount: Decimal
     expires_at: Annotated[Timestamp, DamlName("expiresAt")]
@@ -1393,8 +1439,13 @@ class AmuletRules_AllocateDevelopmentFundCouponResult:
     """Real Daml: `data AmuletRules_AllocateDevelopmentFundCouponResult`
     with `developmentFundCouponCid`, `optUnclaimedDevelopmentFundCouponCid`."""
 
-    development_fund_coupon_cid: Annotated[ContractId[DevelopmentFundCoupon], DamlName("developmentFundCouponCid")]
-    opt_unclaimed_development_fund_coupon_cid: Annotated[Optional[ContractId[UnclaimedDevelopmentFundCoupon]], DamlName("optUnclaimedDevelopmentFundCouponCid")] = None
+    development_fund_coupon_cid: Annotated[
+        ContractId[DevelopmentFundCoupon], DamlName("developmentFundCouponCid")
+    ]
+    opt_unclaimed_development_fund_coupon_cid: Annotated[
+        Optional[ContractId[UnclaimedDevelopmentFundCoupon]],
+        DamlName("optUnclaimedDevelopmentFundCouponCid"),
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -1527,7 +1578,9 @@ class AmuletRules_ConvertFeaturedAppActivityMarkersResult:
     """Real Daml: `data AmuletRules_ConvertFeaturedAppActivityMarkersResult`
     with `appRewardCouponCids`."""
 
-    app_reward_coupon_cids: Annotated[list[ContractId[AppRewardCoupon]], DamlName("appRewardCouponCids")]
+    app_reward_coupon_cids: Annotated[
+        list[ContractId[AppRewardCoupon]], DamlName("appRewardCouponCids")
+    ]
 
 
 @dataclass(frozen=True)
@@ -1570,8 +1623,12 @@ class AmuletRules_UpdateExternalPartyConfigStates:
             openMiningRoundTriple : OpenMiningRoundTriple
     """
 
-    external_party_config_state_cid0: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigStateCid0")]
-    external_party_config_state_cid1: Annotated[ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigStateCid1")]
+    external_party_config_state_cid0: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigStateCid0")
+    ]
+    external_party_config_state_cid1: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("externalPartyConfigStateCid1")
+    ]
     open_mining_round_triple: Annotated[OpenMiningRoundTriple, DamlName("openMiningRoundTriple")]
 
 
@@ -1580,4 +1637,6 @@ class AmuletRules_UpdateExternalPartyConfigStatesResult:
     """Real Daml: `data AmuletRules_UpdateExternalPartyConfigStatesResult`
     with `newExternalPartyConfigStateCid`."""
 
-    new_external_party_config_state_cid: Annotated[ContractId[ExternalPartyConfigState], DamlName("newExternalPartyConfigStateCid")]
+    new_external_party_config_state_cid: Annotated[
+        ContractId[ExternalPartyConfigState], DamlName("newExternalPartyConfigStateCid")
+    ]

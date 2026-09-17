@@ -22,6 +22,7 @@ from forge.ir.nodes import (
     IRChoice,
     IRCompare,
     IRConstant,
+    Field,
     IRDict,
     IRExprStmt,
     IRFlag,
@@ -80,6 +81,8 @@ _BIN_OP_MAP = {"+": "+", "-": "-", "*": "*", "/": "/", "%": "%", "**": "**"}
 
 def _is_text_literal(e) -> bool:
     return isinstance(e, IRConstant) and isinstance(e.value, str)
+
+
 _CONSUMING_KEYWORD = {
     None: "",
     Consuming.CONSUMING: "",
@@ -89,6 +92,11 @@ _CONSUMING_KEYWORD = {
 }
 
 _MAX_TUPLE_ACCESSOR_INDEX = 8
+
+
+def _required_field_type(f: Field) -> TypeRef:
+    assert f.type is not None, f"field {f.name!r} is missing a type"
+    return f.type
 
 
 def render_type(t: TypeRef, as_arg: bool = False) -> str:
@@ -226,7 +234,12 @@ def _render_atom_for_attr(value) -> str:
 
 
 def _render_subscript(e: IRSubscript) -> str:
-    if not e.is_list and isinstance(e.index, IRConstant) and isinstance(e.index.value, int) and e.index.value >= 0:
+    if (
+        not e.is_list
+        and isinstance(e.index, IRConstant)
+        and isinstance(e.index.value, int)
+        and e.index.value >= 0
+    ):
         if e.index.value <= _MAX_TUPLE_ACCESSOR_INDEX:
             return f"{_render_atom_for_attr(e.value)}._{e.index.value + 1}"
     return f"({render_expr(e.value)}) !! ({render_expr(e.index)})"
@@ -239,12 +252,22 @@ def _render_decimal_literal(value) -> str:
 
 
 def _render_call(e: IRCall) -> str:
-    if isinstance(e.func, IRName) and e.func.id == "Decimal" and len(e.args) == 1 and not e.keywords:
+    if (
+        isinstance(e.func, IRName)
+        and e.func.id == "Decimal"
+        and len(e.args) == 1
+        and not e.keywords
+    ):
         if isinstance(e.args[0], IRConstant):
             return _render_decimal_literal(e.args[0].value)
         return f"intToDecimal {_render_call_arg(e.args[0])}"
 
-    if isinstance(e.func, IRName) and e.func.id == "range" and not e.keywords and len(e.args) in (1, 2):
+    if (
+        isinstance(e.func, IRName)
+        and e.func.id == "range"
+        and not e.keywords
+        and len(e.args) in (1, 2)
+    ):
         start = e.args[0] if len(e.args) == 2 else IRConstant(0)
         stop = e.args[-1]
         return f"[{render_expr(start)} .. ({render_expr(stop)}) - 1]"
@@ -322,7 +345,9 @@ class BodyTranslator:
             return [f"{pad}{render_expr(LoopAnalysis.apply_renames(s.value, renames))}"]
         raise CompilerPanic(f"_render_leaf: unsupported IR statement {type(s).__name__}")
 
-    def _translate(self, stmts, indent, monadic, make_tail, known=frozenset(), renames=None) -> list:
+    def _translate(
+        self, stmts, indent, monadic, make_tail, known=frozenset(), renames=None
+    ) -> list:
         renames = renames or {}
         pad = "  " * indent
         if not stmts:
@@ -362,7 +387,9 @@ class BodyTranslator:
                 cont_lines = [f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="]
                 cont_renames = {k: v for k, v in renames.items() if k not in cont_vars}
                 cont_lines.extend(
-                    self._translate(rest, indent + 3, monadic, make_tail, known | set(cont_vars), cont_renames)
+                    self._translate(
+                        rest, indent + 3, monadic, make_tail, known | set(cont_vars), cont_renames
+                    )
                 )
                 if not monadic:
                     cont_lines.append(f"{pad}in")
@@ -374,14 +401,23 @@ class BodyTranslator:
 
             test_expr = render_expr(LoopAnalysis.apply_renames(first.test, renames))
             lines = [f"{pad}if {test_expr}", f"{pad}  then do" if monadic else f"{pad}  then"]
-            lines.extend(self._translate(list(first.body), indent + 2, monadic, branch_tail, known, renames))
+            lines.extend(
+                self._translate(list(first.body), indent + 2, monadic, branch_tail, known, renames)
+            )
             lines.append(f"{pad}  else do" if monadic else f"{pad}  else")
-            lines.extend(self._translate(list(first.orelse), indent + 2, monadic, branch_tail, known, renames))
+            lines.extend(
+                self._translate(
+                    list(first.orelse), indent + 2, monadic, branch_tail, known, renames
+                )
+            )
             return cont_lines + lines
 
         if isinstance(first, IRFor):
+
             def rest_tail(i, extra_known=frozenset(), for_renames=None):
-                return self._translate(rest, i, monadic, make_tail, known | extra_known, for_renames or {})
+                return self._translate(
+                    rest, i, monadic, make_tail, known | extra_known, for_renames or {}
+                )
 
             return self._translate_for(first, indent, monadic, rest_tail, known, renames)
 
@@ -389,11 +425,15 @@ class BodyTranslator:
             if first.target.id in known:
                 value = LoopAnalysis.apply_renames(first.value, renames)
                 fresh = self.namer.next_rebind(first.target.id)
-                fresh_target = f"({fresh} : {render_type(first.type)})" if first.type is not None else fresh
+                fresh_target = (
+                    f"({fresh} : {render_type(first.type)})" if first.type is not None else fresh
+                )
                 binding = f"let {fresh_target} = {render_expr(value)}"
                 line = f"{pad}{binding}" if monadic else f"{pad}{binding} in"
                 new_renames = {**renames, first.target.id: fresh}
-                return [line] + self._translate(rest, indent, monadic, make_tail, known, new_renames)
+                return [line] + self._translate(
+                    rest, indent, monadic, make_tail, known, new_renames
+                )
             known = known | {first.target.id}
 
         return self._render_leaf(first, indent, monadic, renames) + self._translate(
@@ -419,7 +459,9 @@ class BodyTranslator:
                 result.append(s)
         return result
 
-    def _translate_for(self, node: IRFor, indent, monadic, make_tail, known=frozenset(), renames=None) -> list:
+    def _translate_for(
+        self, node: IRFor, indent, monadic, make_tail, known=frozenset(), renames=None
+    ) -> list:
         renames = renames or {}
         pad = "  " * indent
         body = LoopAnalysis.rewrite_appends(list(node.body), self.namer, self.known_effect_fns)
@@ -430,15 +472,21 @@ class BodyTranslator:
                 "_translate_for: a `for` loop with both loop-carried accumulator "
                 "mutation and an early `return` inside its body is not supported"
             )
-        loop_is_monadic = monadic and LoopAnalysis.body_has_ledger_effect(body, self.known_effect_fns)
+        loop_is_monadic = monadic and LoopAnalysis.body_has_ledger_effect(
+            body, self.known_effect_fns
+        )
         helper = self.namer.next()
         rest_name = "_damlforge_rest"
-        captured = sorted((LoopAnalysis.collect_free_names(body) & known) - set(accumulators) - {node.target})
+        captured = sorted(
+            (LoopAnalysis.collect_free_names(body) & known) - set(accumulators) - {node.target}
+        )
         inner_known = known | {node.target} | set(accumulators)
         fresh_here = set(accumulators) | set(captured) | {node.target}
         inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
         param_names = captured + accumulators
-        base_params = [f"({p} : {self.self_type})" if p == SELF and self.self_type else p for p in param_names]
+        base_params = [
+            f"({p} : {self.self_type})" if p == SELF and self.self_type else p for p in param_names
+        ]
         base_head = f"{helper} {' '.join(base_params + ['[]'])}".strip()
         rec_head = f"{helper} {' '.join(param_names + [f'({node.target} :: {rest_name})'])}"
         resolved_captured = self._resolve_all(captured, renames)
@@ -453,8 +501,15 @@ class BodyTranslator:
                 call = f"{helper} {' '.join(args)} {rest_name}".strip()
                 return [f"{'  ' * i}{call}"]
 
-            def_lines = [f"{base_head} = {base_rhs}", f"{rec_head} = do" if loop_is_monadic else f"{rec_head} ="]
-            def_lines.extend(self._translate(body, 1, loop_is_monadic, recursive_tail, inner_known, inner_renames))
+            def_lines = [
+                f"{base_head} = {base_rhs}",
+                f"{rec_head} = do" if loop_is_monadic else f"{rec_head} =",
+            ]
+            def_lines.extend(
+                self._translate(
+                    body, 1, loop_is_monadic, recursive_tail, inner_known, inner_renames
+                )
+            )
             self.hoisted.extend(def_lines)
             self.hoisted.append("")
 
@@ -481,9 +536,14 @@ class BodyTranslator:
                 call = f"{helper} {' '.join(captured)} {rest_name}".strip()
                 return [f"{'  ' * i}{call}"]
 
-            def_lines = [f"{base_head} = {base_rhs}", f"{rec_head} = do" if loop_is_monadic else f"{rec_head} ="]
+            def_lines = [
+                f"{base_head} = {base_rhs}",
+                f"{rec_head} = do" if loop_is_monadic else f"{rec_head} =",
+            ]
             def_lines.extend(
-                self._translate(wrapped_body, 1, loop_is_monadic, recursive_tail_b, inner_known, inner_renames)
+                self._translate(
+                    wrapped_body, 1, loop_is_monadic, recursive_tail_b, inner_known, inner_renames
+                )
             )
             self.hoisted.extend(def_lines)
             self.hoisted.append("")
@@ -492,10 +552,16 @@ class BodyTranslator:
             maybe_name = self.namer.next_rebind("maybe")
             early_name = self.namer.next_rebind("early")
             lines = [
-                f"{pad}{maybe_name} <- {call_expr}" if loop_is_monadic else f"{pad}let {maybe_name} = {call_expr}"
+                (
+                    f"{pad}{maybe_name} <- {call_expr}"
+                    if loop_is_monadic
+                    else f"{pad}let {maybe_name} = {call_expr}"
+                )
             ]
             lines.append(f"{pad}case {maybe_name} of")
-            lines.append(f"{pad}  Some {early_name} -> " + (f"pure {early_name}" if monadic else early_name))
+            lines.append(
+                f"{pad}  Some {early_name} -> " + (f"pure {early_name}" if monadic else early_name)
+            )
             lines.append(f"{pad}  None -> do" if monadic else f"{pad}  None ->")
             lines.extend(make_tail(indent + 2, frozenset(), renames))
             return lines
@@ -508,7 +574,9 @@ class BodyTranslator:
             return [f"{'  ' * i}{call}"]
 
         def_lines = [f"{base_head} = pure ()", f"{rec_head} = do"]
-        def_lines.extend(self._translate(body, 1, loop_is_monadic, recursive_tail_c, inner_known, inner_renames))
+        def_lines.extend(
+            self._translate(body, 1, loop_is_monadic, recursive_tail_c, inner_known, inner_renames)
+        )
         self.hoisted.extend(def_lines)
         self.hoisted.append("")
 
@@ -529,7 +597,9 @@ def render_body(
     known_effect_fns: frozenset = frozenset(),
 ) -> list:
     namer = namer if namer is not None else LoopNamer()
-    translator = BodyTranslator(namer, hoisted if hoisted is not None else [], known_effect_fns, self_type)
+    translator = BodyTranslator(
+        namer, hoisted if hoisted is not None else [], known_effect_fns, self_type
+    )
     return translator.render_body(stmts, indent, monadic, known)
 
 
@@ -576,10 +646,13 @@ class Emitter:
         parts = [text(f"data {s.name} = {s.name}")]
         if s.fields:
             field_lines = concat(
-                concat([line(), text(f"{f.name} : {render_type(f.type)}")]) for f in s.fields
+                concat([line(), text(f"{f.name} : {render_type(_required_field_type(f))}")])
+                for f in s.fields
             )
             parts.append(nest(2, concat([line(), text("with"), nest(2, field_lines)])))
-        if not any(_type_ref_references_non_derivable_type(f.type) for f in s.fields):
+        if not any(
+            _type_ref_references_non_derivable_type(_required_field_type(f)) for f in s.fields
+        ):
             parts.append(nest(2, concat([line(), text("deriving (Eq, Show)")])))
         self.lines_block(render(concat(parts)))
         self.record(s.src, "struct", s.name, start)
@@ -589,10 +662,12 @@ class Emitter:
         if not f.values:
             doc = text(f"data {f.name}")
         else:
-            doc = concat([
-                text(f"data {f.name} = " + " | ".join(f.values)),
-                nest(2, concat([line(), text("deriving (Eq, Show)")])),
-            ])
+            doc = concat(
+                [
+                    text(f"data {f.name} = " + " | ".join(f.values)),
+                    nest(2, concat([line(), text("deriving (Eq, Show)")])),
+                ]
+            )
         self.lines_block(render(doc))
         self.record(f.src, "flag", f.name, start)
 
@@ -609,16 +684,25 @@ class Emitter:
             if SelfMutationInjector.body_mutates_self(body):
                 body = SelfMutationInjector.inject_self_create(body)
                 original = c.return_type if c.return_type is not None else TypeRef("tuple", ())
-                display_return_type = TypeRef("tuple", (TypeRef("ContractId", (TypeRef(container_name),)), original))
+                display_return_type = TypeRef(
+                    "tuple", (TypeRef("ContractId", (TypeRef(container_name),)), original)
+                )
 
         consuming_kw = _CONSUMING_KEYWORD.get(c.consuming, "")
         return_type = render_type(display_return_type) if display_return_type is not None else "()"
-        controller_expr = render_expr(c.controller) if c.controller is not None else "-- MISSING controller"
+        controller_expr = (
+            render_expr(c.controller) if c.controller is not None else "-- MISSING controller"
+        )
 
         parts = [text(f"{consuming_kw}choice {daml_choice_name(c.name)} : {return_type}")]
         if c.args:
             arg_lines = concat(
-                concat([line(), text(f"{a.name} : {render_type(a.type) if a.type is not None else '()'}")])
+                concat(
+                    [
+                        line(),
+                        text(f"{a.name} : {render_type(a.type) if a.type is not None else '()'}"),
+                    ]
+                )
                 for a in c.args
             )
             parts.append(nest(2, concat([line(), text("with"), nest(2, arg_lines)])))
@@ -637,15 +721,21 @@ class Emitter:
     def emit_function(self, fn: IRFunction) -> None:
         start = len(self.lines) + 1
         is_monadic = "ledger_effect" in fn.decorators
-        return_type = render_type(fn.return_type, as_arg=True) if fn.return_type is not None else "()"
+        return_type = (
+            render_type(fn.return_type, as_arg=True) if fn.return_type is not None else "()"
+        )
         full_return = f"Update {return_type}" if is_monadic else return_type
-        arg_types = [render_type(a.type, as_arg=True) if a.type is not None else "()" for a in fn.args]
+        arg_types = [
+            render_type(a.type, as_arg=True) if a.type is not None else "()" for a in fn.args
+        ]
         self.line(f"{fn.name} : {' -> '.join(arg_types + [full_return])}")
         header = f"{fn.name} {' '.join(a.name for a in fn.args)}".rstrip()
         self.line(f"{header} = do" if is_monadic else f"{header} =")
         translator = self._translator()
         self.lines_block(
-            translator.render_body(fn.body, 1, monadic=is_monadic, known=frozenset(a.name for a in fn.args))
+            translator.render_body(
+                fn.body, 1, monadic=is_monadic, known=frozenset(a.name for a in fn.args)
+            )
         )
         self.record(fn.src, "function", fn.name, start)
 
@@ -654,11 +744,14 @@ class Emitter:
         parts = [text(f"template {t.name}")]
         if t.fields:
             field_lines = concat(
-                concat([line(), text(f"{f.name} : {render_type(f.type)}")]) for f in t.fields
+                concat([line(), text(f"{f.name} : {render_type(_required_field_type(f))}")])
+                for f in t.fields
             )
             parts.append(nest(2, concat([line(), text("with"), nest(2, field_lines)])))
 
-        signatory_expr = render_expr(t.signatory) if t.signatory is not None else "-- MISSING signatory"
+        signatory_expr = (
+            render_expr(t.signatory) if t.signatory is not None else "-- MISSING signatory"
+        )
         where_parts = [line(), text(f"signatory {signatory_expr}")]
         if t.observer is not None:
             where_parts.extend([line(), text(f"observer {render_expr(t.observer)}")])
@@ -693,10 +786,12 @@ class Emitter:
         requires_clause = f" requires {', '.join(i.requires)}" if i.requires else ""
         view_type = render_type(i.view) if i.view is not None else "()"
 
-        header = concat([
-            text(f"interface {i.name}{requires_clause} where"),
-            nest(2, concat([line(), text(f"viewtype {view_type}")])),
-        ])
+        header = concat(
+            [
+                text(f"interface {i.name}{requires_clause} where"),
+                nest(2, concat([line(), text(f"viewtype {view_type}")])),
+            ]
+        )
         self.lines_block(render(header))
 
         for c in i.choices:
@@ -734,7 +829,9 @@ class Emitter:
         for import_line in required_optional_imports(body_source):
             header += import_line
         required_modules = {
-            module for daml_name, module in _builtin_import_modules().items() if daml_name in body_source
+            module
+            for daml_name, module in _builtin_import_modules().items()
+            if daml_name in body_source
         }
         for module in sorted(required_modules):
             header += f"import {module}\n\n"

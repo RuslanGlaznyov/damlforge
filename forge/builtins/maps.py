@@ -43,7 +43,9 @@ class DamlMapType:
     @classmethod
     def method_names(cls) -> frozenset:
         return frozenset(
-            name for name, value in vars(DamlMapType).items() if not name.startswith("_") and callable(value)
+            name
+            for name, value in vars(DamlMapType).items()
+            if not name.startswith("_") and callable(value)
         )
 
 

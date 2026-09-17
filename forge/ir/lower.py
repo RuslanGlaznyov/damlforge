@@ -12,6 +12,7 @@ from forge.ir.nodes import (
     IRCompare,
     IRConstant,
     IRDict,
+    IRExpr,
     IRExprStmt,
     IRFlag,
     IRFor,
@@ -45,14 +46,8 @@ def _src(node: vy_ast.VyperNode) -> SourceSpan:
         end_col_offset=getattr(node, "end_col_offset", None),
     )
 
-_BIN_OPS = {
-    "Add": "+",
-    "Sub": "-",
-    "Mult": "*",
-    "Div": "/",
-    "Mod": "%",
-    "Pow": "**",
-}
+
+_BIN_OPS = {"Add": "+", "Sub": "-", "Mult": "*", "Div": "/", "Mod": "%", "Pow": "**"}
 
 _BOOL_OPS = {"And": "and", "Or": "or"}
 
@@ -70,6 +65,7 @@ _COMPARE_OPS = {
     "In": "in",
     "NotIn": "not in",
 }
+
 
 def lower_type(node: vy_ast.VyperNode) -> TypeRef:
     if isinstance(node, vy_ast.Name):
@@ -306,7 +302,7 @@ def lower_choice(fn: vy_ast.FunctionDef) -> IRChoice:
     )
 
 
-def _find_signatory(body) -> "IRExpr | None":
+def _find_signatory(body) -> IRExpr | None:
     for stmt in body:
         target = None
         value = None
@@ -352,7 +348,11 @@ def lower_struct(node: vy_ast.StructDef) -> IRStruct:
 
 
 def lower_flag(node: vy_ast.FlagDef) -> IRFlag:
-    values = tuple(stmt.value.id for stmt in node.body if isinstance(stmt, vy_ast.Expr))
+    values = tuple(
+        stmt.value.id
+        for stmt in node.body
+        if isinstance(stmt, vy_ast.Expr) and isinstance(stmt.value, vy_ast.Name)
+    )
     return IRFlag(node.name, values, src=_src(node))
 
 
@@ -439,7 +439,8 @@ def _lower_imports(body, import_graph=None) -> tuple:
             names = tuple(
                 a.name
                 for a in node.names
-                if a.name not in case_accessor_names and ImportsBuilder.needs_daml_import(node.module, a.name)
+                if a.name not in case_accessor_names
+                and ImportsBuilder.needs_daml_import(node.module, a.name)
             )
             if names:
                 constructor_names = frozenset(names) & _sibling_constructor_names(node)

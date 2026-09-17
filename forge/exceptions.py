@@ -354,8 +354,6 @@ class OverflowException(VyperException):
     """Numeric value out of range for the given type."""
 
 
-
-
 class MemoryAllocationException(VyperException):
     """Tried to allocate too much memory"""
 

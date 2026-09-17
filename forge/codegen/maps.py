@@ -12,10 +12,7 @@ def _render_gen_map(args, render_type) -> str:
     return f"Map.Map {render_type(key, as_arg=True)} {render_type(value, as_arg=True)}"
 
 
-_MAP_RENDERERS = {
-    TextMap.__name__: _render_text_map,
-    GenMap.__name__: _render_gen_map,
-}
+_MAP_RENDERERS = {TextMap.__name__: _render_text_map, GenMap.__name__: _render_gen_map}
 
 
 def is_map_type(name: str) -> bool:

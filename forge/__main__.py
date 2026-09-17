@@ -5,11 +5,7 @@ import sys
 from forge.cli import forge_daml, forge_dar, forge_json
 
 if __name__ == "__main__":
-    allowed_subcommands = {
-        "--daml": forge_daml,
-        "--dar": forge_dar,
-        "--json": forge_json,
-    }
+    allowed_subcommands = {"--daml": forge_daml, "--dar": forge_dar, "--json": forge_json}
 
     if len(sys.argv) <= 1 or sys.argv[1] not in allowed_subcommands:
         # default (no args, no switch in first arg): compile .vy -> .daml

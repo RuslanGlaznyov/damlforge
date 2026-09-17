@@ -125,11 +125,17 @@ class AmuletConfig(Generic[Unit]):
 
     transfer_config: Annotated[TransferConfig[Unit], DamlName("transferConfig")]
     issuance_curve: Annotated[Schedule[RelTime, IssuanceConfig], DamlName("issuanceCurve")]
-    decentralized_synchronizer: Annotated[AmuletDecentralizedSynchronizerConfig, DamlName("decentralizedSynchronizer")]
+    decentralized_synchronizer: Annotated[
+        AmuletDecentralizedSynchronizerConfig, DamlName("decentralizedSynchronizer")
+    ]
     tick_duration: Annotated[RelTime, DamlName("tickDuration")]
     package_config: Annotated[PackageConfig, DamlName("packageConfig")]
-    transfer_preapproval_fee: Annotated[Optional[Decimal], DamlName("transferPreapprovalFee")] = None
-    featured_app_activity_marker_amount: Annotated[Optional[Decimal], DamlName("featuredAppActivityMarkerAmount")] = None
+    transfer_preapproval_fee: Annotated[Optional[Decimal], DamlName("transferPreapprovalFee")] = (
+        None
+    )
+    featured_app_activity_marker_amount: Annotated[
+        Optional[Decimal], DamlName("featuredAppActivityMarkerAmount")
+    ] = None
 
 
 class RewardVersion(Enum):

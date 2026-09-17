@@ -58,7 +58,9 @@ class SelfFieldRewriter:
         if isinstance(s, IRAssign):
             field = cls._self_field(s.target, field_types)
             if field is not None:
-                return cls._self_update(field[0], cls.rewrite_expr(s.value, field_types, local_types))
+                return cls._self_update(
+                    field[0], cls.rewrite_expr(s.value, field_types, local_types)
+                )
             if isinstance(s.target, IRSubscript):
                 receiver = s.target.value
                 field = cls._self_field(receiver, field_types)
@@ -82,7 +84,10 @@ class SelfFieldRewriter:
                     call = map_method_call(recv_type.name, "insert", (key, value), receiver)
                     return IRAssign(receiver, call, src=s.src)
             return IRAssign(
-                s.target, cls.rewrite_expr(s.value, field_types, local_types), type=s.type, src=s.src
+                s.target,
+                cls.rewrite_expr(s.value, field_types, local_types),
+                type=s.type,
+                src=s.src,
             )
         if isinstance(s, IRIf):
             return IRIf(
@@ -100,7 +105,9 @@ class SelfFieldRewriter:
                 src=s.src,
             )
         if isinstance(s, IRReturn):
-            value = cls.rewrite_expr(s.value, field_types, local_types) if s.value is not None else None
+            value = (
+                cls.rewrite_expr(s.value, field_types, local_types) if s.value is not None else None
+            )
             return IRReturn(value, src=s.src)
         if isinstance(s, IRPass):
             return s
@@ -160,9 +167,13 @@ class SelfFieldRewriter:
                 tuple((k, cls.rewrite_expr(v, field_types, local_types)) for k, v in e.keywords),
             )
         if isinstance(e, IRList):
-            return IRList(tuple(cls.rewrite_expr(el, field_types, local_types) for el in e.elements))
+            return IRList(
+                tuple(cls.rewrite_expr(el, field_types, local_types) for el in e.elements)
+            )
         if isinstance(e, IRTuple):
-            return IRTuple(tuple(cls.rewrite_expr(el, field_types, local_types) for el in e.elements))
+            return IRTuple(
+                tuple(cls.rewrite_expr(el, field_types, local_types) for el in e.elements)
+            )
         if isinstance(e, IRDict):
             return IRDict(
                 tuple(cls.rewrite_expr(k, field_types, local_types) for k in e.keys),
@@ -176,7 +187,9 @@ class SelfFieldRewriter:
                 cls.rewrite_expr(e.right, field_types, local_types),
             )
         if isinstance(e, IRBoolOp):
-            return IRBoolOp(e.op, tuple(cls.rewrite_expr(v, field_types, local_types) for v in e.values))
+            return IRBoolOp(
+                e.op, tuple(cls.rewrite_expr(v, field_types, local_types) for v in e.values)
+            )
         if isinstance(e, IRUnaryOp):
             return IRUnaryOp(e.op, cls.rewrite_expr(e.operand, field_types, local_types))
         if isinstance(e, IRCompare):
@@ -195,7 +208,9 @@ class SelfFieldRewriter:
         if isinstance(e, IRRecordUpdate):
             return IRRecordUpdate(
                 cls.rewrite_expr(e.base, field_types, local_types),
-                tuple((name, cls.rewrite_expr(v, field_types, local_types)) for name, v in e.updates),
+                tuple(
+                    (name, cls.rewrite_expr(v, field_types, local_types)) for name, v in e.updates
+                ),
             )
         raise CompilerPanic(f"rewrite_expr: unsupported IR expression {type(e).__name__}")
 
@@ -232,7 +247,9 @@ class SelfMutationInjector:
         for s in stmts:
             if isinstance(s, IRAssign) and isinstance(s.target, IRName) and s.target.id == SELF:
                 return True
-            if isinstance(s, IRIf) and (cls.body_mutates_self(s.body) or cls.body_mutates_self(s.orelse)):
+            if isinstance(s, IRIf) and (
+                cls.body_mutates_self(s.body) or cls.body_mutates_self(s.orelse)
+            ):
                 return True
             if isinstance(s, IRFor) and cls.body_mutates_self(s.body):
                 return True
@@ -260,8 +277,10 @@ class SelfMutationInjector:
         if isinstance(last, IRReturn):
             return True
         if isinstance(last, IRIf):
-            return bool(last.orelse) and cls._always_terminates(list(last.body)) and cls._always_terminates(
-                list(last.orelse)
+            return (
+                bool(last.orelse)
+                and cls._always_terminates(list(last.body))
+                and cls._always_terminates(list(last.orelse))
             )
         return False
 
@@ -283,7 +302,13 @@ class SelfMutationInjector:
                 )
             elif isinstance(s, IRFor):
                 result.append(
-                    IRFor(s.target, s.target_type, s.iter, tuple(cls._replace_returns(list(s.body))), src=s.src)
+                    IRFor(
+                        s.target,
+                        s.target_type,
+                        s.iter,
+                        tuple(cls._replace_returns(list(s.body))),
+                        src=s.src,
+                    )
                 )
             else:
                 result.append(s)

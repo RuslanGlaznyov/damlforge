@@ -19,9 +19,8 @@ def _parse_example():
 def _parse_simple():
     source_path = Path(__file__).resolve().parents[2] / "examples" / "basic" / "simple.vy"
     source = source_path.read_text()
-    return parse_to_ast(
-        source, module_path="simple.vy", resolved_path=str(source_path)
-    )
+    return parse_to_ast(source, module_path="simple.vy", resolved_path=str(source_path))
+
 
 def test_token_standard_example_parses_and_passes_semantic_analysis():
     module = _parse_example()

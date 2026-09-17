@@ -4,7 +4,6 @@ from forge.codegen import generate_daml
 from forge.ir import lower_module
 from forge.semantics import analyze_module
 
-
 _DECORATOR_PREAMBLE = (
     "from forge.models import choice, ledger_effect, template, view\n"
     "from forge.builtins import DamlName\n"
@@ -12,7 +11,9 @@ _DECORATOR_PREAMBLE = (
 
 
 def _compile(source):
-    module = parse_to_ast(_DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy")
+    module = parse_to_ast(
+        _DECORATOR_PREAMBLE + source, module_path="test.vy", resolved_path="test.vy"
+    )
     analyze_module(module)
     ir = lower_module(module)
     daml_source, _ = generate_daml(ir, module_name="Test")
@@ -177,8 +178,8 @@ def test_builtin_splice_struct_optional_field_auto_wraps_without_manual_some():
         "    @choice(controller=owner, consuming=True)\n"
         "    def lock(self, deadline) -> bool:\n"
         "        holders: list[Party] = [self.owner]\n"
-        "        lock = TimeLock(holders=holders, expires_at=deadline, opt_context=\"reason\")\n"
+        '        lock = TimeLock(holders=holders, expires_at=deadline, opt_context="reason")\n'
         "        return True\n"
     )
 
-    assert "optContext = Some \"reason\"" in daml
+    assert 'optContext = Some "reason"' in daml

@@ -1,4 +1,4 @@
-.PHONY: test dev-deps lint clean clean-pyc clean-build clean-test docs
+.PHONY: test dev-deps lint clean clean-pyc clean-build clean-test build release
 
 init:
 	python setup.py install
@@ -12,56 +12,34 @@ test:
 lint: mypy black flake8 isort
 
 mypy:
-	mypy -p vyper
+	mypy -p forge
 
 black:
-	black vyper/ tests/ setup.py
+	black forge/ tests/ setup.py
 
 flake8: black
-	flake8 vyper/ tests/
+	flake8 forge/ tests/
 
 isort: black
-	isort vyper/ tests/ setup.py
+	isort forge/ tests/ setup.py
 
-docs:
-	rm -f docs/vyper.rst
-	rm -f docs/modules.rst
-	sphinx-apidoc -o docs/ -d 2 vyper/
-	$(MAKE) -C docs clean
-	$(MAKE) -C docs html
-	# To display docs, run:
-	# open docs/_build/html/index.html (macOS)
-	# start docs/_build/html/index.html (Windows)
-	# xdg-open docs/_build/html/index.html (Linux)
+build: clean
+	python -m build
+	ls -la dist/
 
-release: clean
-	python setup.py sdist bdist_wheel
+release: build
 	twine check dist/*
-	#twine upload dist/*
+	#twine upload --repository-url <your-private-index> dist/*
 
-freeze: clean init
-	echo Generating binary...
-	export OS="$$(uname -s | tr A-Z a-z)" && \
-	export VERSION="$$(PYTHONPATH=. python vyper/cli/vyper_compile.py --version)" && \
-	pyinstaller --target-architecture=universal2 --clean --onefile vyper/cli/vyper_compile.py --name "vyper.$${VERSION}.$${OS}" --add-data vyper:vyper
-
-clean: clean-build clean-docs clean-pyc clean-test
+clean: clean-build clean-pyc clean-test
 
 clean-build:
 	@echo Cleaning python build files...
 	@rm -fr build/
-	@rm -fr _build/ # docs build dir
 	@rm -fr dist/
 	@rm -fr *.egg-info
-	@rm -f vyper/version.py vyper/vyper_git_version.txt vyper/vyper_git_commithash.txt
+	@rm -f forge/version.py forge/damlforge_git_commithash.txt
 	@rm -f *.spec
-
-clean-docs:
-	@echo Cleaning doc build files...
-	@rm -rf docs/_build/
-	@rm -f docs/modules.rst
-	@rm -f docs/vyper.rst
-	@rm -f docs/vyper.*.rst
 
 clean-pyc:
 	@echo Cleaning python files...
@@ -80,3 +58,6 @@ clean-test:
 	@rm -fr .pytest_cache/
 	@rm -rf .tox/
 	@rm -fr .mypy_cache/
+
+test-project:
+	python3 -m forge.cli.forge_dar examples/splice-util-batched-markers --dpm /Users/artem_bogomaz/.dpm/bin/dpm
