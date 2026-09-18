@@ -125,12 +125,13 @@ def test_invalid(source_path, expected_code):
 
 def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
     sibling_path = tmp_path / "loan_terms.vy"
-    sibling_path.write_text("template LoanTerms:\n    rate: int\n")
+    sibling_path.write_text("@template\nclass LoanTerms:\n    rate: int\n")
 
     main_path = tmp_path / "main.vy"
     main_path.write_text(
         "from loan_terms import LoanTerms\n\n"
-        "template Asset:\n"
+        "@template\n"
+        "class Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n"
     )
@@ -157,7 +158,7 @@ def test_integrity_sum_changes_when_source_changes():
 
 def test_integrity_sum_changes_when_sibling_import_changes(tmp_path):
     sibling_path = tmp_path / "sibling.vy"
-    sibling_path.write_text("template Sibling:\n    owner: Party\n")
+    sibling_path.write_text("@template\nclass Sibling:\n    owner: Party\n")
 
     main_path = tmp_path / "main.vy"
     main_path.write_text("from sibling import Sibling\n" + _read_fixture(_fixture_path("valid/valid_template.vy")))
@@ -171,7 +172,7 @@ def test_integrity_sum_changes_when_sibling_import_changes(tmp_path):
         return builder.integrity_sum(module)
 
     before = _main_integrity_sum()
-    sibling_path.write_text("template Sibling:\n    owner: Party\n    extra: Text\n")
+    sibling_path.write_text("@template\nclass Sibling:\n    owner: Party\n    extra: Text\n")
     after = _main_integrity_sum()
 
     assert before != after
