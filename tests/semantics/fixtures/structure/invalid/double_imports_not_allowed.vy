@@ -1,0 +1,12 @@
+
+from Splice.AppTransferContext import AppTransferContext
+from Splice.AppTransferContext import AppTransferContext
+
+template Asset:
+    owner: Party
+
+    signatory: list[Party] = [owner]
+
+    @choice(controller=owner, consuming=True)
+    def transfer(new_owner: Party, app_context: AppTContext) -> bool:
+        pass

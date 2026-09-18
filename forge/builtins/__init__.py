@@ -250,6 +250,28 @@ class choice(VyDecorator):
                 )
 
 
+class template(VyDecorator):
+    def __new__(cls, cls_obj):
+        cls_obj.__vy_decorator__ = True
+        cls_obj.__template__ = True
+        return cls_obj
+
+    @classmethod
+    def __post_vy_check__(
+        cls, container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+    ):
+        from forge.models.error_codes import ErrorCodes
+
+        if isinstance(dec, vy_ast.Call):
+            errors.append(
+                DamlForgeException(
+                    f"`@{cls.__name__}` on `{container.name}` takes no arguments",
+                    fn,
+                    code=ErrorCodes.DF1205.value,
+                )
+            )
+
+
 class ledger_effect(VyDecorator):
     def __new__(cls, fn):
         fn.__vy_decorator__ = True
