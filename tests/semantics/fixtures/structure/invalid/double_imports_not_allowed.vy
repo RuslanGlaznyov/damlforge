@@ -2,7 +2,8 @@
 from Splice.AppTransferContext import AppTransferContext
 from Splice.AppTransferContext import AppTransferContext
 
-template Asset:
+@template
+class Asset:
     owner: Party
 
     signatory: list[Party] = [owner]

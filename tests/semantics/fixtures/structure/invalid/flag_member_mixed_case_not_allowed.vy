@@ -3,7 +3,8 @@ flag Status:
     Pending
     PAID
 
-template Asset:
+@template
+class Asset:
     owner: Party
 
     signatory: list[Party] = [owner]

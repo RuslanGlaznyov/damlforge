@@ -1,5 +1,6 @@
 
-template RecursionTemplate:
+@template
+class RecursionTemplate:
     platform: Party
     developer: Party
     dso: Party

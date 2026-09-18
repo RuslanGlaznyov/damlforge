@@ -11,7 +11,7 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 
 ## Before writing any .vy file
 
-1. Every field/type name in the file must resolve to one of: a Python-native type, a DamlForge builtin type (`Party`, `Decimal`, `Int`, `Date`, `Timestamp`, `ContractId[T]`, `GenMap[K,V]`, `TextMap[T]`), or a `struct`/`template`/`interface`/`instance`/`flag` declared/imported in scope. See reference.md § Type System.
+1. Every field/type name in the file must resolve to one of: a Python-native type, a DamlForge builtin type (`Party`, `Decimal`, `Int`, `Date`, `Timestamp`, `ContractId[T]`, `GenMap[K,V]`, `TextMap[T]`), or a `struct`/`template`/`interface`/`flag` declared/imported in scope. See reference.md § Type System.
 2. Every **decorator** (`@choice`, `@view`, `@ledger_effect`, `@template`, `@DamlName`) must be imported from `forge.models` or `forge.builtins` - unlike ledger builtins, decorators are NOT auto-available. See reference.md § Decorators.
 3. Every `template` needs `signatory`. `key` requires `maintainer` and vice versa. `ensure` (if present) must be a `bool`-typed comparison/boolop/call, never bare arithmetic. See reference.md § Template Fields.
 4. A plain `def` that calls `fetch`/`exercise`/`create`/`archive`/`lookup` must be marked `@ledger_effect` (choices are exempt). See reference.md § Ledger Effects.
@@ -24,7 +24,7 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 | Record type | `struct Foo:` |
 | Contract type | `template Foo:` or `@template\nclass Foo:` |
 | Interface | `interface Foo(view=FooView):` |
-| Interface impl | `instance FooImpl(Foo):` |
+| Interface impl | `template Bar(Foo):` (subclass the interface directly - no `instance` keyword) |
 | Sum type / enum | `flag Status:\n    PENDING\n    PAID` (members MUST be `SCREAMING_CASE`) |
 | Choice | `@choice(controller=..., consuming=True)` |
 | Fetch/exercise/create/archive/lookup | called directly, no import needed |

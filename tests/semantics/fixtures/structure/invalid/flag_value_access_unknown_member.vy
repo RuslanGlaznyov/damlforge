@@ -3,7 +3,8 @@ flag Status:
     PENDING
     PAID
 
-template Asset:
+@template
+class Asset:
     owner: Party
     status: Status
 

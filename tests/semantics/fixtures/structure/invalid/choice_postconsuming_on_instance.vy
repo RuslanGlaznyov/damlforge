@@ -7,7 +7,8 @@ interface Holding(view=HoldingView):
     def archive_holding() -> bool:
         pass
 
-template Asset(Holding):
+@template
+class Asset(Holding):
     owner: Party
 
     signatory: list[Party] = [owner]

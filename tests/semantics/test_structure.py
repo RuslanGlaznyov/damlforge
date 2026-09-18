@@ -100,6 +100,11 @@ def test_valid(source_path):
         (_fixture_path("invalid/self_reference_via_template_name_not_allowed.vy"), ErrorCodes.DF1219.value),
         (_fixture_path("invalid/unresolved_name_used_as_attribute_base_not_allowed.vy"), ErrorCodes.DF1219.value),
         (_fixture_path("invalid/unresolved_name_used_as_call_target_not_allowed.vy"), ErrorCodes.DF1219.value),
+        (_fixture_path("invalid/decorator_used_without_import_not_allowed.vy"), ErrorCodes.DF1219.value),
+        (
+            _fixture_path("invalid/multiple_violations.vy"),
+            (ErrorCodes.DF1201.value, ErrorCodes.DF1203.value),
+        ),
         (_fixture_path("invalid/unknown_decorator_not_allowed.vy"), ErrorCodes.DF1220.value),
         (_fixture_path("invalid/daml_name_with_no_arguments_not_allowed.vy"), ErrorCodes.DF1221.value),
         (_fixture_path("invalid/daml_name_with_non_literal_argument_not_allowed.vy"), ErrorCodes.DF1221.value),
@@ -114,7 +119,8 @@ def test_invalid(source_path, expected_code):
     with pytest.raises(Exception) as exc_info:
         _analyze(_read_fixture(source_path))
 
-    assert expected_code in str(exc_info.value)
+    expected_codes = (expected_code,) if isinstance(expected_code, str) else expected_code
+    assert all(code in str(exc_info.value) for code in expected_codes)
 
 
 def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
@@ -169,53 +175,3 @@ def test_integrity_sum_changes_when_sibling_import_changes(tmp_path):
     after = _main_integrity_sum()
 
     assert before != after
-
-
-def test_multiple_violations_are_all_reported():
-    source = """
-template Asset:
-    owner: Party
-
-    @choice(consuming=True)
-    def transfer(new_owner: Party) -> bool:
-        pass
-"""
-    with pytest.raises(Exception) as exc_info:
-        _analyze(source)
-
-    message = str(exc_info.value)
-    assert "DF1201" in message
-    assert "DF1202" in message
-
-
-def test_decorator_used_without_import_is_not_defined():
-    source = """
-template Asset:
-    owner: Party
-
-    signatory: list[Party] = [owner]
-
-    @choice(controller=owner, consuming=True)
-    def transfer(new_owner: Party) -> bool:
-        pass
-"""
-    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
-    with pytest.raises(Exception, match="DF1219"):
-        analyze_module(module)
-
-
-def test_decorator_used_with_import_passes():
-    source = """
-from forge.models import Party, choice
-
-template Asset:
-    owner: Party
-
-    signatory: list[Party] = [owner]
-
-    @choice(controller=owner, consuming=True)
-    def transfer(new_owner: Party) -> bool:
-        pass
-"""
-    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
-    analyze_module(module)

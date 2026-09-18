@@ -1,7 +1,8 @@
 
 from totally_bogus_nonexistent_module import Something
 
-template Asset:
+@template
+class Asset:
     owner: Party
 
     signatory: list[Party] = [owner]

@@ -2,7 +2,8 @@
 def add_two(a: int, b: int) -> int:
     return a + b
 
-template Asset:
+@template
+class Asset:
     owner: Party
 
     signatory: list[Party] = [owner]

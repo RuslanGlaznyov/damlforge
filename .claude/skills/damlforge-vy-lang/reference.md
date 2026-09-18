@@ -18,12 +18,12 @@ The pre-parser rewrites these bare keywords (column 0) into Python `class`:
 | `struct Foo:` | plain data record | `data Foo = Foo with ...` |
 | `template Foo:` | contract template | `template Foo where ...` |
 | `interface Foo(view=V):` | interface | `interface Foo where viewtype V` |
-| `instance Foo(Bar):` | interface implementation | `interface instance Bar for Foo where` |
+| `template Foo(Bar):` | template implementing interface `Bar` | `template Foo with ... where ... interface instance Bar for Foo where ...` |
 | `flag Foo:` / `enum Foo:` | sum type of nullary constructors | `data Foo = A \| B \| ...` |
 
 `@template\nclass Foo:` is an accepted alternative spelling of `template Foo:` (byte-identical output) - useful when you want a real decorator-looking header. It needs no import (the pre-parser consumes the `@template` line before it ever becomes a decorator call). **No other decorator combination with bare `class` is legal** - plain `class Foo:` and `@anything_else\nclass Foo:` both raise a hard `SyntaxException` at tokenize time.
 
-`struct`/`interface`/`event`/`enum` (but not `template`/`instance`/`flag`) are also reserved identifiers - you cannot name a variable or field `struct`, etc.
+`struct`/`interface`/`event`/`enum` (but not `template`/`flag`) are also reserved identifiers - you cannot name a variable or field `struct`, etc. There is no `instance` keyword - a template declares which interface(s) it implements directly via base classes, like real Python subclassing/ABCs (see §10).
 
 `event`/`error` (`EventDef`/`ErrorDef`) parse but are not wired into codegen; the `exception` decorator explicitly raises `NotImplementedError` - none of these three are usable yet.
 
@@ -41,7 +41,7 @@ from forge.models import ContractId, Decimal, Optional, Party, TextMap, Timestam
 
 **Type synonyms the checker treats as equal** when checking call-argument compatibility: `int`↔`Int`, `str`↔`Text`, `float`↔`Decimal`. A bare `X` is compatible where `Optional[X]` is expected (auto-wrapped, see §6). Generic args are checked recursively - `list[A]` is never compatible with `list[B]` unless `A`/`B` match.
 
-**Your own types**: any `struct`/`template`/`interface`/`instance`/`flag` declared in a reachable module is automatically a valid type name - no import needed within the same module, real `from X import Y` needed across `.vy` files.
+**Your own types**: any `struct`/`template`/`interface`/`flag` declared in a reachable module is automatically a valid type name - no import needed within the same module, real `from X import Y` needed across `.vy` files.
 
 **Qualified module imports** - use when two real Daml packages export a same-named type (Daml itself would raise "Ambiguous occurrence" on an unqualified double-import):
 
@@ -59,21 +59,21 @@ def f(x: FeaturedAppRightV1.FeaturedAppRight): ...
 Unlike ledger builtins (§4), decorators are ordinary Python objects with no compiler-side "always known" carve-out, so every one must be imported before use - an unimported decorator fails exactly like any other unresolved name (`DF1219`, "not defined"), not with a decorator-specific error.
 
 ```python
-from forge.models import choice, ledger_effect, template, view, interface, instance
+from forge.models import choice, ledger_effect, template, view, interface
 from forge.builtins import DamlName
 ```
 
 | Decorator | Where legal | Rules |
 |---|---|---|
-| `@choice(controller=..., consuming=..., observer=...)` | method inside `template`/`interface`/`instance` | `controller` required (`DF1203`); `consuming` required, must be a literal `True`/`False` or one of `"preconsuming"`/`"consuming"`/`"nonconsuming"`/`"postconsuming"` (`DF1203`); name can't start with `_` (`DF1218`); `"preconsuming"` banned on `interface` choices, `"postconsuming"` banned on `instance` choices (`DF1208`) |
-| `@view` | method inside `interface`/`instance` only | no args (`DF1206`); banned inside `template` (`DF1207`) |
+| `@choice(controller=..., consuming=..., observer=...)` | method inside `template`/`interface` | `controller` required (`DF1203`); `consuming` required, must be a literal `True`/`False` or one of `"preconsuming"`/`"consuming"`/`"nonconsuming"`/`"postconsuming"` (`DF1203`); name can't start with `_` (`DF1218`); `"preconsuming"`/`"postconsuming"` banned on interface choice declarations, and on a template's implementation of an interface choice (`DF1208`) |
+| `@view` | method inside `interface`, or a `template` that implements one | no args (`DF1206`); banned inside a `template` with no interface bases (`DF1207`) |
 | `@ledger_effect` | plain top-level `def` or method | bare only, no args (`DF1204`) |
 | `@DamlName("RealName")` | any function/choice | exactly one string-literal positional arg (`DF1221`); overrides the auto-derived Daml-side name |
 | `@template` | immediately before `class Foo:`, nothing else | see §1 |
 
 ### `controller=`/`observer=` name rules (`DF1224`)
 
-Every bare name inside a choice's `controller=`/`observer=` expression must be one of: that choice's own `with`-arguments, one of the template's own declared fields, or `self`. `self.<attr>` is further checked to be a real field (not `self.signatory` - `signatory` is a Daml typeclass function, not a stored field). This exists because Daml's own name resolution would otherwise silently pick an unrelated same-named field elsewhere in the module, or fail with a confusing `damlc`-time "Ambiguous occurrence" error. This check only runs for `template` choices - `interface`/`instance` choices are skipped (they commonly need `(view this).x`-style access that `.vy` can't express yet).
+Every bare name inside a choice's `controller=`/`observer=` expression must be one of: that choice's own `with`-arguments, one of the template's own declared fields, or `self`. `self.<attr>` is further checked to be a real field (not `self.signatory` - `signatory` is a Daml typeclass function, not a stored field). This exists because Daml's own name resolution would otherwise silently pick an unrelated same-named field elsewhere in the module, or fail with a confusing `damlc`-time "Ambiguous occurrence" error. This check runs for `template` choices, including a template's implementation of an interface choice (since it lives directly in the template body and has real field access) - a bare `interface`'s own abstract choice declarations are skipped (they have no fields, no `self`, only their own with-arguments).
 
 ```python
 @choice(controller=owner, consuming=True)                 # owner: template field - OK
@@ -182,7 +182,9 @@ def update_milestone_if_due(paid_amount: Decimal, milestone: RepaymentMilestone)
                                paid=True, paid_date=milestone.paid_date)
 ```
 
-## 10. Interfaces and instances
+## 10. Interfaces - a template implements one via real subclassing
+
+There is no `instance` keyword. A `template` declares it implements an `interface` the same way Python declares a class implements an ABC - by listing it as a base:
 
 ```python
 struct HoldingView:
@@ -191,15 +193,12 @@ struct HoldingView:
 interface Holding(view=HoldingView):
     @choice(controller=actors, consuming="nonconsuming")
     def withdraw(self, actors: list[Party], extra_args: ExtraArgs) -> bool:
-        pass                      # interface choices are declared with `pass` bodies
+        pass                      # interface choices are declared once, with `pass` bodies
 
-template SimpleHolding:
+template SimpleHolding(Holding):
     owner: Party
     issuer: Party
     signatory: list[Party] = [owner, issuer]
-
-instance SimpleHoldingAsHolding(Holding):
-    template = SimpleHolding
 
     @view
     def get_view(self) -> HoldingView:
@@ -207,10 +206,16 @@ instance SimpleHoldingAsHolding(Holding):
 
     @choice(controller=actors, consuming="nonconsuming")
     def withdraw(self, actors: list[Party], extra_args: ExtraArgs) -> bool:
-        ...                       # instance re-implements the real choice body
+        ...                       # real implementation - same field/self access as any other choice
 ```
 
-`interface(view=..., requires=(...))` and `instance(InterfaceCls)` also exist as explicit function-call decorators (`forge/builtins/__init__.py`) for cases the bare `interface(...)`/`instance(...)` keyword forms don't cover, but the keyword forms above are the normal spelling.
+Any method inside the template whose name matches one of the interface's own `@choice`-declared names is treated as that interface's implementation (not a separate template choice); everything else stays a normal template choice. A template can implement more than one interface (`template Foo(A, B):`) - a `@view` method is matched to the right interface by its return type, so implementing two interfaces needs two `@view` methods, one per interface's declared `view=` type.
+
+**Compile-time completeness check (`DF1228`)**: a template that lists an interface as a base must implement every one of that interface's `@choice`-declared members by name, and have exactly one `@view` method whose return type matches the interface's `view=` type - both are checked before codegen, not left to fail later inside `damlc`. The base itself must resolve to a real `interface` declaration (`DF1227` otherwise).
+
+Under the hood, this compiles to Daml's real interface-choice-delegation mechanism: the `interface` emits the choice once plus an abstract "impl" method signature, and each implementing `template`'s `interface instance ... for ... where` block provides just that method's body - matching how real Daml (and the Splice token standard) actually structures this, not a per-template redeclared choice.
+
+If you build interface+implementation in the same `.vy` module (the common case for a self-contained example), add `-Wno-upgrade-interfaces` to your project's `daml.yaml` `build-options` - real Daml warns-as-error about interfaces and implementations sharing a package, since it affects upgradability; this is a project-level Daml build setting, not something `.vy` can express.
 
 ## 11. Functions, loops, calls
 
@@ -238,8 +243,8 @@ for _index: int in range(0, count):
 | DF1204 | `@ledger_effect` given arguments |
 | DF1205 | plain function has a hidden ledger effect (missing `@ledger_effect`) |
 | DF1206 | `@view` given arguments |
-| DF1207 | `@view` used inside a `template` |
-| DF1208 | `"preconsuming"` on an interface choice, or `"postconsuming"` on an instance choice |
+| DF1207 | `@view` used inside a `template` with no interface base |
+| DF1208 | `"preconsuming"`/`"postconsuming"` on an interface choice declaration or implementation |
 | DF1209 | direct self-recursion |
 | DF1210 | `key` without `maintainer` |
 | DF1211 | `maintainer` without `key` |
@@ -255,6 +260,8 @@ for _index: int in range(0, count):
 | DF1224 | `controller=`/`observer=` references a name that isn't a with-arg/field/`self` |
 | DF1225 | wrong argument count on a known function call |
 | DF1226 | argument type incompatible with a known function's declared parameter type |
+| DF1227 | a `template`'s interface base isn't a plain name, or doesn't resolve to a known `interface` |
+| DF1228 | a `template` implementing an interface is missing a required choice or `@view` implementation |
 
 ## 13. Worked example
 
@@ -278,16 +285,13 @@ struct HoldingView:
 interface Holding(view=HoldingView):
     pass
 
-template SimpleHolding:
+template SimpleHolding(Holding):
     owner: Party
     issuer: Party
     amount: Decimal
     instrument_id: InstrumentId
 
     signatory: list[Party] = [owner, issuer]
-
-instance SimpleHoldingAsHolding(Holding):
-    template = SimpleHolding
 
     @view
     def get_view(self) -> HoldingView:

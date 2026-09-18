@@ -5,7 +5,8 @@ struct Terms:
 def sum_amounts(amounts: list[Decimal]) -> Decimal:
     return Decimal(0)
 
-template Asset:
+@template
+class Asset:
     owner: Party
 
     signatory: list[Party] = [owner]

@@ -1,5 +1,6 @@
 
-template Asset:
+@template
+class Asset:
     owner: Party
     amount: Decimal
 
