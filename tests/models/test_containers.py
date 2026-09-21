@@ -1,6 +1,6 @@
 import pytest
 
-from forge.models import exception, instance, interface, template
+from forge.models import exception, interface, template
 
 
 def test_template_preserves_class_identity():
@@ -56,17 +56,6 @@ def test_interface_requires_defaults_to_empty_tuple():
         pass
 
     assert Holding.__interface__.requires == ()
-
-
-def test_instance_marks_class_with_interface():
-    class Holding:
-        pass
-
-    @instance(Holding)
-    class AssetHoldingInstance:
-        pass
-
-    assert AssetHoldingInstance.__instance__.interface is Holding
 
 
 def test_exception_is_not_supported_yet():

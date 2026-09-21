@@ -1,6 +1,7 @@
 from forge.models import Party, choice
 
-template RecursionTemplate:
+@template
+class RecursionTemplate:
     platform: Party
     developer: Party
     dso: Party

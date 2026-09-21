@@ -125,7 +125,12 @@ def test_invalid(source_path, expected_code):
 
 def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
     sibling_path = tmp_path / "loan_terms.vy"
-    sibling_path.write_text("@template\nclass LoanTerms:\n    rate: int\n")
+    sibling_path.write_text(
+        "@template\n"
+        "class LoanTerms:\n"
+        "    rate: int\n\n"
+        "    signatory: list[Party] = []\n"
+    )
 
     main_path = tmp_path / "main.vy"
     main_path.write_text(
@@ -140,6 +145,35 @@ def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
         main_path.read_text(), module_path="main.vy", resolved_path=str(main_path)
     )
     analyze_module(module)
+
+
+def test_sibling_module_does_not_inherit_importing_module_types(tmp_path):
+    sibling_path = tmp_path / "sibling.vy"
+    sibling_path.write_text(
+        "@template\n"
+        "class Sibling:\n"
+        "    value: SharedType\n\n"
+        "    signatory: list[Party] = []\n"
+    )
+
+    main_path = tmp_path / "main.vy"
+    main_path.write_text(
+        "struct SharedType:\n"
+        "    value: int\n\n"
+        "from sibling import Sibling\n\n"
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n\n"
+        "    signatory: list[Party] = [owner]\n"
+    )
+
+    module = parse_to_ast(
+        main_path.read_text(), module_path="main.vy", resolved_path=str(main_path)
+    )
+    with pytest.raises(Exception) as exc_info:
+        analyze_module(module)
+
+    assert "DF1213" in str(exc_info.value)
 
 
 def test_integrity_sum_is_deterministic_for_identical_source():

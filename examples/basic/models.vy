@@ -1,7 +1,8 @@
 from forge.models import Party, choice
 from forge.builtins import DamlName
 
-template CrossTemplate:
+@template
+class CrossTemplate:
     platform: Party
     developer: Party
     dso: Party
@@ -23,7 +24,7 @@ template CrossTemplate:
     def CrossTemplate_Cross(self) -> bool:
         return false
     
-    @DamlName11("CrossTemplate_Cross2")
+    @DamlName("CrossTemplate_Cross2")
     @choice(controller=[platform], consuming=True)
     def cross2(self) -> bool:
         return false

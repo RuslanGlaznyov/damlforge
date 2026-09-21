@@ -31,7 +31,7 @@ def test_funding_campaign_invest_choice_lowers_correctly():
     ir = lower_module(module)
 
     (campaign,) = [t for t in ir.templates if t.name == "FundingCampaign"]
-    (invest,) = [c for c in campaign.choices if c.name == "invest"]
+    (invest,) = [c for c in campaign.choices if c.name == "FundingCampaign_Invest"]
 
     assert [f.name for f in invest.args] == ["investor", "inputs", "amount", "app_transfer_context"]
     assert invest.return_type.name == "ContractId"

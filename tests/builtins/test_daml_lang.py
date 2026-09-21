@@ -95,7 +95,7 @@ def test_constructor_types_excludes_plain_interface_marker_classes():
 
 def test_from_interface_contract_id_renders_and_needs_no_extra_import():
     daml = _compile(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n\n"
         "    @choice(controller=owner, consuming=True)\n"
@@ -110,7 +110,7 @@ def test_from_interface_contract_id_renders_and_needs_no_extra_import():
 
 def test_to_interface_and_coerce_interface_contract_id_render_correctly():
     daml = _compile(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n\n"
         "    @choice(controller=owner, consuming=True)\n"
@@ -126,7 +126,7 @@ def test_to_interface_and_coerce_interface_contract_id_render_correctly():
 
 def test_add_rel_time_renders_and_requires_da_time_import():
     daml = _compile(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n"
         "    anchor: Timestamp\n\n"
         "    signatory: list[Party] = [owner]\n\n"
@@ -141,7 +141,7 @@ def test_add_rel_time_renders_and_requires_da_time_import():
 
 def test_sub_time_renders_and_requires_da_time_import():
     daml = _compile(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n\n"
         "    @choice(controller=owner, consuming=True)\n"
@@ -156,7 +156,7 @@ def test_sub_time_renders_and_requires_da_time_import():
 
 def test_da_time_import_emitted_only_once_when_both_functions_used():
     daml = _compile(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n\n"
         "    @choice(controller=owner, consuming=True)\n"
@@ -172,7 +172,7 @@ def test_da_time_import_emitted_only_once_when_both_functions_used():
 def test_builtin_splice_struct_optional_field_auto_wraps_without_manual_some():
     daml = _compile(
         "from Splice.Expiry import TimeLock\n\n"
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n\n"
         "    @choice(controller=owner, consuming=True)\n"

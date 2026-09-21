@@ -161,7 +161,7 @@ def test_nested_attribute_chain_auto_unwraps():
         "    amount: Decimal\n\n"
         "struct Terms:\n"
         "    rewards: Optional[Rewards]\n\n"
-        "template Tracker:\n"
+        "@template\nclass Tracker:\n"
         "    owner: Party\n"
         "    terms: Terms\n"
         "    signatory: list[Party] = [owner]\n"
@@ -256,7 +256,7 @@ def test_fetch_infers_contract_payload_type_from_contract_id_argument():
     ir = _analyze_and_lower(
         "struct Terms:\n"
         "    label: Text\n\n"
-        "template Tracker:\n"
+        "@template\nclass Tracker:\n"
         "    owner: Party\n"
         "    terms: Optional[Terms]\n"
         "    signatory: list[Party] = [owner]\n"
@@ -278,7 +278,7 @@ def test_fetch_infers_contract_payload_type_from_contract_id_argument():
 
 def test_create_infers_bare_contract_id_result_type():
     ir = _analyze_and_lower(
-        "template Tracker:\n"
+        "@template\nclass Tracker:\n"
         "    owner: Party\n"
         "    signatory: list[Party] = [owner]\n\n"
         "struct Holder:\n"
@@ -320,7 +320,7 @@ def test_tuple_type_ref_lowers_multiple_args():
 
 def test_forward_ref_string_type_lowers_to_type_ref():
     ir = _lower(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n"
         "    signatory: list[Party] = [owner]\n"
         "    @choice(controller=owner, consuming=True)\n"
@@ -333,7 +333,7 @@ def test_forward_ref_string_type_lowers_to_type_ref():
 
 
 def test_template_lowers_signatory_and_fields():
-    ir = _lower("template Asset:\n    owner: Party\n    signatory: list[Party] = [owner]\n")
+    ir = _lower("@template\nclass Asset:\n    owner: Party\n    signatory: list[Party] = [owner]\n")
 
     (asset,) = ir.templates
     assert asset.name == "Asset"
@@ -343,7 +343,7 @@ def test_template_lowers_signatory_and_fields():
 
 def test_template_without_signatory_lowers_to_none():
     ir = _lower(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n"
         "    @choice(controller=owner, consuming=True)\n"
         "    def transfer(self, new_owner: Party) -> Party:\n"
@@ -356,7 +356,7 @@ def test_template_without_signatory_lowers_to_none():
 
 def test_template_lowers_ensure_and_excludes_it_from_fields():
     ir = _lower(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n"
         "    amount: Decimal\n"
         "    signatory: list[Party] = [owner]\n"
@@ -371,7 +371,7 @@ def test_template_lowers_ensure_and_excludes_it_from_fields():
 
 
 def test_template_without_ensure_lowers_to_none():
-    ir = _lower("template Asset:\n    owner: Party\n    signatory: list[Party] = [owner]\n")
+    ir = _lower("@template\nclass Asset:\n    owner: Party\n    signatory: list[Party] = [owner]\n")
 
     (asset,) = ir.templates
     assert asset.ensure is None
@@ -379,7 +379,7 @@ def test_template_without_ensure_lowers_to_none():
 
 def test_choice_lowers_controller_consuming_and_observer():
     ir = _lower(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n"
         "    issuer: Party\n"
         "    signatory: list[Party] = [owner]\n"
@@ -422,26 +422,37 @@ def test_interface_lowers_view_and_requires():
     assert holding.requires == ("Base",)
 
 
-def test_instance_lowers_bases_and_choices():
+def test_template_lowers_interface_instances_and_choices():
     ir = _lower(
-        "interface Holding:\n    pass\n"
-        "instance AssetAsHolding(Holding):\n"
+        "struct HoldingView:\n    owner: Party\n\n"
+        "interface Holding(view=HoldingView):\n"
+        "    @choice(controller=actors, consuming=True)\n"
+        "    def do_archive(self, actors: list[Party]) -> bool:\n"
+        "        pass\n\n"
+        "@template\nclass Asset(Holding):\n"
+        "    owner: Party\n\n"
+        "    signatory: list[Party] = [owner]\n\n"
         "    @view\n"
-        "    def get_view(self) -> Party:\n"
-        "        pass\n"
+        "    def get_view(self) -> HoldingView:\n"
+        "        return HoldingView(owner=self.owner)\n\n"
+        "    @choice(controller=actors, consuming=True)\n"
+        "    def do_archive(self, actors: list[Party]) -> bool:\n"
+        "        return True\n"
     )
 
-    (instance,) = ir.instances
-    assert instance.name == "AssetAsHolding"
-    assert instance.bases == ("Holding",)
-    assert instance.choices[0].name == "get_view"
-    assert instance.choices[0].controller is None
-    assert instance.choices[0].consuming is None
+    (asset,) = [t for t in ir.templates if t.name == "Asset"]
+    assert asset.choices == ()
+
+    (instance,) = asset.interface_instances
+    assert instance.interface == "Holding"
+    assert instance.view.name == "get_view"
+    assert instance.choices[0].name == "do_archive"
+    assert instance.choices[0].controller is not None
 
 
 def test_init_lowers_as_dedicated_function():
     ir = _lower(
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n"
         "    signatory: list[Party] = [owner]\n"
         "    def __init__(self, owner: Party):\n"

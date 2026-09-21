@@ -1,6 +1,6 @@
 import pytest
 
-from forge.ast.nodes import InstanceDef, InterfaceDef, NameConstant, TemplateDef
+from forge.ast.nodes import InterfaceDef, NameConstant, TemplateDef
 from forge.ast.parse import parse_to_ast
 from forge.codegen import generate_daml
 from forge.exceptions import SyntaxException
@@ -13,7 +13,7 @@ def _parse(source):
 
 
 def test_template_keyword_produces_template_def():
-    module = _parse("template Asset:\n    owner: Party\n")
+    module = _parse("@template\nclass Asset:\n    owner: Party\n")
 
     template = module.body[0]
 
@@ -22,15 +22,15 @@ def test_template_keyword_produces_template_def():
     assert len(template.body) == 1
 
 
-def test_instance_keyword_captures_base_interface():
-    source = "interface Holding:\n    pass\ninstance AssetHoldingInstance(Holding):\n    pass\n"
+def test_template_keyword_captures_base_interface():
+    source = "interface Holding:\n    pass\n@template\nclass Asset(Holding):\n    owner: Party\n"
     module = _parse(source)
 
-    instance = module.body[1]
+    template = module.body[1]
 
-    assert isinstance(instance, InstanceDef)
-    assert instance.name == "AssetHoldingInstance"
-    assert [base.id for base in instance.bases] == ["Holding"]
+    assert isinstance(template, TemplateDef)
+    assert template.name == "Asset"
+    assert [base.id for base in template.bases] == ["Holding"]
 
 
 def test_interface_keyword_captures_view_keyword_argument():
@@ -74,7 +74,7 @@ def test_interface_method_declaration_parses_as_bare_annotation():
 
 
 def test_none_literal_is_accepted_for_optional_fields():
-    module = _parse("template Asset:\n    lock: Optional[Party] = None\n")
+    module = _parse("@template\nclass Asset:\n    lock: Optional[Party] = None\n")
 
     template = module.body[0]
     assigned_value = template.body[0].value
@@ -114,7 +114,7 @@ def _compile_to_daml(source: str) -> str:
 def test_template_decorator_on_class_compiles_identically_to_template_keyword():
     keyword_source = (
         "from forge.models import Party, choice\n\n"
-        "template Asset:\n"
+        "@template\nclass Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n\n"
         "    @choice(controller=owner, consuming=True)\n"

@@ -4,7 +4,8 @@ from typing import Optional
 from Splice.AmuletRules import AppTransferContext
 from models import CrossTemplate
 
-template SimpleTemplate:
+@template
+class SimpleTemplate:
     platform: Party
     developer: Party
     dso: Party

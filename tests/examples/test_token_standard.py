@@ -9,13 +9,6 @@ EXAMPLE_PATH = (
     Path(__file__).resolve().parents[2] / "examples" / "token_standard" / "token_standard.vy"
 )
 
-
-def _parse_example():
-    source = EXAMPLE_PATH.read_text()
-    return parse_to_ast(
-        source, module_path="token_standard.vy", resolved_path=str(EXAMPLE_PATH)
-    )
-
 def _parse_simple():
     source_path = Path(__file__).resolve().parents[2] / "examples" / "basic" / "simple.vy"
     source = source_path.read_text()
@@ -46,7 +39,10 @@ def test_token_standard_example_declares_expected_containers():
 
     assert names_by_type["InterfaceDef"] == ["Holding", "TransferInstruction"]
     assert names_by_type["TemplateDef"] == ["SimpleHolding", "PendingTransfer"]
-    assert names_by_type["InstanceDef"] == [
-        "SimpleHoldingAsHolding",
-        "PendingTransferAsTransferInstruction",
-    ]
+
+    templates = [node for node in module.body if type(node).__name__ == "TemplateDef"]
+    bases_by_name = {t.name: [b.id for b in t.bases] for t in templates}
+    assert bases_by_name == {
+        "SimpleHolding": ["Holding"],
+        "PendingTransfer": ["TransferInstruction"],
+    }
