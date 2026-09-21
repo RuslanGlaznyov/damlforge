@@ -1,3 +1,5 @@
+from functools import cached_property
+
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.ir.lower import lower_type
@@ -116,22 +118,101 @@ _DECLARATION_TYPES = (
     vy_ast.FlagDef,
     vy_ast.InterfaceDef,
     vy_ast.TemplateDef,
-    vy_ast.InstanceDef,
 )
+
+
+class ModuleScope:
+    """Names and type information visible from one module."""
+
+    def __init__(self, module: vy_ast.Module):
+        self.module = module
+
+    @cached_property
+    def imported_declarations(self) -> dict:
+        return _direct_imported_declarations(self.module)
+
+    @cached_property
+    def type_names(self) -> set:
+        return known_type_names(self)
+
+    @cached_property
+    def declarations(self) -> dict:
+        return known_declarations(self)
+
+    @cached_property
+    def field_types(self) -> dict:
+        return known_field_types(self)
+
+    @cached_property
+    def return_types(self) -> dict:
+        return known_return_types(self, self.field_types)
+
+    @cached_property
+    def global_names(self) -> frozenset:
+        return known_global_names(self)
+
+    @cached_property
+    def function_param_types(self) -> dict:
+        return known_function_param_types(self)
+
+    @cached_property
+    def list_returning_functions(self) -> frozenset:
+        return known_list_returning_functions(self)
+
+
+def _direct_imported_declarations(module: vy_ast.Module) -> dict:
+    declarations = {}
+    importable_types = (*_DECLARATION_TYPES, vy_ast.FunctionDef)
+    for stmt in module.body:
+        if not isinstance(stmt, vy_ast.ImportFrom):
+            continue
+        imported = {
+            node.name: node
+            for info in stmt._metadata.get("import_infos", ())
+            for node in info.ast.body
+            if isinstance(node, importable_types)
+        }
+        for alias in stmt.names:
+            if alias.name == "*":
+                declarations.update(imported)
+            elif alias.name in imported:
+                declarations[alias.asname or alias.name] = imported[alias.name]
+    return declarations
+
+
+def _scope_modules(modules) -> list[vy_ast.Module]:
+    if isinstance(modules, ModuleScope):
+        return [modules.module]
+    return _reachable_modules(modules)
+
+
+def _scope_nodes(modules):
+    for module in _scope_modules(modules):
+        yield from module.body
+        if isinstance(modules, ModuleScope):
+            yield from modules.imported_declarations.values()
 
 
 def known_declarations(modules) -> dict:
     declarations = {}
-    for module in _reachable_modules(modules):
+    for module in _scope_modules(modules):
         for node in module.body:
             if isinstance(node, _DECLARATION_TYPES):
                 declarations[node.name] = node
+        if isinstance(modules, ModuleScope):
+            declarations.update(
+                {
+                    name: node
+                    for name, node in modules.imported_declarations.items()
+                    if isinstance(node, _DECLARATION_TYPES)
+                }
+            )
     return declarations
 
 
 def _qualified_import_type_names(modules) -> set:
     names = set()
-    for module in _reachable_modules(modules):
+    for module in _scope_modules(modules):
         for stmt in module.body:
             if not isinstance(stmt, vy_ast.Import):
                 continue
@@ -151,7 +232,7 @@ def _qualified_import_type_names(modules) -> set:
 
 def known_type_names(modules) -> set:
     names = daml_builtin_type_names()
-    for module in _reachable_modules(modules):
+    for module in _scope_modules(modules):
         names |= ImportsBuilder.imported_names(module)
     names |= known_declarations(modules).keys()
     names |= _qualified_import_type_names(modules)
@@ -193,7 +274,6 @@ _NON_VARIABLE_DECLARATION_TYPES = (
     vy_ast.StructDef,
     vy_ast.InterfaceDef,
     vy_ast.TemplateDef,
-    vy_ast.InstanceDef,
 )
 
 _LANGUAGE_BUILTIN_NAMES = frozenset({"len", "ceil", "floor", "range"})
@@ -203,7 +283,7 @@ def known_global_names(modules) -> frozenset:
     from forge.builtins import collect_daml_builtins
 
     names = set(daml_builtin_type_names())
-    for module in _reachable_modules(modules):
+    for module in _scope_modules(modules):
         names |= ImportsBuilder.imported_names(module)
         for node in module.body:
             if isinstance(node, vy_ast.FunctionDef):
@@ -294,14 +374,13 @@ def check_unresolved_names(
 
 def known_function_param_types(modules) -> dict:
     types = {}
-    for module in _reachable_modules(modules):
-        for node in module.body:
-            if isinstance(node, vy_ast.FunctionDef):
-                types[node.name] = tuple(
-                    lower_type(a.annotation) if a.annotation is not None else None
-                    for a in node.args.args
-                    if a.arg != "self"
-                )
+    for node in _scope_nodes(modules):
+        if isinstance(node, vy_ast.FunctionDef):
+            types[node.name] = tuple(
+                lower_type(a.annotation) if a.annotation is not None else None
+                for a in node.args.args
+                if a.arg != "self"
+            )
     return types
 
 
@@ -419,10 +498,9 @@ def _is_list_type_annotation(node) -> bool:
 
 def known_list_returning_functions(modules) -> frozenset:
     names = set()
-    for module in _reachable_modules(modules):
-        for node in module.body:
-            if isinstance(node, vy_ast.FunctionDef) and _is_list_type_annotation(node.returns):
-                names.add(node.name)
+    for node in _scope_nodes(modules):
+        if isinstance(node, vy_ast.FunctionDef) and _is_list_type_annotation(node.returns):
+            names.add(node.name)
     return frozenset(names)
 
 
@@ -548,15 +626,14 @@ def known_field_types(modules) -> dict:
     from forge.builtins import collect_daml_builtins
 
     registry = dict(collect_daml_builtins().field_types)
-    for module in _reachable_modules(modules):
-        for node in module.body:
-            if not isinstance(node, (vy_ast.StructDef, vy_ast.TemplateDef)):
-                continue
-            fields = {}
-            for stmt in node.body:
-                if isinstance(stmt, vy_ast.AnnAssign) and isinstance(stmt.target, vy_ast.Name):
-                    fields[stmt.target.id] = lower_type(stmt.annotation)
-            registry[node.name] = fields
+    for node in _scope_nodes(modules):
+        if not isinstance(node, (vy_ast.StructDef, vy_ast.TemplateDef)):
+            continue
+        fields = {}
+        for stmt in node.body:
+            if isinstance(stmt, vy_ast.AnnAssign) and isinstance(stmt.target, vy_ast.Name):
+                fields[stmt.target.id] = lower_type(stmt.annotation)
+        registry[node.name] = fields
     return registry
 
 
@@ -565,10 +642,9 @@ def known_return_types(modules, field_types: dict) -> dict:
 
     types = {name: TypeRef(name) for name in field_types}
     types.update(collect_daml_builtins().function_return_types)
-    for module in _reachable_modules(modules):
-        for node in module.body:
-            if isinstance(node, vy_ast.FunctionDef) and node.returns is not None:
-                types[node.name] = lower_type(node.returns)
+    for node in _scope_nodes(modules):
+        if isinstance(node, vy_ast.FunctionDef) and node.returns is not None:
+            types[node.name] = lower_type(node.returns)
     return types
 
 
@@ -617,7 +693,7 @@ def _infer_expr_type(
 
 
 def _functions_and_enclosing_type(node: vy_ast.TopLevel):
-    if isinstance(node, (vy_ast.TemplateDef, vy_ast.InterfaceDef, vy_ast.InstanceDef)):
+    if isinstance(node, (vy_ast.TemplateDef, vy_ast.InterfaceDef)):
         functions = [n for n in node.body if isinstance(n, vy_ast.FunctionDef)]
         enclosing_type = node.name if isinstance(node, vy_ast.TemplateDef) else None
         return functions, enclosing_type
@@ -808,7 +884,7 @@ def check_container_type_annotations(
     elif isinstance(node, vy_ast.InterfaceDef):
         check_interface_view_type_annotation(node, known_names, errors)
 
-    if isinstance(node, (vy_ast.TemplateDef, vy_ast.InterfaceDef, vy_ast.InstanceDef)):
+    if isinstance(node, (vy_ast.TemplateDef, vy_ast.InterfaceDef)):
         for stmt in node.body:
             if isinstance(stmt, vy_ast.FunctionDef):
                 check_function_type_annotations(stmt, known_names, errors)

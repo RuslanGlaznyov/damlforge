@@ -276,7 +276,6 @@ class ImportsBuilder:
                     vy_ast.FlagDef,
                     vy_ast.InterfaceDef,
                     vy_ast.TemplateDef,
-                    vy_ast.InstanceDef,
                     vy_ast.FunctionDef,
                 ),
             )

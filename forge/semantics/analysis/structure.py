@@ -251,23 +251,6 @@ def _function_display(fn: vy_ast.FunctionDef) -> str:
     return ".".join(parts)
 
 
-def _iter_modules(modules) -> list[vy_ast.Module]:
-    if isinstance(modules, vy_ast.Module):
-        return [modules]
-    for attr in ("modules", "resolved_modules", "imported_modules"):
-        candidates = getattr(modules, attr, None)
-        if candidates is not None:
-            return _iter_modules(candidates)
-    if hasattr(modules, "values"):
-        candidates = modules.values()
-    else:
-        try:
-            candidates = iter(modules)
-        except TypeError:
-            return []
-    return [module for module in candidates if isinstance(module, vy_ast.Module)]
-
-
 def _target_module_from_import_info(info):
     for attr in ("module", "module_ast", "ast", "resolved_module"):
         module = getattr(info, attr, None)
@@ -284,10 +267,9 @@ def _target_module_from_import_info(info):
 def _reachable_modules(modules) -> list[vy_ast.Module]:
     seen = set()
     ordered = []
-    stack = _iter_modules(modules)
 
-    while stack:
-        module = stack.pop()
+    while modules:
+        module = modules.pop()
         marker = id(module)
         if marker in seen:
             continue
@@ -300,7 +282,7 @@ def _reachable_modules(modules) -> list[vy_ast.Module]:
             for info in stmt._metadata.get("import_infos", ()) or ():
                 imported_module = _target_module_from_import_info(info)
                 if imported_module is not None:
-                    stack.append(imported_module)
+                    modules.append(imported_module)
 
     return ordered
 
