@@ -27,13 +27,7 @@ def _compile_one(file: Path, output_dir: Path, pretty_json: bool) -> None:
     output_map_file = output_dir / (module_name + ".map.json")
     with output_map_file.open("w") as fh:
         logger.info(f"writing source map to: {output_map_file}")
-        json.dump(
-            source_map,
-            fh,
-            indent=2 if pretty_json else None,
-            sort_keys=True,
-            default=str,
-        )
+        json.dump(source_map, fh, indent=2 if pretty_json else None, sort_keys=True, default=str)
 
 
 def compile_daml(

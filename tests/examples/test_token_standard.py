@@ -29,10 +29,10 @@ def test_simple():
 def test_token_standard_example_declares_expected_containers():
     source = EXAMPLE_PATH.read_text()
     assert source is not None
-    
+
     module = parse_to_ast(source, module_path="token_standard.vy", resolved_path=str(EXAMPLE_PATH))
     assert module is not None
-    
+
     graph = analyze_module(module)
     assert graph is not None
 

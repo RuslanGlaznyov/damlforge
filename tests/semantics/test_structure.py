@@ -20,10 +20,9 @@ def _read_fixture(path: Path) -> str:
 
 
 def _analyze(source):
-    module = parse_to_ast(
-        source, module_path="test.vy", resolved_path="test.vy"
-    )
+    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
     analyze_module(module)
+
 
 @pytest.mark.parametrize(
     "source_path",
@@ -64,7 +63,10 @@ def test_valid(source_path):
     "source_path,expected_code",
     [
         (_fixture_path("invalid/template_missing_signatory.vy"), ErrorCodes.DF1201.value),
-        (_fixture_path("invalid/template_via_decorator_missing_signatory.vy"), ErrorCodes.DF1201.value),
+        (
+            _fixture_path("invalid/template_via_decorator_missing_signatory.vy"),
+            ErrorCodes.DF1201.value,
+        ),
         (_fixture_path("invalid/choice_missing_controller.vy"), ErrorCodes.DF1203.value),
         (_fixture_path("invalid/choice_missing_consuming.vy"), ErrorCodes.DF1203.value),
         (_fixture_path("invalid/choice_non_literal_consuming.vy"), ErrorCodes.DF1203.value),
@@ -78,7 +80,10 @@ def test_valid(source_path):
         (_fixture_path("invalid/template_key_without_maintainer.vy"), ErrorCodes.DF1210.value),
         (_fixture_path("invalid/template_maintainer_without_key.vy"), ErrorCodes.DF1211.value),
         (_fixture_path("invalid/template_ensure_non_boolean_literal.vy"), ErrorCodes.DF1212.value),
-        (_fixture_path("invalid/template_ensure_arithmetic_expression.vy"), ErrorCodes.DF1212.value),
+        (
+            _fixture_path("invalid/template_ensure_arithmetic_expression.vy"),
+            ErrorCodes.DF1212.value,
+        ),
         (_fixture_path("invalid/template_ensure_without_value.vy"), ErrorCodes.DF1212.value),
         (_fixture_path("invalid/missing_import.vy"), ErrorCodes.DF1213.value),
         (_fixture_path("invalid/dict_type_not_allowed.vy"), ErrorCodes.DF1213.value),
@@ -93,27 +98,74 @@ def test_valid(source_path):
         (_fixture_path("invalid/flag_value_access_unknown_member.vy"), ErrorCodes.DF1216.value),
         (_fixture_path("invalid/flag_member_lowercase_not_allowed.vy"), ErrorCodes.DF1217.value),
         (_fixture_path("invalid/flag_member_mixed_case_not_allowed.vy"), ErrorCodes.DF1217.value),
-        (_fixture_path("invalid/choice_leading_underscore_name_not_allowed.vy"), ErrorCodes.DF1218.value),
-        (_fixture_path("invalid/choice_double_leading_underscore_name_not_allowed.vy"), ErrorCodes.DF1218.value),
-        (_fixture_path("invalid/choice_name_with_no_letter_not_allowed.vy"), ErrorCodes.DF1218.value),
-        (_fixture_path("invalid/choice_all_underscore_name_not_allowed.vy"), ErrorCodes.DF1218.value),
-        (_fixture_path("invalid/self_reference_via_template_name_not_allowed.vy"), ErrorCodes.DF1219.value),
-        (_fixture_path("invalid/unresolved_name_used_as_attribute_base_not_allowed.vy"), ErrorCodes.DF1219.value),
-        (_fixture_path("invalid/unresolved_name_used_as_call_target_not_allowed.vy"), ErrorCodes.DF1219.value),
-        (_fixture_path("invalid/decorator_used_without_import_not_allowed.vy"), ErrorCodes.DF1219.value),
+        (
+            _fixture_path("invalid/choice_leading_underscore_name_not_allowed.vy"),
+            ErrorCodes.DF1218.value,
+        ),
+        (
+            _fixture_path("invalid/choice_double_leading_underscore_name_not_allowed.vy"),
+            ErrorCodes.DF1218.value,
+        ),
+        (
+            _fixture_path("invalid/choice_name_with_no_letter_not_allowed.vy"),
+            ErrorCodes.DF1218.value,
+        ),
+        (
+            _fixture_path("invalid/choice_all_underscore_name_not_allowed.vy"),
+            ErrorCodes.DF1218.value,
+        ),
+        (
+            _fixture_path("invalid/self_reference_via_template_name_not_allowed.vy"),
+            ErrorCodes.DF1219.value,
+        ),
+        (
+            _fixture_path("invalid/unresolved_name_used_as_attribute_base_not_allowed.vy"),
+            ErrorCodes.DF1219.value,
+        ),
+        (
+            _fixture_path("invalid/unresolved_name_used_as_call_target_not_allowed.vy"),
+            ErrorCodes.DF1219.value,
+        ),
+        (
+            _fixture_path("invalid/decorator_used_without_import_not_allowed.vy"),
+            ErrorCodes.DF1219.value,
+        ),
         (_fixture_path("invalid/view_used_without_import_not_allowed.vy"), ErrorCodes.DF1219.value),
         (
             _fixture_path("invalid/multiple_violations.vy"),
             (ErrorCodes.DF1201.value, ErrorCodes.DF1203.value),
         ),
         (_fixture_path("invalid/unknown_decorator_not_allowed.vy"), ErrorCodes.DF1220.value),
-        (_fixture_path("invalid/daml_name_with_no_arguments_not_allowed.vy"), ErrorCodes.DF1221.value),
-        (_fixture_path("invalid/daml_name_with_non_literal_argument_not_allowed.vy"), ErrorCodes.DF1221.value),
-        (_fixture_path("invalid/choice_observer_references_unrelated_choice_arg_not_allowed.vy"), ErrorCodes.DF1224.value),
-        (_fixture_path("invalid/choice_observer_references_non_field_self_attribute_not_allowed.vy"), ErrorCodes.DF1224.value),
-        (_fixture_path("invalid/function_call_with_wrong_argument_count_not_allowed.vy"), ErrorCodes.DF1225.value),
-        (_fixture_path("invalid/function_call_with_incompatible_argument_type_not_allowed.vy"), ErrorCodes.DF1226.value),
-        (_fixture_path("invalid/function_call_with_mismatched_list_element_type_not_allowed.vy"), ErrorCodes.DF1226.value),
+        (
+            _fixture_path("invalid/daml_name_with_no_arguments_not_allowed.vy"),
+            ErrorCodes.DF1221.value,
+        ),
+        (
+            _fixture_path("invalid/daml_name_with_non_literal_argument_not_allowed.vy"),
+            ErrorCodes.DF1221.value,
+        ),
+        (
+            _fixture_path("invalid/choice_observer_references_unrelated_choice_arg_not_allowed.vy"),
+            ErrorCodes.DF1224.value,
+        ),
+        (
+            _fixture_path(
+                "invalid/choice_observer_references_non_field_self_attribute_not_allowed.vy"
+            ),
+            ErrorCodes.DF1224.value,
+        ),
+        (
+            _fixture_path("invalid/function_call_with_wrong_argument_count_not_allowed.vy"),
+            ErrorCodes.DF1225.value,
+        ),
+        (
+            _fixture_path("invalid/function_call_with_incompatible_argument_type_not_allowed.vy"),
+            ErrorCodes.DF1226.value,
+        ),
+        (
+            _fixture_path("invalid/function_call_with_mismatched_list_element_type_not_allowed.vy"),
+            ErrorCodes.DF1226.value,
+        ),
     ],
 )
 def test_invalid(source_path, expected_code):
@@ -127,10 +179,7 @@ def test_invalid(source_path, expected_code):
 def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
     sibling_path = tmp_path / "loan_terms.vy"
     sibling_path.write_text(
-        "@template\n"
-        "class LoanTerms:\n"
-        "    rate: int\n\n"
-        "    signatory: list[Party] = []\n"
+        "@template\n" "class LoanTerms:\n" "    rate: int\n\n" "    signatory: list[Party] = []\n"
     )
 
     main_path = tmp_path / "main.vy"
@@ -178,15 +227,31 @@ def test_sibling_module_does_not_inherit_importing_module_types(tmp_path):
 
 
 def test_integrity_sum_is_deterministic_for_identical_source():
-    module1 = parse_to_ast(_read_fixture(_fixture_path("valid/valid_template.vy")), module_path="test.vy", resolved_path="test.vy")
-    module2 = parse_to_ast(_read_fixture(_fixture_path("valid/valid_template.vy")), module_path="test.vy", resolved_path="test.vy")
+    module1 = parse_to_ast(
+        _read_fixture(_fixture_path("valid/valid_template.vy")),
+        module_path="test.vy",
+        resolved_path="test.vy",
+    )
+    module2 = parse_to_ast(
+        _read_fixture(_fixture_path("valid/valid_template.vy")),
+        module_path="test.vy",
+        resolved_path="test.vy",
+    )
 
     assert ImportsBuilder().integrity_sum(module1) == ImportsBuilder().integrity_sum(module2)
 
 
 def test_integrity_sum_changes_when_source_changes():
-    module1 = parse_to_ast(_read_fixture(_fixture_path("valid/valid_template.vy")), module_path="test.vy", resolved_path="test.vy")
-    module2 = parse_to_ast(_read_fixture(_fixture_path("valid/valid_template.vy")) + "\n", module_path="test.vy", resolved_path="test.vy")
+    module1 = parse_to_ast(
+        _read_fixture(_fixture_path("valid/valid_template.vy")),
+        module_path="test.vy",
+        resolved_path="test.vy",
+    )
+    module2 = parse_to_ast(
+        _read_fixture(_fixture_path("valid/valid_template.vy")) + "\n",
+        module_path="test.vy",
+        resolved_path="test.vy",
+    )
 
     assert ImportsBuilder().integrity_sum(module1) != ImportsBuilder().integrity_sum(module2)
 
@@ -196,7 +261,9 @@ def test_integrity_sum_changes_when_sibling_import_changes(tmp_path):
     sibling_path.write_text("@template\nclass Sibling:\n    owner: Party\n")
 
     main_path = tmp_path / "main.vy"
-    main_path.write_text("from sibling import Sibling\n" + _read_fixture(_fixture_path("valid/valid_template.vy")))
+    main_path.write_text(
+        "from sibling import Sibling\n" + _read_fixture(_fixture_path("valid/valid_template.vy"))
+    )
 
     def _main_integrity_sum():
         module = parse_to_ast(

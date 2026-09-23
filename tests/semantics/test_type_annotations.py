@@ -7,7 +7,6 @@ from forge.exceptions import DamlForgeException
 from forge.models.error_codes import ErrorCodes
 from forge.semantics import analyze_module
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "type_annotations"
 
 

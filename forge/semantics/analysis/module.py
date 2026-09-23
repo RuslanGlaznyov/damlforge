@@ -16,7 +16,6 @@ from forge.semantics.analysis.types import (
     mark_optional_conversions,
 )
 
-
 _FnKey = tuple[str, tuple[str, ...], str]
 
 
@@ -102,7 +101,9 @@ class RecursionAnalyzer:
                     for alias in stmt.names:
                         imported_key = self._find_module_key(alias.name)
                         if imported_key is not None:
-                            self.module_aliases[module_key][alias.asname or alias.name] = imported_key
+                            self.module_aliases[module_key][
+                                alias.asname or alias.name
+                            ] = imported_key
                 elif isinstance(stmt, vy_ast.ImportFrom):
                     imported_key = self._find_module_key(stmt.module)
                     if imported_key is None:
@@ -110,11 +111,11 @@ class RecursionAnalyzer:
                     for alias in stmt.names:
                         imported_fn = self.top_level_by_module[imported_key].get(alias.name)
                         if imported_fn is not None:
-                            self.direct_imports[module_key][alias.asname or alias.name] = imported_fn
+                            self.direct_imports[module_key][
+                                alias.asname or alias.name
+                            ] = imported_fn
 
-    def _resolve_call(
-        self, fn: vy_ast.FunctionDef, call: vy_ast.Call
-    ) -> Optional[_FnKey]:
+    def _resolve_call(self, fn: vy_ast.FunctionDef, call: vy_ast.Call) -> Optional[_FnKey]:
         module_key, scope, _ = self._function_key(fn)
         call_fn = call.func
         if isinstance(call_fn, vy_ast.Name):
@@ -213,10 +214,7 @@ class ModuleAnalyzer:
     """Analyze one module and recursively analyze its imported modules."""
 
     def __init__(
-        self,
-        module: vy_ast.Module,
-        errors: ExceptionList,
-        analyzed: set[int] | None = None,
+        self, module: vy_ast.Module, errors: ExceptionList, analyzed: set[int] | None = None
     ) -> None:
         self.module = module
         self.errors = errors
@@ -241,11 +239,7 @@ class ModuleAnalyzer:
                 imported_module = getattr(info, "ast", None)
                 if imported_module is None:
                     continue
-                ModuleAnalyzer(
-                    imported_module,
-                    self.errors,
-                    self.analyzed,
-                ).analyze()
+                ModuleAnalyzer(imported_module, self.errors, self.analyzed).analyze()
 
     def visit(self, node: vy_ast.TopLevel) -> None:
         visitor = getattr(self, f"visit_{type(node).__name__}", self.visit_top_level)

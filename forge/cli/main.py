@@ -77,9 +77,7 @@ def daml_cmd(
 
 
 @cli.command("dar")
-@click.argument(
-    "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path)
-)
+@click.argument("input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option(
     "-o",
     "output_dar",
@@ -113,9 +111,7 @@ def dar_cmd(input_dir: Path, output_dar: "Path | None", dpm_path: str, traceback
 
 @cli.command("json")
 @click.argument(
-    "input_file",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    required=False,
+    "input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=False
 )
 @click.option(
     "-o",
@@ -140,9 +136,7 @@ def json_cmd(
         click.echo(json.dumps({"error": str(exc)}), err=True)
         sys.exit(1)
 
-    output_json = json.dumps(
-        result, indent=2 if pretty_json else None, sort_keys=True, default=str
-    )
+    output_json = json.dumps(result, indent=2 if pretty_json else None, sort_keys=True, default=str)
 
     if output_file is not None:
         resolved_output = output_file.resolve()

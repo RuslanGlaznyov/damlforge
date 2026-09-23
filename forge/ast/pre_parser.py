@@ -186,9 +186,7 @@ class HexStringParser:
         return True
 
 
-def _get_bare_decorated_class_type(
-    token_list: list[TokenInfo], class_index: int
-) -> str | None:
+def _get_bare_decorated_class_type(token_list: list[TokenInfo], class_index: int) -> str | None:
     if class_index < 3:
         return None
     newline_tok, name_tok, at_tok = (
