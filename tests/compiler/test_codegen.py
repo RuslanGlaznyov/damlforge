@@ -136,7 +136,7 @@ def test_render_stmt_for_with_no_accumulators_and_no_effects_is_dropped():
     assert hoisted == []
 
 
-def test_render_stmt_for_with_only_assert_is_preserved_not_dropped():
+def test_render_stmt_for_with_single_assert_uses_all():
     # unlike a `pass`-only loop, a loop whose only content is `assert` has a
     # real, observable effect (it can abort the transaction) - it must never
     # be silently elided just because it has no accumulator.
@@ -149,12 +149,24 @@ def test_render_stmt_for_with_only_assert_is_preserved_not_dropped():
     hoisted = []
     lines = render_body([stmt], indent=0, hoisted=hoisted)
     joined = "\n".join(lines)
-    hoisted_text = "\n".join(hoisted)
-    assert "_damlforge_loop" in joined
-    assert "assertMsg" in hoisted_text
+    assert 'assertMsg "must hold" (all (\\item -> True) xs)' in joined
+    assert "foldlA" not in joined
+    assert hoisted == []
 
 
-def test_render_body_for_with_accumulator_hoists_helper_and_calls_it():
+def test_render_stmt_for_with_multiple_asserts_uses_action_fold():
+    stmt = IRFor(
+        "item",
+        TypeRef("Party"),
+        IRName("xs"),
+        (IRAssert(IRConstant(True)), IRAssert(IRConstant(False))),
+    )
+    joined = "\n".join(render_body([stmt], indent=0))
+
+    assert "foldlA" in joined
+
+
+def test_render_body_for_with_accumulator_uses_fold_and_fresh_binding():
     # `total` must already be bound (here, as if it were a choice/function
     # parameter) for a plain reassignment inside the loop to count as a real
     # loop-carried accumulator rather than a fresh per-iteration local.
@@ -169,21 +181,29 @@ def test_render_body_for_with_accumulator_hoists_helper_and_calls_it():
         [loop, IRReturn(IRName("total"))], indent=0, known={"total"}, hoisted=hoisted
     )
     joined = "\n".join(lines)
-    hoisted_text = "\n".join(hoisted)
 
-    # real damlc rejects ANY local recursive `let`, even a well-formed
-    # multi-equation function ("Local variables defined recursively -
-    # recursion can only happen at the top level") - the loop's helper must
-    # be a genuine top-level definition, not inlined at the call site.
-    assert "let _damlforge_loop1" not in joined
-    assert "_damlforge_loop1 total [] = total" in hoisted_text
-    assert "_damlforge_loop1 total (item :: _damlforge_rest) =" in hoisted_text
+    assert "foldl" in joined
+    assert "\\total item ->" in joined
+    assert hoisted == []
 
     # the post-loop rebind must mint a fresh SSA name for `total` rather than
     # reusing the original - real damlc rejects any local `let X = f(X)` as
     # illegal recursion, even when `X` was bound by a function parameter
-    assert "let _damlforge_total2 = _damlforge_loop1 total xs" in joined
+    assert "let _damlforge_total2 =" in joined
     assert "pure (_damlforge_total2)" in joined
+
+
+def test_if_without_branch_carried_values_does_not_create_continuation():
+    stmt = IRIf(
+        IRName("cond"),
+        (IRAssert(IRConstant(True)),),
+        (IRAssert(IRConstant(False)),),
+    )
+    lines = render_body([stmt, IRReturn(IRConstant(True))], indent=0)
+    joined = "\n".join(lines)
+
+    assert "_damlforge_cont" not in joined
+    assert joined.endswith("pure (True)")
 
 
 def test_generate_daml_struct():

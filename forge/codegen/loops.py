@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from forge.exceptions import CompilerPanic
 from forge.ir.nodes import (
     IRAssert,
@@ -22,6 +24,16 @@ from forge.ir.nodes import (
     IRTuple,
     IRUnaryOp,
 )
+
+
+@dataclass(frozen=True)
+class LoopPlan:
+    body: tuple[IRStmt, ...]
+    accumulators: tuple[str, ...]
+    captured: tuple[str, ...]
+    assertion: IRAssert | None
+    has_return: bool
+    monadic: bool
 
 
 class LoopAnalysis:
@@ -275,6 +287,46 @@ class LoopAnalysis:
                 tuple((n, cls.apply_renames(v, renames)) for n, v in e.updates),
             )
         raise CompilerPanic(f"apply_renames: unsupported IR expression {type(e).__name__}")
+
+
+class LoopAnalyzer:
+    def __init__(self, namer, known_effect_fns: frozenset = frozenset()):
+        self.namer = namer
+        self.known_effect_fns = known_effect_fns
+
+    def normalize(self, stmts) -> list[IRStmt]:
+        return LoopAnalysis.rewrite_appends(stmts, self.namer, self.known_effect_fns)
+
+    def plan(self, node: IRFor, known: frozenset, monadic: bool) -> LoopPlan:
+        body = tuple(node.body)
+        accumulators = tuple(LoopAnalysis.collect_accumulators(body, known))
+        assertion = body[0] if self._is_assertion_only_loop(body, monadic) else None
+        captured = tuple(
+            sorted(
+                (LoopAnalysis.collect_free_names(body) & known)
+                - set(accumulators)
+                - {node.target}
+            )
+        )
+        return LoopPlan(
+            body=body,
+            accumulators=accumulators,
+            captured=captured,
+            assertion=assertion,
+            has_return=LoopAnalysis.body_has_return(body),
+            monadic=assertion is None
+            and monadic
+            and LoopAnalysis.body_has_ledger_effect(body, self.known_effect_fns),
+        )
+
+    @staticmethod
+    def _is_assertion_only_loop(body: tuple[IRStmt, ...], monadic: bool) -> bool:
+        return (
+            monadic
+            and len(body) == 1
+            and isinstance(body[0], IRAssert)
+            and (body[0].msg is None or isinstance(body[0].msg, IRConstant))
+        )
 
 
 class LoopNamer:

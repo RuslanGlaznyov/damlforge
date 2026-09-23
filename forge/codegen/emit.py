@@ -46,7 +46,7 @@ from forge.ir.nodes import (
     TypeRef,
 )
 from forge.models.decorators import Consuming
-from forge.codegen.loops import LoopAnalysis, LoopNamer
+from forge.codegen.loops import LoopAnalysis, LoopAnalyzer, LoopNamer, LoopPlan
 from forge.codegen.self_mutation import SELF, SelfFieldRewriter, SelfMutationInjector
 
 _PRIMITIVE_TYPE_MAP = {
@@ -314,9 +314,10 @@ class BodyTranslator:
         self.hoisted = hoisted
         self.known_effect_fns = known_effect_fns
         self.self_type = self_type
+        self.loop_analyzer = LoopAnalyzer(namer, known_effect_fns)
 
     def render_body(self, stmts, indent: int, monadic: bool = True, known=frozenset()) -> list:
-        rewritten = LoopAnalysis.rewrite_appends(list(stmts), self.namer, self.known_effect_fns)
+        rewritten = self.loop_analyzer.normalize(list(stmts))
 
         def tail(i, extra_known=frozenset(), renames=None):
             return self._final_tail(i, monadic)
@@ -386,6 +387,7 @@ class BodyTranslator:
 
         if isinstance(first, IRIf):
             cont_lines = []
+            inline_rest = False
             if rest:
                 branch_stmts = list(first.body) + list(first.orelse)
                 cont_vars = LoopAnalysis.collect_accumulators(branch_stmts, known)
@@ -396,23 +398,37 @@ class BodyTranslator:
                     if n not in known and n in free_after and n not in cont_vars
                 )
                 cont_vars = cont_vars + new_vars
-                cont_name = self.namer.next_cont()
-                params = " ".join(cont_vars)
-                header = f"{cont_name} {params}".rstrip()
-                cont_lines = [f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="]
-                cont_renames = {k: v for k, v in renames.items() if k not in cont_vars}
-                cont_lines.extend(
-                    self._translate(
-                        rest, indent + 3, monadic, make_tail, known | set(cont_vars), cont_renames
-                    )
-                )
-                if not monadic:
-                    cont_lines.append(f"{pad}in")
+                if monadic and not cont_vars and not LoopAnalysis.body_has_return(branch_stmts):
+                    inline_rest = True
 
-                def branch_tail(i, extra_known=frozenset(), br_renames=None):
-                    args = " ".join(self._resolve_all(cont_vars, br_renames or {}))
-                    call = f"{cont_name} {args}".rstrip()
-                    return [f"{'  ' * i}{call}"]
+                    def branch_tail(i, extra_known=frozenset(), br_renames=None):
+                        return self._final_tail(i, monadic)
+
+                else:
+                    cont_name = self.namer.next_cont()
+                    params = " ".join(cont_vars)
+                    header = f"{cont_name} {params}".rstrip()
+                    cont_lines = [
+                        f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="
+                    ]
+                    cont_renames = {k: v for k, v in renames.items() if k not in cont_vars}
+                    cont_lines.extend(
+                        self._translate(
+                            rest,
+                            indent + 3,
+                            monadic,
+                            make_tail,
+                            known | set(cont_vars),
+                            cont_renames,
+                        )
+                    )
+                    if not monadic:
+                        cont_lines.append(f"{pad}in")
+
+                    def branch_tail(i, extra_known=frozenset(), br_renames=None):
+                        args = " ".join(self._resolve_all(cont_vars, br_renames or {}))
+                        call = f"{cont_name} {args}".rstrip()
+                        return [f"{'  ' * i}{call}"]
 
             else:
                 branch_tail = make_tail
@@ -428,6 +444,8 @@ class BodyTranslator:
                     list(first.orelse), indent + 2, monadic, branch_tail, known, renames
                 )
             )
+            if inline_rest:
+                lines.extend(self._translate(rest, indent, monadic, make_tail, known, renames))
             return cont_lines + lines
 
         if isinstance(first, IRFor):
@@ -481,126 +499,165 @@ class BodyTranslator:
         self, node: IRFor, indent, monadic, make_tail, known=frozenset(), renames=None
     ) -> list:
         renames = renames or {}
-        pad = "  " * indent
-        body = LoopAnalysis.rewrite_appends(list(node.body), self.namer, self.known_effect_fns)
-        accumulators = LoopAnalysis.collect_accumulators(body, known)
-        has_return = LoopAnalysis.body_has_return(body)
-        if accumulators and has_return:
+        plan = self.loop_analyzer.plan(node, known, monadic)
+        if plan.accumulators and plan.has_return:
             raise CompilerPanic(
                 "_translate_for: a `for` loop with both loop-carried accumulator "
                 "mutation and an early `return` inside its body is not supported"
             )
-        loop_is_monadic = monadic and LoopAnalysis.body_has_ledger_effect(
-            body, self.known_effect_fns
+        if plan.assertion is not None:
+            return self._translate_assertion_loop(node, plan, indent, make_tail, renames)
+        if plan.accumulators or plan.monadic:
+            return self._translate_fold(node, plan, indent, monadic, make_tail, known, renames)
+        if plan.has_return:
+            return self._translate_early_return_loop(
+                node, plan, indent, monadic, make_tail, known, renames
+            )
+        return make_tail(indent, frozenset(), renames)
+
+    @staticmethod
+    def _loop_state(names, renames=None) -> str:
+        resolved = [renames.get(name, name) for name in names] if renames else list(names)
+        if not resolved:
+            return "()"
+        if len(resolved) == 1:
+            return resolved[0]
+        return f"({', '.join(resolved)})"
+
+    def _translate_assertion_loop(self, node, plan, indent, make_tail, renames) -> list:
+        assertion = plan.assertion
+        assert assertion is not None
+        pad = "  " * indent
+        body_renames = {name: value for name, value in renames.items() if name != node.target}
+        test = render_expr(LoopAnalysis.apply_renames(assertion.test, body_renames))
+        iterable = _render_call_arg(LoopAnalysis.apply_renames(node.iter, renames))
+        condition = f"all (\\{node.target} -> {test}) {iterable}"
+        if assertion.msg is None:
+            lines = [f"{pad}assert ({condition})"]
+        else:
+            message = render_expr(assertion.msg)
+            lines = [f"{pad}assertMsg {message} ({condition})"]
+        lines.extend(make_tail(indent, frozenset(), renames))
+        return lines
+
+    def _translate_fold(
+        self,
+        node: IRFor,
+        plan: LoopPlan,
+        indent,
+        monadic,
+        make_tail,
+        known,
+        renames,
+    ) -> list:
+        pad = "  " * indent
+        accumulators = list(plan.accumulators)
+        inner_known = known | {node.target} | set(accumulators)
+        fresh_here = set(accumulators) | set(plan.captured) | {node.target}
+        inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
+        state_pattern = self._loop_state(accumulators)
+        initial_state = self._loop_state(accumulators, renames)
+        iter_expr = render_expr(LoopAnalysis.apply_renames(node.iter, renames))
+
+        def fold_tail(i, extra_known=frozenset(), fold_renames=None):
+            state = self._loop_state(accumulators, fold_renames or {})
+            return [f"{'  ' * i}{'pure ' if plan.monadic else ''}{state}"]
+
+        body_indent = indent + (3 if plan.monadic else 5)
+        body_lines = self._translate(
+            list(plan.body),
+            body_indent,
+            plan.monadic,
+            fold_tail,
+            inner_known,
+            inner_renames,
         )
+        body_lines[-1] += ")"
+        fresh_names = [self.namer.next_rebind(name) for name in accumulators]
+        bind_target = self._loop_state(fresh_names) if fresh_names else "_"
+
+        if plan.monadic:
+            lines = [
+                f"{pad}{bind_target} <-",
+                f"{pad}  foldlA",
+                f"{pad}    (\\{state_pattern} {node.target} -> do",
+                *body_lines,
+                f"{pad}    {initial_state} {iter_expr}",
+            ]
+        else:
+            lines = [
+                f"{pad}let {bind_target} =",
+                f"{pad}      foldl",
+                f"{pad}        (\\{state_pattern} {node.target} ->",
+                *body_lines,
+                f"{pad}        {initial_state} {iter_expr}",
+            ]
+            if not monadic:
+                lines.append(f"{pad}in")
+        post_renames = {**renames, **dict(zip(accumulators, fresh_names))}
+        lines.extend(make_tail(indent, set(accumulators), post_renames))
+        return lines
+
+    def _translate_early_return_loop(
+        self,
+        node: IRFor,
+        plan: LoopPlan,
+        indent,
+        monadic,
+        make_tail,
+        known,
+        renames,
+    ) -> list:
+        pad = "  " * indent
         helper = self.namer.next()
         rest_name = "_damlforge_rest"
-        captured = sorted(
-            (LoopAnalysis.collect_free_names(body) & known) - set(accumulators) - {node.target}
-        )
-        inner_known = known | {node.target} | set(accumulators)
-        fresh_here = set(accumulators) | set(captured) | {node.target}
+        captured = list(plan.captured)
+        inner_known = known | {node.target}
+        fresh_here = set(captured) | {node.target}
         inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
-        param_names = captured + accumulators
         base_params = [
-            f"({p} : {self.self_type})" if p == SELF and self.self_type else p for p in param_names
+            f"({p} : {self.self_type})" if p == SELF and self.self_type else p for p in captured
         ]
         base_head = f"{helper} {' '.join(base_params + ['[]'])}".strip()
-        rec_head = f"{helper} {' '.join(param_names + [f'({node.target} :: {rest_name})'])}"
+        rec_head = f"{helper} {' '.join(captured + [f'({node.target} :: {rest_name})'])}"
         resolved_captured = self._resolve_all(captured, renames)
         iter_expr = render_expr(LoopAnalysis.apply_renames(node.iter, renames))
 
-        if accumulators:
-            acc_tuple = f"({', '.join(accumulators)})" if len(accumulators) > 1 else accumulators[0]
-            base_rhs = f"pure {acc_tuple}" if loop_is_monadic else acc_tuple
+        wrapped_body = self._wrap_returns_as_some(plan.body)
+        base_rhs = "pure None" if plan.monadic else "None"
 
-            def recursive_tail(i, extra_known=frozenset(), rec_renames=None):
-                args = captured + self._resolve_all(accumulators, rec_renames or {})
-                call = f"{helper} {' '.join(args)} {rest_name}".strip()
-                return [f"{'  ' * i}{call}"]
-
-            def_lines = [
-                f"{base_head} = {base_rhs}",
-                f"{rec_head} = do" if loop_is_monadic else f"{rec_head} =",
-            ]
-            def_lines.extend(
-                self._translate(
-                    body, 1, loop_is_monadic, recursive_tail, inner_known, inner_renames
-                )
-            )
-            self.hoisted.extend(def_lines)
-            self.hoisted.append("")
-
-            resolved_acc = self._resolve_all(accumulators, renames)
-            call_expr = f"{helper} {' '.join(resolved_captured + resolved_acc)} {iter_expr}".strip()
-            fresh_names = [self.namer.next_rebind(a) for a in accumulators]
-            fresh_tuple = ", ".join(fresh_names) if len(fresh_names) > 1 else fresh_names[0]
-            fresh_bind_target = f"({fresh_tuple})" if len(fresh_names) > 1 else fresh_tuple
-            lines = []
-            if loop_is_monadic:
-                lines.append(f"{pad}{fresh_bind_target} <- {call_expr}")
-            else:
-                suffix = "" if monadic else " in"
-                lines.append(f"{pad}let {fresh_bind_target} = {call_expr}{suffix}")
-            post_renames = {**renames, **dict(zip(accumulators, fresh_names))}
-            lines.extend(make_tail(indent, set(accumulators), post_renames))
-            return lines
-
-        if has_return:
-            wrapped_body = self._wrap_returns_as_some(body)
-            base_rhs = "pure None" if loop_is_monadic else "None"
-
-            def recursive_tail_b(i, extra_known=frozenset(), rec_renames=None):
-                call = f"{helper} {' '.join(captured)} {rest_name}".strip()
-                return [f"{'  ' * i}{call}"]
-
-            def_lines = [
-                f"{base_head} = {base_rhs}",
-                f"{rec_head} = do" if loop_is_monadic else f"{rec_head} =",
-            ]
-            def_lines.extend(
-                self._translate(
-                    wrapped_body, 1, loop_is_monadic, recursive_tail_b, inner_known, inner_renames
-                )
-            )
-            self.hoisted.extend(def_lines)
-            self.hoisted.append("")
-
-            call_expr = f"{helper} {' '.join(resolved_captured)} {iter_expr}".strip()
-            maybe_name = self.namer.next_rebind("maybe")
-            early_name = self.namer.next_rebind("early")
-            lines = [
-                (
-                    f"{pad}{maybe_name} <- {call_expr}"
-                    if loop_is_monadic
-                    else f"{pad}let {maybe_name} = {call_expr}"
-                )
-            ]
-            lines.append(f"{pad}case {maybe_name} of")
-            lines.append(
-                f"{pad}  Some {early_name} -> " + (f"pure {early_name}" if monadic else early_name)
-            )
-            lines.append(f"{pad}  None -> do" if monadic else f"{pad}  None ->")
-            lines.extend(make_tail(indent + 2, frozenset(), renames))
-            return lines
-
-        if not loop_is_monadic:
-            return make_tail(indent, frozenset(), renames)
-
-        def recursive_tail_c(i, extra_known=frozenset(), rec_renames=None):
+        def recursive_tail(i, extra_known=frozenset(), rec_renames=None):
             call = f"{helper} {' '.join(captured)} {rest_name}".strip()
             return [f"{'  ' * i}{call}"]
 
-        def_lines = [f"{base_head} = pure ()", f"{rec_head} = do"]
+        def_lines = [
+            f"{base_head} = {base_rhs}",
+            f"{rec_head} = do" if plan.monadic else f"{rec_head} =",
+        ]
         def_lines.extend(
-            self._translate(body, 1, loop_is_monadic, recursive_tail_c, inner_known, inner_renames)
+            self._translate(
+                wrapped_body, 1, plan.monadic, recursive_tail, inner_known, inner_renames
+            )
         )
         self.hoisted.extend(def_lines)
         self.hoisted.append("")
 
         call_expr = f"{helper} {' '.join(resolved_captured)} {iter_expr}".strip()
-        lines = [f"{pad}_ <- {call_expr}"]
-        lines.extend(make_tail(indent, frozenset(), renames))
+        maybe_name = self.namer.next_rebind("maybe")
+        early_name = self.namer.next_rebind("early")
+        lines = [
+            (
+                f"{pad}{maybe_name} <- {call_expr}"
+                if plan.monadic
+                else f"{pad}let {maybe_name} = {call_expr}{' in' if not monadic else ''}"
+            )
+        ]
+        lines.append(f"{pad}case {maybe_name} of")
+        lines.append(
+            f"{pad}  Some {early_name} -> " + (f"pure {early_name}" if monadic else early_name)
+        )
+        lines.append(f"{pad}  None -> do" if monadic else f"{pad}  None ->")
+        lines.extend(make_tail(indent + 2, frozenset(), renames))
         return lines
 
 
@@ -918,6 +975,8 @@ class Emitter:
             header += import_line
         for import_line in required_set_imports(body_source):
             header += import_line
+        if "foldlA" in body_source:
+            header += "import DA.Action (foldlA)\n\n"
         if " !! " in body_source:
             header += "import DA.List ((!!))\n\n"
         for import_line in required_optional_imports(body_source):

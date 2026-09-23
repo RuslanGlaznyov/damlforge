@@ -1,4 +1,6 @@
-.PHONY: test dev-deps lint clean clean-pyc clean-build clean-test build release
+VERSION ?= 0.0.4
+
+.PHONY: test dev dev-deps lint clean clean-pyc clean-build clean-test build release
 
 init:
 	python setup.py install
@@ -26,6 +28,13 @@ isort: black
 build: clean
 	python -m build
 	ls -la dist/
+
+dev:
+	SETUPTOOLS_SCM_PRETEND_VERSION=$(VERSION) $(MAKE) build
+
+dev-release:
+	SETUPTOOLS_SCM_PRETEND_VERSION=$(VERSION) \
+	python -m pip install --no-deps --force-reinstall -e .
 
 release: build
 	twine check dist/*
@@ -58,6 +67,3 @@ clean-test:
 	@rm -fr .pytest_cache/
 	@rm -rf .tox/
 	@rm -fr .mypy_cache/
-
-test-project:
-	python3 -m forge dar examples/splice-util-batched-markers --dpm /Users/artem_bogomaz/.dpm/bin/dpm
