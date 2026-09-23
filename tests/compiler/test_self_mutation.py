@@ -43,7 +43,7 @@ def _template_with_choice(field_type, body, return_type=None):
 
 def test_render_expr_record_update():
     e = IRRecordUpdate(IRName("self"), (("total", IRConstant(1)),))
-    assert render_expr(e) == "self { total = 1 }"
+    assert render_expr(e) == f"self {chr(123)} total = 1 {chr(125)}"
 
 
 def test_self_field_assignment_becomes_record_update_and_synthesizes_create():
@@ -58,7 +58,7 @@ def test_self_field_assignment_becomes_record_update_and_synthesizes_create():
     source, _ = generate_daml(module)
 
     assert "let self = this" in source
-    assert "self { balance = self.balance + 1 }" in source
+    assert f"self {chr(123)} balance = self.balance + 1 {chr(125)}" in source
     # `self` must be rebound to a fresh SSA name, never reused - real damlc
     # rejects any local `let X = f(X)` as illegal recursion
     assert "_damlforge_new_self <- create _damlforge_self1" in source
@@ -89,7 +89,7 @@ def test_dict_field_subscript_assignment_uses_map_insert():
     source, _ = generate_daml(module)
 
     assert "import DA.Map as Map" in source
-    assert "self { balance = Map.insert k v self.balance }" in source
+    assert f"self {chr(123)} balance = Map.insert k v self.balance {chr(125)}" in source
 
 
 def test_dict_field_subscript_read_uses_map_lookup():

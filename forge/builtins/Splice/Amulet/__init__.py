@@ -529,7 +529,8 @@ class ValidatorRewardCoupon_ArchiveAsValidator:
     choice - used by validators to archive the coupon upon claiming its
     corresponding issuance. Controller `dso`, `validator`. Real Daml:
 
-        choice ValidatorRewardCoupon_ArchiveAsValidator : ValidatorRewardCoupon_ArchiveAsValidatorResult
+        choice ValidatorRewardCoupon_ArchiveAsValidator :
+          ValidatorRewardCoupon_ArchiveAsValidatorResult
           with
             validator : Party
             rightCid : ContractId ValidatorRight

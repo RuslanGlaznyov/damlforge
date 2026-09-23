@@ -8,11 +8,11 @@ choices) is out of scope of the `AmuletRules` choice sweep.
 """
 
 from dataclasses import dataclass
-from typing import Annotated, Optional
+from typing import Annotated
 
 from forge.models.types import ContractId
 from ...Api.Token.HoldingV1 import Holding
-from ...Api.Token.MetadataV1 import ChoiceContext, ExtraArgs, Metadata
+from ...Api.Token.MetadataV1 import ExtraArgs, Metadata
 from .... import DamlName
 
 

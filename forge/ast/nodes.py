@@ -13,7 +13,6 @@ from forge.ast.metadata import NodeMetadata
 from forge.compiler.settings import VYPER_ERROR_CONTEXT_LINES, VYPER_ERROR_LINE_NUMBERS, Settings
 from forge.exceptions import (
     ArgumentException,
-    CompilerPanic,
     FunctionDeclarationException,
     InvalidLiteral,
     InvalidOperation,

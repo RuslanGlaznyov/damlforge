@@ -284,7 +284,10 @@ def _render_call(e: IRCall) -> str:
         constructor = _case_accessors().get(e.func.id)
         if constructor is not None:
             scrutinee = _render_call_arg(e.args[0])
-            return f"(case {scrutinee} of {constructor} _damlforge_case_val -> Some _damlforge_case_val; _ -> None)"
+            return (
+                f"(case {scrutinee} of {constructor} _damlforge_case_val -> "
+                "Some _damlforge_case_val; _ -> None)"
+            )
 
     func_name = render_expr(e.func)
     if e.keywords:
@@ -314,7 +317,10 @@ class BodyTranslator:
 
     def render_body(self, stmts, indent: int, monadic: bool = True, known=frozenset()) -> list:
         rewritten = LoopAnalysis.rewrite_appends(list(stmts), self.namer, self.known_effect_fns)
-        tail = lambda i, extra_known=frozenset(), renames=None: self._final_tail(i, monadic)
+
+        def tail(i, extra_known=frozenset(), renames=None):
+            return self._final_tail(i, monadic)
+
         return self._translate(rewritten, indent, monadic, tail, known)
 
     def render_stmt(self, stmt, indent: int, monadic: bool = True) -> list:
@@ -379,7 +385,6 @@ class BodyTranslator:
             return [f'{pad}error "damlforge: not implemented"']
 
         if isinstance(first, IRIf):
-            branch_tail = make_tail
             cont_lines = []
             if rest:
                 branch_stmts = list(first.body) + list(first.orelse)
@@ -408,6 +413,9 @@ class BodyTranslator:
                     args = " ".join(self._resolve_all(cont_vars, br_renames or {}))
                     call = f"{cont_name} {args}".rstrip()
                     return [f"{'  ' * i}{call}"]
+
+            else:
+                branch_tail = make_tail
 
             test_expr = render_expr(LoopAnalysis.apply_renames(first.test, renames))
             lines = [f"{pad}if {test_expr}", f"{pad}  then do" if monadic else f"{pad}  then"]
@@ -848,7 +856,9 @@ class Emitter:
             return_type_str = (
                 render_type(c.return_type, as_arg=True) if c.return_type is not None else "()"
             )
-            sig_types = " -> ".join([f"ContractId {i.name}", *arg_types, f"Update {return_type_str}"])
+            sig_types = " -> ".join(
+                [f"ContractId {i.name}", *arg_types, f"Update {return_type_str}"]
+            )
             self.lines_block([f"  {impl_name} : {sig_types}"])
             self.line("")
             self.emit_choice(c, i.name, indent=1, delegate_to=impl_name)

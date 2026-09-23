@@ -855,7 +855,8 @@ class AmuletRules_CreateExternalPartySetupProposal:
     for the `TransferPreapproval` created on acceptance. Controller
     `validator`. Real Daml:
 
-        nonconsuming choice AmuletRules_CreateExternalPartySetupProposal : AmuletRules_CreateExternalPartySetupProposalResult
+        nonconsuming choice AmuletRules_CreateExternalPartySetupProposal :
+          AmuletRules_CreateExternalPartySetupProposalResult
           with
             context : PaymentTransferContext
             inputs : [TransferInput]
@@ -895,7 +896,8 @@ class AmuletRules_CreateTransferPreapproval:
     approve incoming Amulet transfers for `receiver`. Controller `provider`,
     `receiver`. Real Daml:
 
-        nonconsuming choice AmuletRules_CreateTransferPreapproval : AmuletRules_CreateTransferPreapprovalResult
+        nonconsuming choice AmuletRules_CreateTransferPreapproval :
+          AmuletRules_CreateTransferPreapprovalResult
           with
             context : PaymentTransferContext
             inputs : [TransferInput]
@@ -978,7 +980,8 @@ class AmuletRules_MergeMemberTrafficContracts:
     batch-merges several `MemberTraffic` contracts for the same member into
     one. Controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_MergeMemberTrafficContracts : AmuletRules_MergeMemberTrafficContractsResult
+        nonconsuming choice AmuletRules_MergeMemberTrafficContracts :
+          AmuletRules_MergeMemberTrafficContractsResult
           with
             trafficCids : [ContractId MemberTraffic]
     """
@@ -1102,7 +1105,8 @@ class AmuletRules_BootstrapExternalPartyConfigState:
     choice - bootstraps the initial `ExternalPartyConfigState` contracts.
     Controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_BootstrapExternalPartyConfigState : AmuletRules_BootstrapExternalPartyConfigStateResult
+        nonconsuming choice AmuletRules_BootstrapExternalPartyConfigState :
+          AmuletRules_BootstrapExternalPartyConfigStateResult
           with
             openMiningRoundTriple : OpenMiningRoundTriple
             expectedDso : Party
@@ -1124,7 +1128,8 @@ class AmuletRules_AdvanceOpenMiningRounds:
     archives the oldest open round, opens a new one, and starts summarizing
     the archived one. Controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_AdvanceOpenMiningRounds : AmuletRules_AdvanceOpenMiningRoundsResult
+        nonconsuming choice AmuletRules_AdvanceOpenMiningRounds :
+          AmuletRules_AdvanceOpenMiningRoundsResult
           with
             amuletPrice : Decimal
             roundToArchiveCid : ContractId OpenMiningRound
@@ -1156,7 +1161,8 @@ class AmuletRules_MiningRound_StartIssuing:
     off-ledger reward totals (`summary`) are known. Controller `dso`. Real
     Daml:
 
-        nonconsuming choice AmuletRules_MiningRound_StartIssuing : AmuletRules_MiningRound_StartIssuingResult
+        nonconsuming choice AmuletRules_MiningRound_StartIssuing :
+          AmuletRules_MiningRound_StartIssuingResult
           with
             miningRoundCid : ContractId SummarizingMiningRound
             summary : OpenMiningRoundSummary
@@ -1233,7 +1239,8 @@ class AmuletRules_ClaimExpiredRewards:
             appCouponCids : [ContractId AppRewardCoupon]
             svRewardCouponCids : [ContractId SvRewardCoupon]
             optValidatorFaucetCouponCids : Optional [ContractId ValidatorFaucetCoupon]
-            optValidatorLivenessActivityRecordCids : Optional [ContractId ValidatorLivenessActivityRecord]
+            optValidatorLivenessActivityRecordCids : Optional [ContractId
+              ValidatorLivenessActivityRecord]
     """
 
     closed_round_cid: Annotated[ContractId[ClosedMiningRound], DamlName("closedRoundCid")]
@@ -1269,7 +1276,8 @@ class AmuletRules_ClaimExpiredRewardsV2:
     claim of expired CIP-104 reward coupons using time-based expiry.
     Observers `expiryObservers`, controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_ClaimExpiredRewardsV2 : AmuletRules_ClaimExpiredRewardsV2Result
+        nonconsuming choice AmuletRules_ClaimExpiredRewardsV2 :
+          AmuletRules_ClaimExpiredRewardsV2Result
           with
             rewardCouponCids : [ContractId RewardCouponV2]
             expiryObservers : [Party]
@@ -1292,7 +1300,8 @@ class AmuletRules_StartProcessingRewardsV2:
     starts processing a `CalculateRewardsV2` batch. Controller `dso`. Real
     Daml:
 
-        nonconsuming choice AmuletRules_StartProcessingRewardsV2 : AmuletRules_StartProcessingRewardsV2Result
+        nonconsuming choice AmuletRules_StartProcessingRewardsV2 :
+          AmuletRules_StartProcessingRewardsV2Result
           with
             calculateRewardsCid : ContractId CalculateRewardsV2
             batchHash : CryptoHash.Hash
@@ -1315,7 +1324,8 @@ class AmuletRules_UnhideRewardCouponsV2:
     conversion of coupons not yet observable by their providers. Observers
     `providers`, controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_UnhideRewardCouponsV2 : AmuletRules_UnhideRewardCouponsV2Result
+        nonconsuming choice AmuletRules_UnhideRewardCouponsV2 :
+          AmuletRules_UnhideRewardCouponsV2Result
           with
             rewardCouponCids : [ContractId RewardCouponV2]
             providers : [Party]
@@ -1336,7 +1346,8 @@ class AmuletRules_ArchiveDryRunRewardAccountingV2:
     - cleans up stuck dry-run reward-accounting state. Controller `dso`.
     Real Daml:
 
-        nonconsuming choice AmuletRules_ArchiveDryRunRewardAccountingV2 : AmuletRules_ArchiveDryRunRewardAccountingV2Result
+        nonconsuming choice AmuletRules_ArchiveDryRunRewardAccountingV2 :
+          AmuletRules_ArchiveDryRunRewardAccountingV2Result
           with
             calculateRewardsCids : [ContractId CalculateRewardsV2]
             processRewardsCids : [ContractId ProcessRewardsV2]
@@ -1361,7 +1372,8 @@ class AmuletRules_MergeUnclaimedRewards:
     merge of several `UnclaimedReward` contracts into one. Controller
     `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_MergeUnclaimedRewards : AmuletRules_MergeUnclaimedRewardsResult
+        nonconsuming choice AmuletRules_MergeUnclaimedRewards :
+          AmuletRules_MergeUnclaimedRewardsResult
           with
             unclaimedRewardCids : [ContractId UnclaimedReward]
     """
@@ -1385,7 +1397,8 @@ class AmuletRules_MergeUnclaimedDevelopmentFundCoupons:
     choice - batch merge of several `UnclaimedDevelopmentFundCoupon`
     contracts into one. Controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_MergeUnclaimedDevelopmentFundCoupons : AmuletRules_MergeUnclaimedDevelopmentFundCouponsResult
+        nonconsuming choice AmuletRules_MergeUnclaimedDevelopmentFundCoupons :
+          AmuletRules_MergeUnclaimedDevelopmentFundCouponsResult
           with
             unclaimedDevelopmentFundCouponCids : [ContractId UnclaimedDevelopmentFundCoupon]
     """
@@ -1413,7 +1426,8 @@ class AmuletRules_AllocateDevelopmentFundCoupon:
     collection of `UnclaimedDevelopmentFundCoupon`s to a beneficiary.
     Controller `fundManager`. Real Daml:
 
-        nonconsuming choice AmuletRules_AllocateDevelopmentFundCoupon : AmuletRules_AllocateDevelopmentFundCouponResult
+        nonconsuming choice AmuletRules_AllocateDevelopmentFundCoupon :
+          AmuletRules_AllocateDevelopmentFundCouponResult
           with
             unclaimedDevelopmentFundCouponCids : [ContractId UnclaimedDevelopmentFundCoupon]
             beneficiary : Party
@@ -1494,7 +1508,8 @@ class AmuletRules_AddFutureAmuletConfigSchedule:
     `AmuletRules_SetConfig` and governance votes with effective dating
     instead. Modeled for completeness. Controller `dso`. Real Daml:
 
-        choice AmuletRules_AddFutureAmuletConfigSchedule : AmuletRules_AddFutureAmuletConfigScheduleResult
+        choice AmuletRules_AddFutureAmuletConfigSchedule :
+          AmuletRules_AddFutureAmuletConfigScheduleResult
           with
             newScheduleItem : (Time, AmuletConfig Unit.USD)
     """
@@ -1516,7 +1531,8 @@ class AmuletRules_RemoveFutureAmuletConfigSchedule:
     `AmuletRules_SetConfig` and governance votes with effective dating
     instead. Modeled for completeness. Controller `dso`. Real Daml:
 
-        choice AmuletRules_RemoveFutureAmuletConfigSchedule : AmuletRules_RemoveFutureAmuletConfigScheduleResult
+        choice AmuletRules_RemoveFutureAmuletConfigSchedule :
+          AmuletRules_RemoveFutureAmuletConfigScheduleResult
           with
             scheduleTime : Time
     """
@@ -1538,7 +1554,8 @@ class AmuletRules_UpdateFutureAmuletConfigSchedule:
     `AmuletRules_SetConfig` and governance votes with effective dating
     instead. Modeled for completeness. Controller `dso`. Real Daml:
 
-        choice AmuletRules_UpdateFutureAmuletConfigSchedule : AmuletRules_UpdateFutureAmuletConfigScheduleResult
+        choice AmuletRules_UpdateFutureAmuletConfigSchedule :
+          AmuletRules_UpdateFutureAmuletConfigScheduleResult
           with
             scheduleItem : (Time, AmuletConfig Unit.USD)
     """
@@ -1561,7 +1578,8 @@ class AmuletRules_ConvertFeaturedAppActivityMarkers:
     for a mining round, if that round still uses on-ledger issuance.
     Observers `observers` (defaults to none), controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_ConvertFeaturedAppActivityMarkers : AmuletRules_ConvertFeaturedAppActivityMarkersResult
+        nonconsuming choice AmuletRules_ConvertFeaturedAppActivityMarkers :
+          AmuletRules_ConvertFeaturedAppActivityMarkersResult
           with
             markerCids : [ContractId FeaturedAppActivityMarker]
             openMiningRoundCid : ContractId OpenMiningRound
@@ -1590,7 +1608,8 @@ class AmuletRules_Amulet_ExpireTransferInstructions:
     `TransferInstruction`s once their deadline has passed. Observers
     `observers`, controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_Amulet_ExpireTransferInstructions : AmuletRules_Amulet_ExpireTransferInstructionsResult
+        nonconsuming choice AmuletRules_Amulet_ExpireTransferInstructions :
+          AmuletRules_Amulet_ExpireTransferInstructionsResult
           with
             expectedDso : Party
             inputs : [AmuletRules_ExpireTransferInstructionInput]
@@ -1616,7 +1635,8 @@ class AmuletRules_UpdateExternalPartyConfigStates:
     - refreshes the pair of `ExternalPartyConfigState` snapshots for the
     given `OpenMiningRoundTriple`. Controller `dso`. Real Daml:
 
-        nonconsuming choice AmuletRules_UpdateExternalPartyConfigStates : AmuletRules_UpdateExternalPartyConfigStatesResult
+        nonconsuming choice AmuletRules_UpdateExternalPartyConfigStates :
+          AmuletRules_UpdateExternalPartyConfigStatesResult
           with
             externalPartyConfigStateCid0 : ContractId ExternalPartyConfigState
             externalPartyConfigStateCid1 : ContractId ExternalPartyConfigState

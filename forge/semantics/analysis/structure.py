@@ -1,4 +1,3 @@
-from pkgutil import iter_modules
 import re
 from typing import Optional
 
@@ -118,9 +117,7 @@ def _interface_view_type_name(interface_decl: vy_ast.InterfaceDef) -> Optional[s
     return None
 
 
-def _template_implemented_interfaces(
-    template: vy_ast.TemplateDef, declarations: dict
-) -> list:
+def _template_implemented_interfaces(template: vy_ast.TemplateDef, declarations: dict) -> list:
     result = []
     for base in template.bases:
         if isinstance(base, vy_ast.Name):
@@ -199,7 +196,9 @@ def check_template_interface_choice_consuming_variants(
         interface_choice_names |= _interface_choice_names(decl)
 
     if interface_choice_names:
-        check_consuming_variant_scope(template, errors, only_names=frozenset(interface_choice_names))
+        check_consuming_variant_scope(
+            template, errors, only_names=frozenset(interface_choice_names)
+        )
 
 
 def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
@@ -378,9 +377,7 @@ def check_flag_member_names(node: vy_ast.FlagDef, errors: ExceptionList) -> None
 
 
 def check_container(
-    node: vy_ast.TopLevel,
-    errors: ExceptionList,
-    declarations: Optional[dict] = None,
+    node: vy_ast.TopLevel, errors: ExceptionList, declarations: Optional[dict] = None
 ) -> None:
     if isinstance(node, vy_ast.FlagDef):
         check_flag_member_names(node, errors)

@@ -142,7 +142,8 @@ class SelfFieldRewriter:
                     if call is None:
                         raise CompilerPanic(
                             f"rewrite_expr: `{e.func.attr}` is not a supported {recv_type.name} "
-                            f"method (supported: {sorted(known_map_types()[recv_type.name].method_names())})"
+                            f"method (supported: "
+                            f"{sorted(known_map_types()[recv_type.name].method_names())})"
                         )
                     return call
                 if recv_type is not None and is_optional_type(recv_type.name):

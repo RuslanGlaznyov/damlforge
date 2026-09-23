@@ -75,7 +75,8 @@ def check_data_dependencies(config: dict, project_dir: Path, daml_yaml: Path) ->
         dep_path = project_dir / dep
         if not dep_path.is_file():
             raise ProjectStructureError(
-                f"{daml_yaml} declares data-dependency {dep!r}, but no such file exists at {dep_path}"
+                f"{daml_yaml} declares data-dependency {dep!r}, but no such file "
+                f"exists at {dep_path}"
             )
 
 

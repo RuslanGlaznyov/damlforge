@@ -113,12 +113,7 @@ def daml_builtin_type_names() -> set:
     return set(_get_primitive_types()) | set(_get_generic_types()) | set(known_map_types())
 
 
-_DECLARATION_TYPES = (
-    vy_ast.StructDef,
-    vy_ast.FlagDef,
-    vy_ast.InterfaceDef,
-    vy_ast.TemplateDef,
-)
+_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.FlagDef, vy_ast.InterfaceDef, vy_ast.TemplateDef)
 
 
 class ModuleScope:
@@ -270,11 +265,7 @@ def check_flag_value_access(
         )
 
 
-_NON_VARIABLE_DECLARATION_TYPES = (
-    vy_ast.StructDef,
-    vy_ast.InterfaceDef,
-    vy_ast.TemplateDef,
-)
+_NON_VARIABLE_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.InterfaceDef, vy_ast.TemplateDef)
 
 _LANGUAGE_BUILTIN_NAMES = frozenset({"len", "ceil", "floor", "range"})
 
@@ -553,7 +544,8 @@ def _walk_type_ref(
     if type_ref.name in _UNMAPPABLE_PYTHON_TYPES:
         errors.append(
             DamlForgeException(
-                f"`{type_ref.name}` has no Daml equivalent and cannot be used as a type ({context})",
+                f"`{type_ref.name}` has no Daml equivalent and cannot be used as a "
+                f"type ({context})",
                 node,
                 code=ErrorCodes.DF1222.value,
             )

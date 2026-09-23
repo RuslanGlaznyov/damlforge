@@ -81,7 +81,8 @@ class ValidatorLivenessActivityRecord_DsoExpire:
     `ValidatorLivenessActivityRecord_DsoExpire` choice - archives the record
     once its round has closed. Controller `dso`. Real Daml:
 
-        choice ValidatorLivenessActivityRecord_DsoExpire : ValidatorLivenessActivityRecord_DsoExpireResult
+        choice ValidatorLivenessActivityRecord_DsoExpire :
+          ValidatorLivenessActivityRecord_DsoExpireResult
           with
             closedRoundCid : ContractId ClosedMiningRound
     """

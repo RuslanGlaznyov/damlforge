@@ -58,7 +58,8 @@ class FeaturedAppRight_CreateActivityMarkerResult:
     """The real Daml `FeaturedAppRight_CreateActivityMarkerResult` record,
     returned by `FeaturedAppRight_CreateActivityMarker`. Real Daml definition:
 
-        data FeaturedAppRight_CreateActivityMarkerResult = FeaturedAppRight_CreateActivityMarkerResult
+        data FeaturedAppRight_CreateActivityMarkerResult =
+          FeaturedAppRight_CreateActivityMarkerResult
           with
             activityMarkerCids : [ContractId FeaturedAppActivityMarker]
     """
