@@ -16,7 +16,7 @@ def validate_version_pragma(version_str: str, location: tuple[str, int, int]) ->
     """
     Validates a version pragma directive against the current compiler version.
     """
-    from vyper import __version__
+    from forge import __version__
 
     if len(version_str) == 0:
         raise VersionException("Version specification cannot be empty", *location)

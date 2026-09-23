@@ -42,7 +42,7 @@ class RecursionAnalyzer:
 
     @staticmethod
     def _module_names(module: vy_ast.Module) -> tuple[str, ...]:
-        names = []
+        names: list[str] = []
         for value in (getattr(module, "resolved_path", None), getattr(module, "path", None)):
             if not value:
                 continue

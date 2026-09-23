@@ -241,7 +241,7 @@ for _index: int in range(0, count):
 | DF1201 | template missing `signatory` |
 | DF1203 | `@choice` missing `controller` or missing/invalid `consuming` |
 | DF1204 | `@ledger_effect` given arguments |
-| DF1205 | plain function has a hidden ledger effect (missing `@ledger_effect`) |
+| DF1205 | plain function has a hidden ledger effect (missing `@ledger_effect`), or `@template` given arguments |
 | DF1206 | `@view` given arguments |
 | DF1207 | `@view` used inside a `template` with no interface base |
 | DF1208 | `"preconsuming"`/`"postconsuming"` on an interface choice declaration or implementation |
