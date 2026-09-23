@@ -34,8 +34,10 @@ def _has_decorator(fn: vy_ast.FunctionDef, name: str) -> bool:
 def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
     import forge.builtins as builtins_module
     from forge.models import decorators as vy_decorators_module
+    from forge.semantics.analysis.imports import ImportsBuilder
 
     known_decorators = builtins_module.known_decorator_names()
+    imported_names = ImportsBuilder.imported_names(container.module_node)
 
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
@@ -62,6 +64,15 @@ def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) 
 
             if isinstance(resolved, type) and issubclass(resolved, builtins_module.VyDecorator):
                 resolved.__post_vy_check__(container, fn, dec, errors)
+
+            if target.id not in imported_names:
+                errors.append(
+                    DamlForgeException(
+                        f"`{target.id}` is not defined - import the decorator before using it",
+                        target,
+                        code=ErrorCodes.DF1219.value,
+                    )
+                )
 
 
 def check_consuming_variant_scope(

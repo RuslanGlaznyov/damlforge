@@ -1,11 +1,13 @@
-from forge.models import Party, choice, GenMap
+from forge.models import Party, choice, GenMap, view
 from forge.builtins import DamlName
 from typing import Optional
 from Splice.AmuletRules import AppTransferContext
 from models import CrossTemplate
+from interfaces import SimpleTemplateInterface, SimpleTemplateView
+
 
 @template
-class SimpleTemplate:
+class SimpleTemplate(SimpleTemplateInterface):
     platform: Party
     developer: Party
     dso: Party
@@ -41,6 +43,17 @@ class SimpleTemplate:
         self.total_balance = total_balance
         self.cross_template = cross_template
         self.comment = comment
+
+    @view
+    def get_view(self) -> SimpleTemplateView:
+        return SimpleTemplateView(
+            platform=self.platform,
+            comment=self.comment,
+        )
+
+    @choice(controller=actors, consuming="nonconsuming")
+    def interface_test(self, actors: list[Party]) -> bool:
+        return True
 
     @choice(controller=[developer, platform], consuming=True)
     def SimpleTemplate_Mint(self) -> ContractId[SimpleTemplate]:

@@ -101,6 +101,7 @@ def test_valid(source_path):
         (_fixture_path("invalid/unresolved_name_used_as_attribute_base_not_allowed.vy"), ErrorCodes.DF1219.value),
         (_fixture_path("invalid/unresolved_name_used_as_call_target_not_allowed.vy"), ErrorCodes.DF1219.value),
         (_fixture_path("invalid/decorator_used_without_import_not_allowed.vy"), ErrorCodes.DF1219.value),
+        (_fixture_path("invalid/view_used_without_import_not_allowed.vy"), ErrorCodes.DF1219.value),
         (
             _fixture_path("invalid/multiple_violations.vy"),
             (ErrorCodes.DF1201.value, ErrorCodes.DF1203.value),
