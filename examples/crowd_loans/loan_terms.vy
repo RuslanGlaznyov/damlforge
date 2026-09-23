@@ -1,4 +1,6 @@
-from forge.models import ContractId, Decimal, Optional, Party, Text, Timestamp, choice, ledger_effect
+from forge.models import ContractId, Decimal, Optional, Party, Timestamp, choice, ledger_effect
+from forge.builtins import DamlName
+from forge.builtins.daml_lang import create, fetch
 from Splice.Amulet import Amulet
 from Splice.AmuletRules import (
     AppTransferContext,
@@ -69,7 +71,7 @@ struct RepaymentClaimView:
     developer: Party
     investor: Party
     dso: Party
-    campaign_external_id: Text
+    campaign_external_id: str
     amount: Decimal
     status: RepaymentClaimStatus
     claim_before: Timestamp
@@ -79,7 +81,7 @@ struct LoanTrackerView:
     platform: Party
     developer: Party
     dso: Party
-    campaign_external_id: Text
+    campaign_external_id: str
     loan_terms: LoanTerms
     total_repaid: Decimal
     balance: Decimal
@@ -140,11 +142,12 @@ def already_paid_periods(period_payments: list[PeriodPayment]) -> list[int]:
     return paid_periods
 
 
-template LoanTracker:
+@template
+class LoanTracker:
     platform: Party
     developer: Party
     dso: Party
-    campaign_external_id: Text
+    campaign_external_id: str
     loan_terms: LoanTerms
     total_repaid: Decimal
     repayment_history: list[RepaymentDistribution]
@@ -157,6 +160,7 @@ template LoanTracker:
     observer: list[Party] = investment_parties(investments)
 
     @choice(controller=[platform, developer], consuming=True)
+    @DamlName("LoanTracker_Deposit")
     def deposit(
         self,
         inputs: list[ContractId[Amulet]],
@@ -165,11 +169,11 @@ template LoanTracker:
     ) -> ContractId["LoanTracker"]:
         assert amount > Decimal(0), "Deposit amount must be positive"
 
-        input_amount = verify_amulets(LoanTracker.dso, inputs)
+        input_amount = verify_amulets(self.dso, inputs)
         assert input_amount >= amount, "Insufficient funds for deposit"
 
         platform_output = TransferOutput(
-            receiver=LoanTracker.platform,
+            receiver=self.platform,
             receiver_fee_ratio=Decimal(0),
             amount=amount,
             lock=None,
@@ -180,56 +184,57 @@ template LoanTracker:
             transfer_inputs.append(InputAmulet(input_cid))
 
         transfer = Transfer(
-            sender=LoanTracker.developer,
-            provider=LoanTracker.platform,
+            sender=self.developer,
+            provider=self.platform,
             inputs=transfer_inputs,
             outputs=[platform_output],
             beneficiaries=None,
         )
 
-        transfer_result = exercise_app_transfer(LoanTracker.dso, app_transfer_context, transfer)
+        transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         new_holdings: list[ContractId[Holding]] = []
         for created_amulet: CreatedAmulet in transfer_result.created_amulets:
             new_holdings.append(created_amulet_to_holding(created_amulet))
 
         combined_holdings: list[ContractId[Holding]] = []
-        for existing_holding: ContractId[Holding] in LoanTracker.holding_cids:
+        for existing_holding: ContractId[Holding] in self.holding_cids:
             combined_holdings.append(existing_holding)
         for new_holding: ContractId[Holding] in new_holdings:
             combined_holdings.append(new_holding)
 
         return create(
             LoanTracker(
-                platform=LoanTracker.platform,
-                developer=LoanTracker.developer,
-                dso=LoanTracker.dso,
-                campaign_external_id=LoanTracker.campaign_external_id,
-                loan_terms=LoanTracker.loan_terms,
-                total_repaid=LoanTracker.total_repaid,
-                repayment_history=LoanTracker.repayment_history,
-                investments=LoanTracker.investments,
-                total_raised=LoanTracker.total_raised,
-                balance=LoanTracker.balance + amount,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                campaign_external_id=self.campaign_external_id,
+                loan_terms=self.loan_terms,
+                total_repaid=self.total_repaid,
+                repayment_history=self.repayment_history,
+                investments=self.investments,
+                total_raised=self.total_raised,
+                balance=self.balance + amount,
                 holding_cids=combined_holdings,
             )
         )
 
     @choice(controller=platform, consuming=True)
+    @DamlName("LoanTracker_Repay")
     def repay(
         self, repay_amount: Decimal, current_time: Timestamp, claim_before: Timestamp
-    ) -> tuple[ContractId["LoanTracker"], list[ContractId[RepaymentClaim]]]:
+    ) -> tuple[ContractId[LoanTracker], list[ContractId[RepaymentClaim]]]:
         assert repay_amount > Decimal(0), "Repayment amount must be positive"
-        assert len(LoanTracker.investments) > 0, "Must have investors to distribute to"
+        assert len(self.investments) > 0, "Must have investors to distribute to"
         assert claim_before > current_time, "Claim deadline must be in the future"
-        assert LoanTracker.balance >= repay_amount, "Insufficient balance for repayment"
-        assert len(LoanTracker.holding_cids) > 0, "No holdings available for repayment"
+        assert self.balance >= repay_amount, "Insufficient balance for repayment"
+        assert len(self.holding_cids) > 0, "No holdings available for repayment"
 
-        num_holdings_needed = calculate_num_holdings_for_amount(LoanTracker.holding_cids, repay_amount)
+        num_holdings_needed = calculate_num_holdings_for_amount(self.holding_cids, repay_amount)
         repayment_holdings: list[ContractId[Holding]] = []
         remaining_holdings: list[ContractId[Holding]] = []
         index = 0
-        for holding_cid: ContractId[Holding] in LoanTracker.holding_cids:
+        for holding_cid: ContractId[Holding] in self.holding_cids:
             if index < num_holdings_needed:
                 repayment_holdings.append(holding_cid)
             else:
@@ -238,19 +243,19 @@ template LoanTracker:
 
         claim_cids: list[ContractId[RepaymentClaim]] = []
         new_distributions: list[RepaymentDistribution] = []
-        for entry: tuple[Party, Decimal] in LoanTracker.investments:
+        for entry: tuple[Party, Decimal] in self.investments:
             investor: Party = entry[0]
             invested_amount: Decimal = entry[1]
-            share = invested_amount / LoanTracker.total_raised
+            share = invested_amount / self.total_raised
             distribution_amount = repay_amount * share
 
             claim_cid = create(
                 RepaymentClaim(
-                    platform=LoanTracker.platform,
-                    developer=LoanTracker.developer,
+                    platform=self.platform,
+                    developer=self.developer,
                     investor=investor,
-                    dso=LoanTracker.dso,
-                    campaign_external_id=LoanTracker.campaign_external_id,
+                    dso=self.dso,
+                    campaign_external_id=self.campaign_external_id,
                     amount=distribution_amount,
                     status=RepaymentClaimStatus.CLAIM_PENDING,
                     claim_before=claim_before,
@@ -266,9 +271,9 @@ template LoanTracker:
                 )
             )
 
-        updated_loan_terms = LoanTracker.loan_terms
-        if LoanTracker.loan_terms.loan_rewards != None:
-            rewards: LoanRewards = LoanTracker.loan_terms.loan_rewards
+        updated_loan_terms = self.loan_terms
+        if self.loan_terms.loan_rewards != None:
+            rewards: LoanRewards = self.loan_terms.loan_rewards
             updated_milestones = update_milestones(repay_amount, rewards.repayment_schedule.milestones)
             updated_schedule = RepaymentSchedule(milestones=updated_milestones)
             updated_rewards = LoanRewards(
@@ -279,27 +284,27 @@ template LoanTracker:
             )
             updated_loan_terms = LoanTerms(
                 loan_rewards=updated_rewards,
-                performance_rewards=LoanTracker.loan_terms.performance_rewards,
+                performance_rewards=self.loan_terms.performance_rewards,
             )
 
         combined_history: list[RepaymentDistribution] = []
-        for existing_distribution: RepaymentDistribution in LoanTracker.repayment_history:
+        for existing_distribution: RepaymentDistribution in self.repayment_history:
             combined_history.append(existing_distribution)
         for new_distribution: RepaymentDistribution in new_distributions:
             combined_history.append(new_distribution)
 
         new_tracker = create(
             LoanTracker(
-                platform=LoanTracker.platform,
-                developer=LoanTracker.developer,
-                dso=LoanTracker.dso,
-                campaign_external_id=LoanTracker.campaign_external_id,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                campaign_external_id=self.campaign_external_id,
                 loan_terms=updated_loan_terms,
-                total_repaid=LoanTracker.total_repaid + repay_amount,
+                total_repaid=self.total_repaid + repay_amount,
                 repayment_history=combined_history,
-                investments=LoanTracker.investments,
-                total_raised=LoanTracker.total_raised,
-                balance=LoanTracker.balance - repay_amount,
+                investments=self.investments,
+                total_raised=self.total_raised,
+                balance=self.balance - repay_amount,
                 holding_cids=remaining_holdings,
             )
         )
@@ -308,10 +313,10 @@ template LoanTracker:
 
     @choice(controller=platform, consuming=False)
     def check_default(self, current_time: Timestamp) -> bool:
-        if LoanTracker.loan_terms.loan_rewards == None:
+        if self.loan_terms.loan_rewards == None:
             return False
 
-        rewards: LoanRewards = LoanTracker.loan_terms.loan_rewards
+        rewards: LoanRewards = self.loan_terms.loan_rewards
         for milestone: RepaymentMilestone in rewards.repayment_schedule.milestones:
             if not milestone.paid and current_time > milestone.due_date:
                 return True
@@ -322,18 +327,18 @@ template LoanTracker:
         self, repay_amount: Decimal, current_time: Timestamp, claim_before: Timestamp
     ) -> tuple[ContractId["LoanTracker"], list[ContractId[RepaymentClaim]]]:
         assert repay_amount > Decimal(0), "Repayment amount must be positive"
-        assert len(LoanTracker.investments) > 0, "Must have investors to distribute to"
+        assert len(self.investments) > 0, "Must have investors to distribute to"
         assert claim_before > current_time, "Claim deadline must be in the future"
-        assert LoanTracker.balance >= repay_amount, "Insufficient balance for repayment"
-        assert len(LoanTracker.holding_cids) > 0, "No holdings available for repayment"
-        assert LoanTracker.loan_terms.loan_rewards != None, "No loan rewards defined"
+        assert self.balance >= repay_amount, "Insufficient balance for repayment"
+        assert len(self.holding_cids) > 0, "No holdings available for repayment"
+        assert self.loan_terms.loan_rewards != None, "No loan rewards defined"
 
-        rewards: LoanRewards = LoanTracker.loan_terms.loan_rewards
+        rewards: LoanRewards = self.loan_terms.loan_rewards
         assert rewards.multiplier > Decimal(0), "Multiplier must be positive"
         assert rewards.number_of_periods > 0, "Number of periods must be positive"
-        assert LoanTracker.total_raised > Decimal(0), "Total raised must be positive"
+        assert self.total_raised > Decimal(0), "Total raised must be positive"
 
-        total_to_repay = LoanTracker.total_raised * rewards.multiplier
+        total_to_repay = self.total_raised * rewards.multiplier
         assert total_to_repay > Decimal(0) and total_to_repay < Decimal(1000000000), (
             "Total repayment amount overflow - multiplier too large"
         )
@@ -345,13 +350,13 @@ template LoanTracker:
         assert next_period <= rewards.number_of_periods, "All periods already paid"
         assert repay_amount >= amount_per_period, "Payment amount must be at least the period amount"
 
-        num_holdings_needed = calculate_num_holdings_for_amount(LoanTracker.holding_cids, amount_per_period)
-        assert num_holdings_needed <= len(LoanTracker.holding_cids), "Not enough holdings"
+        num_holdings_needed = calculate_num_holdings_for_amount(self.holding_cids, amount_per_period)
+        assert num_holdings_needed <= len(self.holding_cids), "Not enough holdings"
 
         repayment_holdings: list[ContractId[Holding]] = []
         remaining_holdings: list[ContractId[Holding]] = []
         index = 0
-        for holding_cid: ContractId[Holding] in LoanTracker.holding_cids:
+        for holding_cid: ContractId[Holding] in self.holding_cids:
             if index < num_holdings_needed:
                 repayment_holdings.append(holding_cid)
             else:
@@ -361,20 +366,20 @@ template LoanTracker:
         claim_cids: list[ContractId[RepaymentClaim]] = []
         new_distributions: list[RepaymentDistribution] = []
         total_distributed = Decimal(0)
-        for entry: tuple[Party, Decimal] in LoanTracker.investments:
+        for entry: tuple[Party, Decimal] in self.investments:
             investor: Party = entry[0]
             invested_amount: Decimal = entry[1]
-            share = invested_amount / LoanTracker.total_raised
+            share = invested_amount / self.total_raised
             distribution_amount = amount_per_period * share
             total_distributed = total_distributed + distribution_amount
 
             claim_cid = create(
                 RepaymentClaim(
-                    platform=LoanTracker.platform,
-                    developer=LoanTracker.developer,
+                    platform=self.platform,
+                    developer=self.developer,
                     investor=investor,
-                    dso=LoanTracker.dso,
-                    campaign_external_id=LoanTracker.campaign_external_id,
+                    dso=self.dso,
+                    campaign_external_id=self.campaign_external_id,
                     amount=distribution_amount,
                     status=RepaymentClaimStatus.CLAIM_PENDING,
                     claim_before=claim_before,
@@ -415,27 +420,27 @@ template LoanTracker:
         )
         updated_loan_terms = LoanTerms(
             loan_rewards=updated_rewards,
-            performance_rewards=LoanTracker.loan_terms.performance_rewards,
+            performance_rewards=self.loan_terms.performance_rewards,
         )
 
         combined_history: list[RepaymentDistribution] = []
-        for existing_distribution: RepaymentDistribution in LoanTracker.repayment_history:
+        for existing_distribution: RepaymentDistribution in self.repayment_history:
             combined_history.append(existing_distribution)
         for new_distribution: RepaymentDistribution in new_distributions:
             combined_history.append(new_distribution)
 
         new_tracker = create(
             LoanTracker(
-                platform=LoanTracker.platform,
-                developer=LoanTracker.developer,
-                dso=LoanTracker.dso,
-                campaign_external_id=LoanTracker.campaign_external_id,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                campaign_external_id=self.campaign_external_id,
                 loan_terms=updated_loan_terms,
-                total_repaid=LoanTracker.total_repaid + amount_per_period,
+                total_repaid=self.total_repaid + amount_per_period,
                 repayment_history=combined_history,
-                investments=LoanTracker.investments,
-                total_raised=LoanTracker.total_raised,
-                balance=LoanTracker.balance - amount_per_period,
+                investments=self.investments,
+                total_raised=self.total_raised,
+                balance=self.balance - amount_per_period,
                 holding_cids=remaining_holdings,
             )
         )
@@ -444,13 +449,13 @@ template LoanTracker:
 
     @choice(controller=platform, consuming=False)
     def get_loan_rewards_schedule(self) -> list[PeriodPayment]:
-        if LoanTracker.loan_terms.loan_rewards == None:
+        if self.loan_terms.loan_rewards == None:
             return []
 
-        rewards: LoanRewards = LoanTracker.loan_terms.loan_rewards
+        rewards: LoanRewards = self.loan_terms.loan_rewards
         existing_payments = rewards.period_payments
         existing_periods = already_paid_periods(existing_payments)
-        total_to_repay = LoanTracker.total_raised * rewards.multiplier
+        total_to_repay = self.total_raised * rewards.multiplier
         amount_per_period = total_to_repay / Decimal(rewards.number_of_periods)
 
         pending_payments: list[PeriodPayment] = []
@@ -481,18 +486,19 @@ template LoanTracker:
 
     @choice(controller=platform, consuming=False)
     def get_loan_rewards_history(self) -> list[PeriodPayment]:
-        if LoanTracker.loan_terms.loan_rewards == None:
+        if self.loan_terms.loan_rewards == None:
             return []
-        rewards: LoanRewards = LoanTracker.loan_terms.loan_rewards
+        rewards: LoanRewards = self.loan_terms.loan_rewards
         return rewards.period_payments
 
 
-template RepaymentClaim:
+@template
+class RepaymentClaim:
     platform: Party
     developer: Party
     investor: Party
     dso: Party
-    campaign_external_id: Text
+    campaign_external_id: str
     amount: Decimal
     status: RepaymentClaimStatus
     claim_before: Timestamp
@@ -507,7 +513,7 @@ template RepaymentClaim:
         developer: Party,
         investor: Party,
         dso: Party,
-        campaign_external_id: Text,
+        campaign_external_id: str,
         amount: Decimal,
         status: RepaymentClaimStatus,
         claim_before: Timestamp,
@@ -529,35 +535,35 @@ template RepaymentClaim:
     def accept(
         self, current_time: Timestamp, app_transfer_context: AppTransferContext
     ) -> list[ContractId[Holding]]:
-        assert RepaymentClaim.status == RepaymentClaimStatus.CLAIM_PENDING, "Claim must be Pending"
-        assert current_time < RepaymentClaim.claim_before, "Claim deadline has passed"
+        assert self.status == RepaymentClaimStatus.CLAIM_PENDING, "Claim must be Pending"
+        assert current_time < self.claim_before, "Claim deadline has passed"
 
         total_amount = Decimal(0)
-        for holding_cid: ContractId[Holding] in RepaymentClaim.holding_cids:
-            amulet_cid = from_interface_contract_id(holding_cid)
+        for holding_cid: ContractId[Holding] in self.holding_cids:
+            amulet_cid: ContractId[Amulet] = from_interface_contract_id(holding_cid)
             amulet = fetch(amulet_cid)
             total_amount = total_amount + amulet.amount.initial_amount
 
         investor_output = TransferOutput(
-            receiver=RepaymentClaim.investor,
+            receiver=self.investor,
             receiver_fee_ratio=Decimal(1),
             amount=total_amount,
             lock=None,
         )
 
         transfer_inputs: list[TransferInput] = []
-        for holding_cid: ContractId[Holding] in RepaymentClaim.holding_cids:
+        for holding_cid: ContractId[Holding] in self.holding_cids:
             transfer_inputs.append(InputAmulet(from_interface_contract_id(holding_cid)))
 
         transfer = Transfer(
-            sender=RepaymentClaim.platform,
-            provider=RepaymentClaim.platform,
+            sender=self.platform,
+            provider=self.platform,
             inputs=transfer_inputs,
             outputs=[investor_output],
             beneficiaries=None,
         )
 
-        transfer_result = exercise_app_transfer(RepaymentClaim.dso, app_transfer_context, transfer)
+        transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         new_holdings: list[ContractId[Holding]] = []
         for created_amulet: CreatedAmulet in transfer_result.created_amulets:
@@ -566,5 +572,5 @@ template RepaymentClaim:
 
     @choice(controller=platform, consuming=True)
     def expire(self, current_time: Timestamp) -> None:
-        assert RepaymentClaim.status == RepaymentClaimStatus.CLAIM_PENDING, "Claim must be Pending"
-        assert current_time >= RepaymentClaim.claim_before, "Cannot expire before deadline"
+        assert self.status == RepaymentClaimStatus.CLAIM_PENDING, "Claim must be Pending"
+        assert current_time >= self.claim_before, "Cannot expire before deadline"

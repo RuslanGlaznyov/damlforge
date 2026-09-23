@@ -1,6 +1,8 @@
 from decimal import Decimal
 from typing import Optional
-from forge.models import ContractId, Party, Text, Timestamp, choice, ledger_effect
+from forge.models import ContractId, Party, Timestamp, choice, ledger_effect
+from forge.builtins import DamlName
+from forge.builtins.daml_lang import archive, create, exercise, fetch
 from loan_terms import LoanRewards, LoanTerms, LoanTracker, PeriodPayment, PeriodPaymentStatus
 from Splice.Amulet import Amulet, LockedAmulet, LockedAmulet_UnlockV2
 from Splice.AmuletRules import (
@@ -10,6 +12,7 @@ from Splice.AmuletRules import (
     Transfer,
     TransferInput,
     TransferOutput,
+    created_amulet_locked_cid,
     created_amulet_to_holding,
     exercise_app_transfer,
 )
@@ -29,7 +32,7 @@ struct FundingCampaignView:
     platform: Party
     developer: Party
     dso: Party
-    external_id: Text
+    external_id: str
     target: Decimal
     deadline: Timestamp
     raised: Decimal
@@ -43,7 +46,7 @@ struct FundingCampaignView:
 struct InstallmentReleaseView:
     platform: Party
     developer: Party
-    external_id: Text
+    external_id: str
     installment_number: int
     amount: Decimal
     release_date: Timestamp
@@ -63,7 +66,7 @@ struct InstallmentTransferView:
     platform: Party
     developer: Party
     dso: Party
-    external_id: Text
+    external_id: str
     installment_number: int
     amount: Decimal
     status: TransferStatus
@@ -187,9 +190,9 @@ def split_at_sizes(
 def split_holdings_into_tranches(
     holdings: list[ContractId[Holding]], num_tranches: int
 ) -> list[list[ContractId[Holding]]]:
-    length = len(holdings)
-    base_size = length / num_tranches
-    remainder = length % num_tranches
+    holdings_count = len(holdings)
+    base_size = holdings_count / num_tranches
+    remainder = holdings_count % num_tranches
 
     sizes: list[int] = []
     for _index: int in range(0, remainder):
@@ -244,11 +247,12 @@ def verify_amulets(dso_party: Party, amulets: list[ContractId[Amulet]]) -> Decim
     return total
 
 
-template FundingCampaign:
+@template
+class FundingCampaign:
     platform: Party
     developer: Party
     dso: Party
-    external_id: Text
+    external_id: str
     target: Decimal
     deadline: Timestamp
     raised: Decimal
@@ -275,7 +279,7 @@ template FundingCampaign:
         platform: Party,
         developer: Party,
         dso: Party,
-        external_id: Text,
+        external_id: str,
         target: Decimal,
         deadline: Timestamp,
         raised: Decimal,
@@ -328,7 +332,7 @@ template FundingCampaign:
         inputs: list[ContractId[Amulet]],
         amount: Decimal,
         app_transfer_context: AppTransferContext,
-    ) -> ContractId["FundingCampaign"]:
+    ) -> ContractId[FundingCampaign]:
         assert self.status == CampaignStatus.ACTIVE, "campaign must be Active"
         assert amount > Decimal(0), "investment amount must be positive"
 
@@ -402,8 +406,9 @@ template FundingCampaign:
 
         locked_cids: list[ContractId[LockedAmulet]] = []
         for created_amulet: CreatedAmulet in transfer_result.created_amulets:
-            if created_amulet.locked_amulet_cid != None:
-                locked_cids.append(created_amulet.locked_amulet_cid)
+            locked_cid = created_amulet_locked_cid(created_amulet)
+            if locked_cid != None:
+                locked_cids.append(locked_cid)
 
         accepted_cids: list[ContractId[LockedAmulet]] = []
         excess_cids: list[ContractId[LockedAmulet]] = []
@@ -516,6 +521,7 @@ template FundingCampaign:
         )
 
     @choice(controller=platform, consuming=True)
+    @DamlName("FundingCampaign_Cancel")
     def cancel(self) -> ContractId["FundingCampaign"]:
         assert (
             self.status == CampaignStatus.SUCCESSFUL
@@ -567,13 +573,13 @@ template FundingCampaign:
             investor: Party = entry[0]
             locked_cid: ContractId[LockedAmulet] = entry[1]
             unlock_result = exercise(locked_cid, LockedAmulet_UnlockV2)
-            holding_cid = to_interface_contract_id(unlock_result.amulet_cid)
+            holding_cid: ContractId[Holding] = to_interface_contract_id(unlock_result.amulet_cid)
             new_unlocked_holdings.append((investor, holding_cid))
 
         tracker_cid: Optional[ContractId[LoanTracker]] = None
         if self.loan_terms != None:
             lt: LoanTerms = self.loan_terms
-            tracker_cid = create(
+            new_tracker_cid = create(
                 LoanTracker(
                     platform=self.platform,
                     developer=self.developer,
@@ -588,6 +594,7 @@ template FundingCampaign:
                     holding_cids=[],
                 )
             )
+            tracker_cid = new_tracker_cid
 
         installment_amounts = calculate_installments(self.raised)
 
@@ -803,25 +810,25 @@ template FundingCampaign:
 
         new_campaign = create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
-                raised=FundingCampaign.raised,
-                balance=FundingCampaign.balance - refunded_amount,
-                status=FundingCampaign.status,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
-                investments=FundingCampaign.investments,
-                excess_investments=FundingCampaign.excess_investments,
-                excess_holdings=FundingCampaign.excess_holdings,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
+                raised=self.raised,
+                balance=self.balance - refunded_amount,
+                status=self.status,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
+                investments=self.investments,
+                excess_investments=self.excess_investments,
+                excess_holdings=self.excess_holdings,
                 locked_holdings=new_locked_holdings,
-                unlocked_holdings=FundingCampaign.unlocked_holdings,
+                unlocked_holdings=self.unlocked_holdings,
                 refunded_investors=new_refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
-                finalized_at=FundingCampaign.finalized_at,
+                loan_terms=self.loan_terms,
+                finalized_at=self.finalized_at,
             )
         )
 
@@ -891,25 +898,25 @@ template FundingCampaign:
 
         new_campaign = create(
             FundingCampaign(
-                platform=FundingCampaign.platform,
-                developer=FundingCampaign.developer,
-                dso=FundingCampaign.dso,
-                external_id=FundingCampaign.external_id,
-                target=FundingCampaign.target,
-                deadline=FundingCampaign.deadline,
-                raised=FundingCampaign.raised,
-                balance=FundingCampaign.balance,
-                status=FundingCampaign.status,
-                accepted_instrument_id=FundingCampaign.accepted_instrument_id,
-                terms=FundingCampaign.terms,
-                investments=FundingCampaign.investments,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                target=self.target,
+                deadline=self.deadline,
+                raised=self.raised,
+                balance=self.balance,
+                status=self.status,
+                accepted_instrument_id=self.accepted_instrument_id,
+                terms=self.terms,
+                investments=self.investments,
                 excess_investments=new_excess_investments,
                 excess_holdings=new_excess_holdings,
-                locked_holdings=FundingCampaign.locked_holdings,
-                unlocked_holdings=FundingCampaign.unlocked_holdings,
-                refunded_investors=FundingCampaign.refunded_investors,
-                loan_terms=FundingCampaign.loan_terms,
-                finalized_at=FundingCampaign.finalized_at,
+                locked_holdings=self.locked_holdings,
+                unlocked_holdings=self.unlocked_holdings,
+                refunded_investors=self.refunded_investors,
+                loan_terms=self.loan_terms,
+                finalized_at=self.finalized_at,
             )
         )
 
@@ -1035,14 +1042,15 @@ template FundingCampaign:
 
     @choice(controller=platform, consuming=False)
     def get_investments(self) -> list[tuple[Party, Decimal]]:
-        return or_empty_party_amounts(FundingCampaign.investments)
+        return or_empty_party_amounts(self.investments)
 
 
-template InstallmentRelease:
+@template
+class InstallmentRelease:
     platform: Party
     developer: Party
     dso: Party
-    external_id: Text
+    external_id: str
     installment_number: int
     amount: Decimal
     release_date: Timestamp
@@ -1060,7 +1068,7 @@ template InstallmentRelease:
         platform: Party,
         developer: Party,
         dso: Party,
-        external_id: Text,
+        external_id: str,
         installment_number: int,
         amount: Decimal,
         release_date: Timestamp,
@@ -1095,20 +1103,20 @@ template InstallmentRelease:
     def escrow(
         self, campaign_cid: ContractId[FundingCampaign]
     ) -> tuple[ContractId["InstallmentRelease"], ContractId[FundingCampaign]]:
-        assert not InstallmentRelease.paused, "Installment is paused"
-        assert not InstallmentRelease.escrowed, "Installment already escrowed"
-        assert not InstallmentRelease.released, "Cannot escrow released installment"
+        assert not self.paused, "Installment is paused"
+        assert not self.escrowed, "Installment already escrowed"
+        assert not self.released, "Cannot escrow released installment"
 
         campaign_data = fetch(campaign_cid)
 
         assert campaign_data.status == CampaignStatus.COMPLETED, "Campaign must be Completed"
-        assert campaign_data.balance >= InstallmentRelease.amount, "Campaign has insufficient balance"
+        assert campaign_data.balance >= self.amount, "Campaign has insufficient balance"
 
         current_unlocked_holdings = or_empty_holdings(campaign_data.unlocked_holdings)
         just_holdings: list[ContractId[Holding]] = []
         for entry: tuple[Party, ContractId[Holding]] in current_unlocked_holdings:
             just_holdings.append(entry[1])
-        num_holdings_needed = calculate_num_holdings_needed(current_unlocked_holdings, InstallmentRelease.amount)
+        num_holdings_needed = calculate_num_holdings_needed(current_unlocked_holdings, self.amount)
 
         escrowed_holdings: list[tuple[Party, ContractId[Holding]]] = []
         remaining_holdings: list[tuple[Party, ContractId[Holding]]] = []
@@ -1130,7 +1138,7 @@ template InstallmentRelease:
                 target=campaign_data.target,
                 deadline=campaign_data.deadline,
                 raised=campaign_data.raised,
-                balance=campaign_data.balance - InstallmentRelease.amount,
+                balance=campaign_data.balance - self.amount,
                 status=campaign_data.status,
                 accepted_instrument_id=campaign_data.accepted_instrument_id,
                 terms=campaign_data.terms,
@@ -1151,19 +1159,19 @@ template InstallmentRelease:
 
         updated_installment = create(
             InstallmentRelease(
-                platform=InstallmentRelease.platform,
-                developer=InstallmentRelease.developer,
-                dso=InstallmentRelease.dso,
-                external_id=InstallmentRelease.external_id,
-                installment_number=InstallmentRelease.installment_number,
-                amount=InstallmentRelease.amount,
-                release_date=InstallmentRelease.release_date,
-                released=InstallmentRelease.released,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                installment_number=self.installment_number,
+                amount=self.amount,
+                release_date=self.release_date,
+                released=self.released,
                 escrowed=True,
-                platform_fees=InstallmentRelease.platform_fees,
+                platform_fees=self.platform_fees,
                 holding_cids=escrowed_holding_cids,
-                paused=InstallmentRelease.paused,
-                loan_tracker_cid=InstallmentRelease.loan_tracker_cid,
+                paused=self.paused,
+                loan_tracker_cid=self.loan_tracker_cid,
             )
         )
 
@@ -1173,24 +1181,24 @@ template InstallmentRelease:
     def release(
         self, current_time: Timestamp, accept_before: Timestamp
     ) -> tuple[ContractId["InstallmentRelease"], ContractId[InstallmentTransfer], list[ContractId[Holding]]]:
-        assert not InstallmentRelease.paused, "installment is currently paused and cannot be released"
-        assert current_time >= InstallmentRelease.release_date, "release date not reached"
-        assert not InstallmentRelease.released, "installment has already been released"
-        assert InstallmentRelease.escrowed, "installment must be escrowed before release"
-        assert len(InstallmentRelease.holding_cids) > 0, "installment has no holdings to release"
+        assert not self.paused, "installment is currently paused and cannot be released"
+        assert current_time >= self.release_date, "release date not reached"
+        assert not self.released, "installment has already been released"
+        assert self.escrowed, "installment must be escrowed before release"
+        assert len(self.holding_cids) > 0, "installment has no holdings to release"
         assert accept_before > current_time, "accept deadline must be after current time"
 
-        if InstallmentRelease.loan_tracker_cid != None:
-            tracker_cid: ContractId[LoanTracker] = InstallmentRelease.loan_tracker_cid
-            if InstallmentRelease.installment_number > 1:
+        if self.loan_tracker_cid != None:
+            tracker_cid: ContractId[LoanTracker] = self.loan_tracker_cid
+            if self.installment_number > 1:
                 tracker_data = fetch(tracker_cid)
                 assert (
-                    tracker_data.loan_terms.loan_rewards != None or InstallmentRelease.installment_number == 1
+                    tracker_data.loan_terms.loan_rewards != None or self.installment_number == 1
                 ), "loan tracker state appears inconsistent"
 
                 if tracker_data.loan_terms.loan_rewards != None:
                     rewards: LoanRewards = tracker_data.loan_terms.loan_rewards
-                    required_period = InstallmentRelease.installment_number - 1
+                    required_period = self.installment_number - 1
                     paid_period_numbers: list[int] = []
                     for payment: PeriodPayment in rewards.period_payments:
                         if payment.status == PeriodPaymentStatus.PERIOD_PAID:
@@ -1201,15 +1209,15 @@ template InstallmentRelease:
                             required_period_paid = True
                     assert required_period_paid, "required period must be paid before releasing this installment"
 
-        num_holdings = len(InstallmentRelease.holding_cids)
+        num_holdings = len(self.holding_cids)
         assert num_holdings > 0, "installment must have at least one holding"
 
-        num_for_platform = floor(Decimal(num_holdings) * InstallmentRelease.platform_fees)
+        num_for_platform = floor(Decimal(num_holdings) * self.platform_fees)
 
         platform_holding_cids: list[ContractId[Holding]] = []
         developer_holding_cids: list[ContractId[Holding]] = []
         index = 0
-        for holding_cid: ContractId[Holding] in InstallmentRelease.holding_cids:
+        for holding_cid: ContractId[Holding] in self.holding_cids:
             if index < num_for_platform:
                 platform_holding_cids.append(holding_cid)
             else:
@@ -1220,12 +1228,12 @@ template InstallmentRelease:
 
         transfer_cid = create(
             InstallmentTransfer(
-                platform=InstallmentRelease.platform,
-                developer=InstallmentRelease.developer,
-                dso=InstallmentRelease.dso,
-                external_id=InstallmentRelease.external_id,
-                installment_number=InstallmentRelease.installment_number,
-                amount=InstallmentRelease.amount,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                installment_number=self.installment_number,
+                amount=self.amount,
                 status=TransferStatus.PENDING,
                 accept_before=accept_before,
                 holding_cids=developer_holding_cids,
@@ -1234,19 +1242,19 @@ template InstallmentRelease:
 
         updated_installment = create(
             InstallmentRelease(
-                platform=InstallmentRelease.platform,
-                developer=InstallmentRelease.developer,
-                dso=InstallmentRelease.dso,
-                external_id=InstallmentRelease.external_id,
-                installment_number=InstallmentRelease.installment_number,
-                amount=InstallmentRelease.amount,
-                release_date=InstallmentRelease.release_date,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                installment_number=self.installment_number,
+                amount=self.amount,
+                release_date=self.release_date,
                 released=True,
                 escrowed=False,
-                platform_fees=InstallmentRelease.platform_fees,
+                platform_fees=self.platform_fees,
                 holding_cids=[],
-                paused=InstallmentRelease.paused,
-                loan_tracker_cid=InstallmentRelease.loan_tracker_cid,
+                paused=self.paused,
+                loan_tracker_cid=self.loan_tracker_cid,
             )
         )
 
@@ -1254,53 +1262,54 @@ template InstallmentRelease:
 
     @choice(controller=platform, consuming=True)
     def pause_installment(self) -> ContractId["InstallmentRelease"]:
-        assert not InstallmentRelease.paused, "Installment already paused"
-        assert not InstallmentRelease.released, "Cannot pause released installment"
+        assert not self.paused, "Installment already paused"
+        assert not self.released, "Cannot pause released installment"
         return create(
             InstallmentRelease(
-                platform=InstallmentRelease.platform,
-                developer=InstallmentRelease.developer,
-                dso=InstallmentRelease.dso,
-                external_id=InstallmentRelease.external_id,
-                installment_number=InstallmentRelease.installment_number,
-                amount=InstallmentRelease.amount,
-                release_date=InstallmentRelease.release_date,
-                released=InstallmentRelease.released,
-                escrowed=InstallmentRelease.escrowed,
-                platform_fees=InstallmentRelease.platform_fees,
-                holding_cids=InstallmentRelease.holding_cids,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                installment_number=self.installment_number,
+                amount=self.amount,
+                release_date=self.release_date,
+                released=self.released,
+                escrowed=self.escrowed,
+                platform_fees=self.platform_fees,
+                holding_cids=self.holding_cids,
                 paused=True,
-                loan_tracker_cid=InstallmentRelease.loan_tracker_cid,
+                loan_tracker_cid=self.loan_tracker_cid,
             )
         )
 
     @choice(controller=platform, consuming=True)
     def resume_installment(self) -> ContractId["InstallmentRelease"]:
-        assert InstallmentRelease.paused, "Installment not paused"
+        assert self.paused, "Installment not paused"
         return create(
             InstallmentRelease(
-                platform=InstallmentRelease.platform,
-                developer=InstallmentRelease.developer,
-                dso=InstallmentRelease.dso,
-                external_id=InstallmentRelease.external_id,
-                installment_number=InstallmentRelease.installment_number,
-                amount=InstallmentRelease.amount,
-                release_date=InstallmentRelease.release_date,
-                released=InstallmentRelease.released,
-                escrowed=InstallmentRelease.escrowed,
-                platform_fees=InstallmentRelease.platform_fees,
-                holding_cids=InstallmentRelease.holding_cids,
+                platform=self.platform,
+                developer=self.developer,
+                dso=self.dso,
+                external_id=self.external_id,
+                installment_number=self.installment_number,
+                amount=self.amount,
+                release_date=self.release_date,
+                released=self.released,
+                escrowed=self.escrowed,
+                platform_fees=self.platform_fees,
+                holding_cids=self.holding_cids,
                 paused=False,
-                loan_tracker_cid=InstallmentRelease.loan_tracker_cid,
+                loan_tracker_cid=self.loan_tracker_cid,
             )
         )
 
 
-template InstallmentTransfer:
+@template
+class InstallmentTransfer:
     platform: Party
     developer: Party
     dso: Party
-    external_id: Text
+    external_id: str
     installment_number: int
     amount: Decimal
     status: TransferStatus
@@ -1314,7 +1323,7 @@ template InstallmentTransfer:
         platform: Party,
         developer: Party,
         dso: Party,
-        external_id: Text,
+        external_id: str,
         installment_number: int,
         amount: Decimal,
         status: TransferStatus,
@@ -1339,35 +1348,35 @@ template InstallmentTransfer:
     def accept(
         self, current_time: Timestamp, app_transfer_context: AppTransferContext
     ) -> list[ContractId[Holding]]:
-        assert InstallmentTransfer.status == TransferStatus.PENDING, "Transfer must be Pending"
-        assert current_time < InstallmentTransfer.accept_before, "Accept deadline has passed"
+        assert self.status == TransferStatus.PENDING, "Transfer must be Pending"
+        assert current_time < self.accept_before, "Accept deadline has passed"
 
         total_amount = Decimal(0)
-        for holding_cid: ContractId[Holding] in InstallmentTransfer.holding_cids:
-            amulet_cid = from_interface_contract_id(holding_cid)
+        for holding_cid: ContractId[Holding] in self.holding_cids:
+            amulet_cid: ContractId[Amulet] = from_interface_contract_id(holding_cid)
             amulet = fetch(amulet_cid)
             total_amount = total_amount + amulet.amount.initial_amount
 
         developer_output = TransferOutput(
-            receiver=InstallmentTransfer.developer,
+            receiver=self.developer,
             receiver_fee_ratio=Decimal(1),
             amount=total_amount,
             lock=None,
         )
 
         transfer_inputs: list[TransferInput] = []
-        for holding_cid: ContractId[Holding] in InstallmentTransfer.holding_cids:
+        for holding_cid: ContractId[Holding] in self.holding_cids:
             transfer_inputs.append(InputAmulet(from_interface_contract_id(holding_cid)))
 
         transfer = Transfer(
-            sender=InstallmentTransfer.platform,
-            provider=InstallmentTransfer.platform,
+            sender=self.platform,
+            provider=self.platform,
             inputs=transfer_inputs,
             outputs=[developer_output],
             beneficiaries=None,
         )
 
-        transfer_result = exercise_app_transfer(InstallmentTransfer.dso, app_transfer_context, transfer)
+        transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         new_holdings: list[ContractId[Holding]] = []
         for created_amulet: CreatedAmulet in transfer_result.created_amulets:
@@ -1376,9 +1385,9 @@ template InstallmentTransfer:
 
     @choice(controller=developer, consuming=True)
     def reject(self) -> None:
-        assert InstallmentTransfer.status == TransferStatus.PENDING, "Transfer must be Pending"
+        assert self.status == TransferStatus.PENDING, "Transfer must be Pending"
 
     @choice(controller=platform, consuming=True)
     def withdraw(self, current_time: Timestamp) -> None:
-        assert InstallmentTransfer.status == TransferStatus.PENDING, "Transfer must be Pending"
-        assert current_time >= InstallmentTransfer.accept_before, "Cannot withdraw before deadline"
+        assert self.status == TransferStatus.PENDING, "Transfer must be Pending"
+        assert current_time >= self.accept_before, "Cannot withdraw before deadline"

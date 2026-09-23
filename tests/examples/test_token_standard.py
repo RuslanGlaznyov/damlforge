@@ -9,27 +9,32 @@ EXAMPLE_PATH = (
     Path(__file__).resolve().parents[2] / "examples" / "token_standard" / "token_standard.vy"
 )
 
+
 def _parse_simple():
     source_path = Path(__file__).resolve().parents[2] / "examples" / "basic" / "simple.vy"
     source = source_path.read_text()
     return parse_to_ast(source, module_path="simple.vy", resolved_path=str(source_path))
 
 
-def test_token_standard_example_parses_and_passes_semantic_analysis():
-    module = _parse_example()
-
-    analyze_module(module)
-
 def test_simple():
     module = _parse_simple()
-
     analyze_module(module)
     lowered = lower_module(module)
     source, map = generate_daml(lowered)
-    print(source)
+    assert source is not None
+    assert map is not None
+    assert "template SimpleTemplate" in source
+
 
 def test_token_standard_example_declares_expected_containers():
-    module = _parse_example()
+    source = EXAMPLE_PATH.read_text()
+    assert source is not None
+    
+    module = parse_to_ast(source, module_path="token_standard.vy", resolved_path=str(EXAMPLE_PATH))
+    assert module is not None
+    
+    graph = analyze_module(module)
+    assert graph is not None
 
     names_by_type = {}
     for node in module.body:

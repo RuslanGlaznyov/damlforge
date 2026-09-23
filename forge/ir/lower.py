@@ -18,8 +18,8 @@ from forge.ir.nodes import (
     IRFor,
     IRFunction,
     IRIf,
-    IRInstance,
     IRInterface,
+    IRInterfaceInstance,
     IRList,
     IRImport,
     IRModule,
@@ -372,6 +372,42 @@ def lower_interface(node: vy_ast.InterfaceDef) -> IRInterface:
     return IRInterface(node.name, view, requires, tuple(keywords), choices, src=_src(node))
 
 
+def _has_decorator(fn: vy_ast.FunctionDef, name: str) -> bool:
+    for dec in fn.decorator_list:
+        target = dec.func if isinstance(dec, vy_ast.Call) else dec
+        if isinstance(target, vy_ast.Name) and target.id == name:
+            return True
+    return False
+
+
+def _interface_choice_names(interface_decl: vy_ast.InterfaceDef) -> frozenset:
+    return frozenset(
+        stmt.name
+        for stmt in interface_decl.body
+        if isinstance(stmt, vy_ast.FunctionDef) and _choice_call(stmt) is not None
+    )
+
+
+def _interface_view_type_name(interface_decl: vy_ast.InterfaceDef) -> "str | None":
+    for kw in interface_decl.keywords:
+        if kw.arg == "view" and isinstance(kw.value, vy_ast.Name):
+            return kw.value.id
+    return None
+
+
+def _implemented_interfaces(node: vy_ast.TemplateDef) -> tuple:
+    from forge.semantics.analysis.types import known_declarations
+
+    declarations = known_declarations([node.module_node])
+    result = []
+    for base in node.bases:
+        if isinstance(base, vy_ast.Name):
+            decl = declarations.get(base.id)
+            if isinstance(decl, vy_ast.InterfaceDef):
+                result.append((base.id, decl))
+    return tuple(result)
+
+
 def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
     fields = tuple(
         Field(stmt.target.id, lower_type(stmt.annotation))
@@ -384,27 +420,56 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
     observer = _find_observer(node.body)
     ensure = _find_ensure(node.body)
 
+    implemented = _implemented_interfaces(node)
+    interface_choice_owner: dict = {}
+    interface_view_type: dict = {}
+    for iface_name, iface_decl in implemented:
+        for choice_name in _interface_choice_names(iface_decl):
+            interface_choice_owner[choice_name] = iface_name
+        view_type = _interface_view_type_name(iface_decl)
+        if view_type is not None:
+            interface_view_type[view_type] = iface_name
+
     init = None
-    choices = []
+    own_choices = []
+    interface_choices: dict = {name: [] for name, _ in implemented}
+    interface_views: dict = {}
     for stmt in node.body:
         if not isinstance(stmt, vy_ast.FunctionDef):
             continue
         if stmt.name == "__init__":
             init = lower_function(stmt)
+        elif _has_decorator(stmt, "view") and isinstance(stmt.returns, vy_ast.Name):
+            iface_name = interface_view_type.get(stmt.returns.id)
+            if iface_name is not None:
+                interface_views[iface_name] = lower_function(stmt)
         elif _choice_call(stmt) is not None:
-            choices.append(lower_choice(stmt))
+            iface_name = interface_choice_owner.get(stmt.name)
+            if iface_name is not None:
+                interface_choices[iface_name].append(lower_choice(stmt))
+            else:
+                own_choices.append(lower_choice(stmt))
+
+    interface_instances = tuple(
+        IRInterfaceInstance(
+            interface=iface_name,
+            view=interface_views.get(iface_name),
+            choices=tuple(interface_choices[iface_name]),
+        )
+        for iface_name, _ in implemented
+    )
 
     return IRTemplate(
-        node.name, fields, signatory, observer, ensure, init, tuple(choices), src=_src(node)
+        node.name,
+        fields,
+        signatory,
+        observer,
+        ensure,
+        init,
+        tuple(own_choices),
+        interface_instances,
+        src=_src(node),
     )
-
-
-def lower_instance(node: vy_ast.InstanceDef) -> IRInstance:
-    bases = tuple(base.id for base in node.bases)
-    choices = tuple(
-        lower_choice(stmt) for stmt in node.body if isinstance(stmt, vy_ast.FunctionDef)
-    )
-    return IRInstance(node.name, bases, choices, src=_src(node))
 
 
 _CONSTRUCTOR_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.TemplateDef, vy_ast.FlagDef)
@@ -460,7 +525,6 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
     flags = []
     interfaces = []
     templates = []
-    instances = []
     functions = []
 
     for node in module.body:
@@ -472,8 +536,6 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
             interfaces.append(lower_interface(node))
         elif isinstance(node, vy_ast.TemplateDef):
             templates.append(lower_template(node))
-        elif isinstance(node, vy_ast.InstanceDef):
-            instances.append(lower_instance(node))
         elif isinstance(node, vy_ast.FunctionDef):
             functions.append(lower_function(node))
 
@@ -482,7 +544,6 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
         flags=tuple(flags),
         interfaces=tuple(interfaces),
         templates=tuple(templates),
-        instances=tuple(instances),
         functions=tuple(functions),
         imports=_lower_imports(module.body, import_graph),
     )

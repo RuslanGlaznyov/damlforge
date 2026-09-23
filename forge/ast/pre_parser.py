@@ -186,22 +186,26 @@ class HexStringParser:
         return True
 
 
-def _is_bare_decorated_class(token_list, class_index: int, decorator_name: str) -> bool:
+def _get_bare_decorated_class_type(
+    token_list: list[TokenInfo], class_index: int
+) -> str | None:
     if class_index < 3:
-        return False
+        return None
     newline_tok, name_tok, at_tok = (
         token_list[class_index - 1],
         token_list[class_index - 2],
         token_list[class_index - 3],
     )
-    return (
+    if not (
         newline_tok.type == NEWLINE
         and name_tok.type == NAME
-        and name_tok.string == decorator_name
         and at_tok.type == OP
         and at_tok.string == "@"
         and at_tok.start[1] == 0
-    )
+    ):
+        return None
+
+    return DECORATED_CLASS_TYPES.get(name_tok.string)
 
 
 # compound statements that are replaced with `class`
@@ -213,12 +217,13 @@ VYPER_CLASS_TYPES = {
     "error": "ErrorDef",
     "interface": "InterfaceDef",
     "struct": "StructDef",
-    "template": "TemplateDef",
-    "instance": "InstanceDef",
 }
 
 # simple statements that are replaced with `yield`
 CUSTOM_STATEMENT_TYPES = {"log": "Log"}
+
+# class declarations that can be expressed using a bare decorator
+DECORATED_CLASS_TYPES = {"template": "TemplateDef"}
 
 
 class PreParser:
@@ -307,12 +312,14 @@ class PreParser:
                 if contents.startswith("pragma "):
                     _parse_pragma(contents, settings, self._is_interface, code, start)
 
-            if (
-                typ == NAME
-                and string == "class"
-                and _is_bare_decorated_class(token_list, i, "template")
-            ):
-                keyword_translations[newstart] = "TemplateDef"
+            if typ == NAME and string == "class":
+                decorated_class_type = _get_bare_decorated_class_type(token_list, i)
+                if decorated_class_type is not None:
+                    keyword_translations[newstart] = decorated_class_type
+                else:
+                    raise SyntaxException(
+                        f"The `{string}` keyword is not allowed. ", code, start[0], start[1]
+                    )
 
             elif typ == NAME and string in ("class", "yield"):
                 raise SyntaxException(

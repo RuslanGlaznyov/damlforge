@@ -234,6 +234,14 @@ class IRInterface:
 
 
 @dataclass(frozen=True)
+class IRInterfaceInstance:
+    interface: str
+    view: Optional[IRFunction]
+    choices: tuple[IRChoice, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
 class IRTemplate:
     name: str
     fields: tuple[Field, ...]
@@ -242,14 +250,7 @@ class IRTemplate:
     ensure: Optional[IRExpr]
     init: Optional[IRFunction]
     choices: tuple[IRChoice, ...]
-    src: Optional[SourceSpan] = field(default=None, compare=False)
-
-
-@dataclass(frozen=True)
-class IRInstance:
-    name: str
-    bases: tuple[str, ...]
-    choices: tuple[IRChoice, ...]
+    interface_instances: tuple[IRInterfaceInstance, ...] = ()
     src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
@@ -267,6 +268,5 @@ class IRModule:
     flags: tuple[IRFlag, ...] = ()
     interfaces: tuple[IRInterface, ...] = ()
     templates: tuple[IRTemplate, ...] = ()
-    instances: tuple[IRInstance, ...] = ()
     functions: tuple[IRFunction, ...] = ()
     imports: tuple[IRImport, ...] = ()

@@ -763,10 +763,6 @@ class StructDef(TopLevel):
 
 
 class TemplateDef(TopLevel):
-    __slots__ = ("name", "body")
-
-
-class InstanceDef(TopLevel):
     __slots__ = ("name", "body", "bases")
 
 

@@ -1,19 +1,13 @@
 from forge.builtins import (
     ChoiceMeta,
     Consuming,
-    InstanceMeta,
     InterfaceMeta,
     choice,
-    instance,
     interface,
     ledger_effect,
     view,
+    template,
 )
-
-
-def template(cls):
-    cls.__template__ = True
-    return cls
 
 
 def exception(cls):

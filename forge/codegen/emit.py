@@ -30,6 +30,7 @@ from forge.ir.nodes import (
     IRFunction,
     IRIf,
     IRInterface,
+    IRInterfaceInstance,
     IRList,
     IRModule,
     IRName,
@@ -251,6 +252,13 @@ def _render_decimal_literal(value) -> str:
     return f"({text} : Decimal)"
 
 
+def _render_record_field_value(v) -> str:
+    rendered = render_expr(v)
+    if isinstance(v, IRCall) and v.keywords:
+        return f"({rendered})"
+    return rendered
+
+
 def _render_call(e: IRCall) -> str:
     if (
         isinstance(e.func, IRName)
@@ -281,7 +289,9 @@ def _render_call(e: IRCall) -> str:
     func_name = render_expr(e.func)
     if e.keywords:
         renames = _external_field_renames()
-        kw_str = ", ".join(f"{renames.get(k, k)} = {render_expr(v)}" for k, v in e.keywords)
+        kw_str = ", ".join(
+            f"{renames.get(k, k)} = {_render_record_field_value(v)}" for k, v in e.keywords
+        )
         return f"{func_name} with {kw_str}"
     if not e.args:
         return func_name
@@ -671,7 +681,14 @@ class Emitter:
         self.lines_block(render(doc))
         self.record(f.src, "flag", f.name, start)
 
-    def emit_choice(self, c: IRChoice, container_name: str, indent: int, field_types=None) -> None:
+    def emit_choice(
+        self,
+        c: IRChoice,
+        container_name: str,
+        indent: int,
+        field_types=None,
+        delegate_to: Optional[str] = None,
+    ) -> None:
         start = len(self.lines) + 1
         is_template_choice = field_types is not None
         known = frozenset(a.name for a in c.args)
@@ -709,6 +726,15 @@ class Emitter:
         if c.observer is not None:
             parts.append(nest(2, concat([line(), text(f"observer {render_expr(c.observer)}")])))
         parts.append(nest(2, concat([line(), text(f"controller {controller_expr}")])))
+
+        if delegate_to is not None:
+            arg_names = " ".join(a.name for a in c.args)
+            call = f"{delegate_to} this self" + (f" {arg_names}" if arg_names else "")
+            parts.append(nest(2, concat([line(), text(f"do {call}")])))
+            self.lines_block(render(concat(parts), initial_indent=indent * 2))
+            self.record(c.src, "choice", f"{container_name}.{c.name}", start)
+            return
+
         parts.append(nest(2, concat([line(), text("do")])))
         self.lines_block(render(concat(parts), initial_indent=indent * 2))
 
@@ -717,6 +743,22 @@ class Emitter:
         body_lines.extend(translator.render_body(body, indent + 2, known=known))
         self.lines_block(body_lines)
         self.record(c.src, "choice", f"{container_name}.{c.name}", start)
+
+    def emit_interface_choice_impl(
+        self, c: IRChoice, container_name: str, indent: int, field_types
+    ) -> None:
+        start = len(self.lines) + 1
+        arg_names = [a.name for a in c.args]
+        header = f"{c.name}_impl _self" + "".join(f" {n}" for n in arg_names)
+        self.lines_block([f"{'  ' * indent}{header} = do"])
+
+        body = SelfFieldRewriter.rewrite_stmts(list(c.body), field_types)
+        known = frozenset(arg_names) | {SELF}
+        body_lines = [f"{'  ' * indent}    let {SELF} = this"]
+        translator = self._translator(self_type=container_name)
+        body_lines.extend(translator.render_body(body, indent + 2, known=known))
+        self.lines_block(body_lines)
+        self.record(c.src, "interface_choice_impl", f"{container_name}.{c.name}_impl", start)
 
     def emit_function(self, fn: IRFunction) -> None:
         start = len(self.lines) + 1
@@ -779,6 +821,9 @@ class Emitter:
         for c in t.choices:
             self.line("")
             self.emit_choice(c, t.name, indent=2, field_types=field_types)
+        for ii in t.interface_instances:
+            self.line("")
+            self.emit_interface_instance(ii, t.name, field_types)
         self.record(t.src, "template", t.name, start)
 
     def emit_interface(self, i: IRInterface) -> None:
@@ -796,8 +841,47 @@ class Emitter:
 
         for c in i.choices:
             self.line("")
-            self.emit_choice(c, i.name, indent=1)
+            impl_name = f"{c.name}_impl"
+            arg_types = [
+                render_type(a.type, as_arg=True) if a.type is not None else "()" for a in c.args
+            ]
+            return_type_str = (
+                render_type(c.return_type, as_arg=True) if c.return_type is not None else "()"
+            )
+            sig_types = " -> ".join([f"ContractId {i.name}", *arg_types, f"Update {return_type_str}"])
+            self.lines_block([f"  {impl_name} : {sig_types}"])
+            self.line("")
+            self.emit_choice(c, i.name, indent=1, delegate_to=impl_name)
         self.record(i.src, "interface", i.name, start)
+
+    def emit_interface_instance(
+        self, ii: IRInterfaceInstance, template_name: str, field_types
+    ) -> None:
+        start = len(self.lines) + 1
+
+        rendered_view = "-- MISSING view"
+        if ii.view is not None:
+            view_body = SelfFieldRewriter.rewrite_stmts(list(ii.view.body), field_types)
+            view_expr = (
+                view_body[-1].value
+                if len(view_body) == 1 and isinstance(view_body[-1], IRReturn)
+                else None
+            )
+            if view_expr is not None:
+                rendered_view = f"let {SELF} = this in {render_expr(view_expr)}"
+
+        header = concat(
+            [
+                text(f"interface instance {ii.interface} for {template_name} where"),
+                nest(2, concat([line(), text(f"view = {rendered_view}")])),
+            ]
+        )
+        self.lines_block(render(header, initial_indent=4))
+
+        for c in ii.choices:
+            self.line("")
+            self.emit_interface_choice_impl(c, template_name, indent=3, field_types=field_types)
+        self.record(ii.src, "interface_instance", f"{ii.interface}_for_{template_name}", start)
 
     def _render_header(self, imports, body_source: str, module_name: Optional[str]) -> str:
         header = f"module {module_name} where\n\n" if module_name is not None else ""

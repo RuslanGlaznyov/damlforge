@@ -315,11 +315,12 @@ class view(VyDecorator):
                 )
             )
 
-        if isinstance(container, vy_ast.TemplateDef):
+        if isinstance(container, vy_ast.TemplateDef) and not container.bases:
             errors.append(
                 DamlForgeException(
                     f"`@{cls.__name__}` on `{container.name}.{fn.name}` is only valid "
-                    "inside `interface`/`instance`, not `template`",
+                    "inside `interface`, or a `template` that implements one via "
+                    f"`template {container.name}(SomeInterface):`",
                     fn,
                     code=ErrorCodes.DF1207.value,
                 )
@@ -335,19 +336,6 @@ class InterfaceMeta:
 def interface(*, view, requires=()):
     def wrap(cls):
         cls.__interface__ = InterfaceMeta(view=view, requires=tuple(requires))
-        return cls
-
-    return wrap
-
-
-@dataclasses.dataclass(frozen=True)
-class InstanceMeta:
-    interface: Any
-
-
-def instance(interface_cls):
-    def wrap(cls):
-        cls.__instance__ = InstanceMeta(interface=interface_cls)
         return cls
 
     return wrap

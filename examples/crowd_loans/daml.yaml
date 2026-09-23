@@ -1,0 +1,22 @@
+sdk-version: 3.4.8
+name: fundraising
+source: .
+version: 0.2.11
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script
+data-dependencies:
+  - lib/splice-amulet-0.1.19.dar
+build-options:
+  - --ghc-option=-Wunused-binds
+  - --ghc-option=-Wunused-matches
+  - --target=2.1
+  - -Wno-upgrade-interfaces
+  - -Wno-template-interface-depends-on-daml-script
+  - --package=splice-api-token-holding-v1-1.0.0
+codegen:
+  java:
+    package-prefix: org.lfdecentralizedtrust.splice.codegen.java
+    decoderClass: org.lfdecentralizedtrust.splice.codegen.java.DecoderSpliceUtil
+    output-directory: target/daml-codegen-java
