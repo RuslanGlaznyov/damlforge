@@ -13,10 +13,11 @@ camelCase (`amuletRules`, `exerciseAppTransfer`, ...) - those carry a
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Optional
 
-from forge.models.types import ContractId, GenMap, Party, RelTime, Text, Timestamp
+from forge.models.types import ContractId, GenMap, Party, Text
 from .. import DamlCaseAccessor, DamlName
 from .Amulet import (
     Amulet,
@@ -180,7 +181,7 @@ class AmuletRules:
     """
 
     dso: Party
-    config_schedule: Annotated[Schedule[Timestamp, AmuletConfig[USD]], DamlName("configSchedule")]
+    config_schedule: Annotated[Schedule[datetime, AmuletConfig[USD]], DamlName("configSchedule")]
     is_dev_net: Annotated[bool, DamlName("isDevNet")]
     contract_state_schema_version: Annotated[
         Optional[int], DamlName("contractStateSchemaVersion")
@@ -556,8 +557,8 @@ class ExternalPartySetupProposal:
     validator: Party
     user: Party
     dso: Party
-    created_at: Annotated[Timestamp, DamlName("createdAt")]
-    preapproval_expires_at: Annotated[Timestamp, DamlName("preapprovalExpiresAt")]
+    created_at: Annotated[datetime, DamlName("createdAt")]
+    preapproval_expires_at: Annotated[datetime, DamlName("preapprovalExpiresAt")]
 
 
 @dataclass(frozen=True)
@@ -644,9 +645,9 @@ class TransferPreapproval:
     dso: Party
     receiver: Party
     provider: Party
-    valid_from: Annotated[Timestamp, DamlName("validFrom")]
-    last_renewed_at: Annotated[Timestamp, DamlName("lastRenewedAt")]
-    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    valid_from: Annotated[datetime, DamlName("validFrom")]
+    last_renewed_at: Annotated[datetime, DamlName("lastRenewedAt")]
+    expires_at: Annotated[datetime, DamlName("expiresAt")]
 
 
 @dataclass(frozen=True)
@@ -744,7 +745,7 @@ class TransferPreapproval_Renew:
 
     context: PaymentTransferContext
     inputs: list[TransferInput]
-    new_expires_at: Annotated[Timestamp, DamlName("newExpiresAt")]
+    new_expires_at: Annotated[datetime, DamlName("newExpiresAt")]
 
 
 @dataclass(frozen=True)
@@ -882,9 +883,9 @@ class AmuletRules_CreateExternalPartySetupProposal:
     inputs: list[TransferInput]
     user: Party
     validator: Party
-    preapproval_expires_at: Annotated[Timestamp, DamlName("preapprovalExpiresAt")]
+    preapproval_expires_at: Annotated[datetime, DamlName("preapprovalExpiresAt")]
     expected_dso: Annotated[Optional[Party], DamlName("expectedDso")] = None
-    opt_created_at: Annotated[Optional[Timestamp], DamlName("optCreatedAt")] = None
+    opt_created_at: Annotated[Optional[datetime], DamlName("optCreatedAt")] = None
 
 
 @dataclass(frozen=True)
@@ -923,9 +924,9 @@ class AmuletRules_CreateTransferPreapproval:
     inputs: list[TransferInput]
     receiver: Party
     provider: Party
-    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    expires_at: Annotated[datetime, DamlName("expiresAt")]
     expected_dso: Annotated[Optional[Party], DamlName("expectedDso")] = None
-    opt_created_at: Annotated[Optional[Timestamp], DamlName("optCreatedAt")] = None
+    opt_created_at: Annotated[Optional[datetime], DamlName("optCreatedAt")] = None
 
 
 @dataclass(frozen=True)
@@ -1098,7 +1099,7 @@ class AmuletRules_Bootstrap_Rounds:
     """
 
     amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
-    round0_duration: Annotated[RelTime, DamlName("round0Duration")]
+    round0_duration: Annotated[timedelta, DamlName("round0Duration")]
     initial_round: Annotated[Optional[int], DamlName("initialRound")] = None
 
 
@@ -1455,7 +1456,7 @@ class AmuletRules_AllocateDevelopmentFundCoupon:
     ]
     beneficiary: Party
     amount: Decimal
-    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    expires_at: Annotated[datetime, DamlName("expiresAt")]
     reason: Text
     fund_manager: Annotated[Party, DamlName("fundManager")]
 
@@ -1526,7 +1527,7 @@ class AmuletRules_AddFutureAmuletConfigSchedule:
             newScheduleItem : (Time, AmuletConfig Unit.USD)
     """
 
-    new_schedule_item: Annotated[tuple[Timestamp, AmuletConfig[USD]], DamlName("newScheduleItem")]
+    new_schedule_item: Annotated[tuple[datetime, AmuletConfig[USD]], DamlName("newScheduleItem")]
 
 
 @dataclass(frozen=True)
@@ -1549,7 +1550,7 @@ class AmuletRules_RemoveFutureAmuletConfigSchedule:
             scheduleTime : Time
     """
 
-    schedule_time: Annotated[Timestamp, DamlName("scheduleTime")]
+    schedule_time: Annotated[datetime, DamlName("scheduleTime")]
 
 
 @dataclass(frozen=True)
@@ -1572,7 +1573,7 @@ class AmuletRules_UpdateFutureAmuletConfigSchedule:
             scheduleItem : (Time, AmuletConfig Unit.USD)
     """
 
-    schedule_item: Annotated[tuple[Timestamp, AmuletConfig[USD]], DamlName("scheduleItem")]
+    schedule_item: Annotated[tuple[datetime, AmuletConfig[USD]], DamlName("scheduleItem")]
 
 
 @dataclass(frozen=True)

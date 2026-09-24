@@ -1,5 +1,5 @@
 ---
-name: DamlForge-Vy-Lang
+name: damlforge-vy-lang
 description: Use when writing, reading, or reviewing .vy source files in the DamlForge compiler (this repo) - a Python/Vyper-syntax DSL that compiles to real Daml/Canton smart contracts. Applies whenever asked to author a Daml template/choice/interface in .vy, translate a .daml file to .vy, or explain DF12xx compiler errors.
 ---
 
@@ -11,8 +11,8 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 
 ## Before writing any .vy file
 
-1. Every field/type name in the file must resolve to one of: a Python-native type, a DamlForge builtin type (`Party`, `Decimal`, `Int`, `Date`, `Timestamp`, `ContractId[T]`, `GenMap[K,V]`, `TextMap[T]`), or a `struct`/`template`/`interface`/`flag` declared/imported in scope. See reference.md § Type System.
-2. Every **decorator** (`@choice`, `@view`, `@ledger_effect`, `@template`, `@DamlName`) must be imported from `forge.models` or `forge.builtins` - unlike ledger builtins, decorators are NOT auto-available. See reference.md § Decorators.
+1. Every field/type name in the file must resolve to one of: a Python-native type (including `date`, `datetime`, and `timedelta` imported from Python's `datetime` module), a DamlForge builtin type (`Party`, `Decimal`, `Int`, `ContractId[T]`, `GenMap[K,V]`, `TextMap[T]`), or a `struct`/`template`/`interface`/`flag`/`variant` declared/imported in scope. See reference.md § Type System.
+2. Function and method decorators (`@choice`, `@view`, `@ledger_effect`, `@variant_record`, `@DamlName`) must be imported from `forge.models` or `forge.builtins`. The `@template` and `@variant` class markers are consumed by the pre-parser and need no import. See reference.md § Decorators.
 3. Every `template` needs `signatory`. `key` requires `maintainer` and vice versa. `ensure` (if present) must be a `bool`-typed comparison/boolop/call, never bare arithmetic. See reference.md § Template Fields.
 4. A plain `def` that calls `fetch`/`exercise`/`create`/`archive`/`lookup` must be marked `@ledger_effect` (choices are exempt). See reference.md § Ledger Effects.
 5. Never put a `def` inside a `struct` - it is silently dropped, no error. Use a free top-level function instead.
@@ -25,18 +25,40 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 | Contract type | `template Foo:` or `@template\nclass Foo:` |
 | Interface | `interface Foo(view=FooView):` |
 | Interface impl | `template Bar(Foo):` (subclass the interface directly - no `instance` keyword) |
-| Sum type / enum | `flag Status:\n    PENDING\n    PAID` (members MUST be `SCREAMING_CASE`) |
+| Payload variant | `@variant\nclass Result:\n    def Ok(value: int): pass` |
+| Named-field variant constructor | `@variant_record` on a constructor method; emits Daml `Constructor with ...` |
+| Payload-free enum | `flag Status:\n    PENDING\n    PAID` (members MUST be `SCREAMING_CASE`) |
 | Choice | `@choice(controller=..., consuming=True)` |
 | Fetch/exercise/create/archive/lookup | called directly, no import needed |
 | Optional field | `Optional[X]` - never write `Some(...)`/`from_some(...)` yourself, the compiler inserts it |
+| Current ledger time | `datetime.now()` from Python's `datetime`; use only in a choice or `@ledger_effect` function |
+| Calendar date | `date(year, month, day)` from Python's `datetime`; integer months are `1..12` |
+| Date and time | `datetime.combine(date_value, time(hour, minute, second))`; lowers to `DA.Time.time` |
+| Add relative time | `timestamp + timedelta(...)`; lowers to `DA.Time.addRelTime` |
+| Time difference | `later - earlier`; typed datetimes lower to `DA.Time.subTime` |
+| Unix timestamp | `datetime.fromtimestamp(seconds, timezone.utc)`; lowers to `DA.Time.fromUnixMicroseconds` |
+| Relative time | `timedelta(days=..., hours=...)` from Python's `datetime`; lowers to `DA.Time` |
 | Map | `GenMap[K, V]` / `TextMap[V]`, dict literal `{...}`, `m[k]`, `k in m` |
 | Typed for-loop | `for x: T in xs:` (annotation is mandatory before `in`) |
+
+For date/time values, import Python's standard types directly:
+
+```python
+from datetime import date, datetime, time, timedelta, timezone
+```
+
+Never import `Date`, `Timestamp`, or `RelTime` from `forge.models`. They are
+represented by `date`, `datetime`, and `timedelta`. Use `datetime.now()` only
+in ledger-effect contexts. See reference.md § Type System for constructors,
+arithmetic, and Unix timestamp conversion.
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---|---|
-| Using `@choice`/`@view`/`@template` without importing it | `from forge.models import choice, view, template` (or `forge.builtins` for `DamlName`) |
+| Using `@choice`/`@view`/`@variant_record` without importing it | Import it from `forge.models`; only the `@template` and `@variant` class markers are import-free |
+| Using `@variant_record` for every constructor | Use it only for Daml named-field (`with`) constructors; omit it for positional constructors |
+| Calling a custom `days(...)` helper | Import `timedelta` from `datetime` and use `timedelta(days=...)`; `years=` is not a Python or Daml fixed-duration unit |
 | Writing `def helper(): ...` inside a `struct` | Move it to a top-level `def`; structs are plain data records |
 | `controller=`/`observer=` referencing a name that isn't a with-arg, a template field, or `self.<field>` | Only reference the choice's own arguments/fields - anything else either resolves to an unrelated same-named field or fails `damlc` with "Ambiguous occurrence" (`DF1224`) |
 | `key` without `maintainer` (or vice versa) | Always declare both together (`DF1210`/`DF1211`) |

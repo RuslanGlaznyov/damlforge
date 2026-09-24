@@ -202,6 +202,7 @@ def check_template_interface_choice_consuming_variants(
 
 
 def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    ledger_effect_fns = collect_daml_builtins().ledger_effect_fns
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
             continue
@@ -210,13 +211,20 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
             continue
 
         for call in fn.get_descendants(vy_ast.Call):
-            if (
+            effect_name = (
+                call._metadata.get("intrinsic_name")
+                if call._metadata.get("is_ledger_effect")
+                else None
+            )
+            if effect_name is None and (
                 isinstance(call.func, vy_ast.Name)
-                and call.func.id in collect_daml_builtins().ledger_effect_fns
+                and call.func.id in ledger_effect_fns
             ):
+                effect_name = call.func.id
+            if effect_name is not None:
                 errors.append(
                     DamlForgeException(
-                        f"`{container.name}.{fn.name}` calls `{call.func.id}` but is not "
+                        f"`{container.name}.{fn.name}` calls `{effect_name}` but is not "
                         f"decorated `@{ledger_effect.__name__}` and is not a `@{choice.__name__}`",
                         call,
                         code=ErrorCodes.DF1205.value,

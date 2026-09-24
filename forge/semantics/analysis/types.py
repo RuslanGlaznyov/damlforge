@@ -698,7 +698,19 @@ def known_return_types(modules, field_types: dict) -> dict:
 def _infer_expr_type(
     expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict
 ):
+    if isinstance(expr, vy_ast.Call) and expr._metadata.get("datetime_now"):
+        return TypeRef("Timestamp")
+    if isinstance(expr, vy_ast.Call) and "datetime_combine_arguments" in expr._metadata:
+        return TypeRef("Timestamp")
+    if isinstance(expr, vy_ast.Call) and "fromtimestamp_argument" in expr._metadata:
+        return TypeRef("Timestamp")
+    if isinstance(expr, vy_ast.Call) and "date_arguments" in expr._metadata:
+        return TypeRef("Date")
     if isinstance(expr, vy_ast.Call) and "timedelta_arguments" in expr._metadata:
+        return TypeRef("RelTime")
+    if isinstance(expr, vy_ast.BinOp) and expr._metadata.get("add_rel_time"):
+        return TypeRef("Timestamp")
+    if isinstance(expr, vy_ast.BinOp) and expr._metadata.get("sub_time"):
         return TypeRef("RelTime")
     if isinstance(expr, vy_ast.NameConstant) and expr.value is None:
         return TypeRef("None")
@@ -807,6 +819,30 @@ def _mark_expr_optional_conversions(
 ) -> None:
     if expr is None:
         return
+    for binary in reversed(list(expr.get_descendants(vy_ast.BinOp, include_self=True))):
+        if not isinstance(binary.op, (vy_ast.Add, vy_ast.Sub)):
+            continue
+        left_type = _infer_expr_type(
+            binary.left, enclosing_type, local_types, field_types, return_types
+        )
+        right_type = _infer_expr_type(
+            binary.right, enclosing_type, local_types, field_types, return_types
+        )
+        if isinstance(binary.op, vy_ast.Add) and (
+            left_type is not None
+            and left_type.name in ("Timestamp", "Time")
+            and right_type is not None
+            and right_type.name == "RelTime"
+        ):
+            binary._metadata["add_rel_time"] = True
+        elif (
+            isinstance(binary.op, vy_ast.Sub)
+            and left_type is not None
+            and left_type.name in ("Timestamp", "Time")
+            and right_type is not None
+            and right_type.name in ("Timestamp", "Time")
+        ):
+            binary._metadata["sub_time"] = True
     for call in expr.get_descendants(vy_ast.Call, include_self=True):
         _mark_call_optional_conversions(
             call, enclosing_type, local_types, field_types, return_types
@@ -919,6 +955,13 @@ def mark_optional_conversions(node: vy_ast.TopLevel, field_types: dict, return_t
         _mark_stmts_optional_conversions(
             fn.body, enclosing_type, local_types, field_types, return_types, return_type
         )
+    if any(
+        binary._metadata.get("add_rel_time") or binary._metadata.get("sub_time")
+        for binary in node.get_descendants(vy_ast.BinOp, include_self=True)
+    ):
+        required = set(node.module_node._metadata.get("required_daml_modules", ()))
+        required.add("DA.Time")
+        node.module_node._metadata["required_daml_modules"] = tuple(sorted(required))
 
 
 def check_container_type_annotations(

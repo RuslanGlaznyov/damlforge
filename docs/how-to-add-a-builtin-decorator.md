@@ -3,7 +3,7 @@
 This covers decorators like `@choice(...)`, `@ledger_effect`, `@view`,
 `@DamlName(...)` — the closed set of names DamlForge recognizes when they
 appear in a `.vy` file's `decorator_list`. It does **not** cover registering
-a plain callable builtin function (e.g. `days`, `add_rel_time`) — see
+a plain callable builtin function (e.g. `add_rel_time`) — see
 `forge/builtins/daml_lang.py` for that, a related but separate mechanism
 (also driven by `@DamlName`, but applied to a real Python function instead
 of subclassing `VyDecorator`).

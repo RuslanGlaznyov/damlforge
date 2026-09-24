@@ -1,4 +1,6 @@
-from forge.models import ContractId, Decimal, Optional, Party, Timestamp, choice, ledger_effect
+from datetime import datetime
+
+from forge.models import ContractId, Decimal, Optional, Party, choice, ledger_effect
 from forge.builtins import DamlName
 from forge.builtins.daml_lang import create, fetch
 from Splice.Amulet import Amulet
@@ -15,10 +17,10 @@ from Splice.AmuletRules import (
 from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
 
 struct RepaymentMilestone:
-    due_date: Timestamp
+    due_date: datetime
     amount: Decimal
     paid: bool
-    paid_date: Optional[Timestamp]
+    paid_date: Optional[datetime]
 
 
 struct RepaymentSchedule:
@@ -34,7 +36,7 @@ struct PeriodPayment:
     period_number: int
     amount: Decimal
     status: PeriodPaymentStatus
-    paid_date: Optional[Timestamp]
+    paid_date: Optional[datetime]
 
 
 struct LoanRewards:
@@ -57,7 +59,7 @@ struct LoanTerms:
 struct RepaymentDistribution:
     investor: Party
     amount: Decimal
-    distributed_at: Timestamp
+    distributed_at: datetime
 
 
 flag RepaymentClaimStatus:
@@ -74,7 +76,7 @@ struct RepaymentClaimView:
     campaign_external_id: str
     amount: Decimal
     status: RepaymentClaimStatus
-    claim_before: Timestamp
+    claim_before: datetime
 
 
 struct LoanTrackerView:
@@ -222,7 +224,7 @@ class LoanTracker:
     @choice(controller=platform, consuming=True)
     @DamlName("LoanTracker_Repay")
     def repay(
-        self, repay_amount: Decimal, current_time: Timestamp, claim_before: Timestamp
+        self, repay_amount: Decimal, current_time: datetime, claim_before: datetime
     ) -> tuple[ContractId[LoanTracker], list[ContractId[RepaymentClaim]]]:
         assert repay_amount > Decimal(0), "Repayment amount must be positive"
         assert len(self.investments) > 0, "Must have investors to distribute to"
@@ -312,7 +314,7 @@ class LoanTracker:
         return (new_tracker, claim_cids)
 
     @choice(controller=platform, consuming=False)
-    def check_default(self, current_time: Timestamp) -> bool:
+    def check_default(self, current_time: datetime) -> bool:
         if self.loan_terms.loan_rewards == None:
             return False
 
@@ -324,7 +326,7 @@ class LoanTracker:
 
     @choice(controller=platform, consuming=True)
     def loan_rewards_repay(
-        self, repay_amount: Decimal, current_time: Timestamp, claim_before: Timestamp
+        self, repay_amount: Decimal, current_time: datetime, claim_before: datetime
     ) -> tuple[ContractId["LoanTracker"], list[ContractId[RepaymentClaim]]]:
         assert repay_amount > Decimal(0), "Repayment amount must be positive"
         assert len(self.investments) > 0, "Must have investors to distribute to"
@@ -501,7 +503,7 @@ class RepaymentClaim:
     campaign_external_id: str
     amount: Decimal
     status: RepaymentClaimStatus
-    claim_before: Timestamp
+    claim_before: datetime
     holding_cids: list[ContractId[Holding]]
 
     signatory: list[Party] = [platform, developer]
@@ -516,7 +518,7 @@ class RepaymentClaim:
         campaign_external_id: str,
         amount: Decimal,
         status: RepaymentClaimStatus,
-        claim_before: Timestamp,
+        claim_before: datetime,
         holding_cids: list[ContractId[Holding]],
     ):
         assert amount > Decimal(0), "amount must be positive"
@@ -533,7 +535,7 @@ class RepaymentClaim:
 
     @choice(controller=[investor, platform], consuming=True)
     def accept(
-        self, current_time: Timestamp, app_transfer_context: AppTransferContext
+        self, current_time: datetime, app_transfer_context: AppTransferContext
     ) -> list[ContractId[Holding]]:
         assert self.status == RepaymentClaimStatus.CLAIM_PENDING, "Claim must be Pending"
         assert current_time < self.claim_before, "Claim deadline has passed"
@@ -571,6 +573,6 @@ class RepaymentClaim:
         return new_holdings
 
     @choice(controller=platform, consuming=True)
-    def expire(self, current_time: Timestamp) -> None:
+    def expire(self, current_time: datetime) -> None:
         assert self.status == RepaymentClaimStatus.CLAIM_PENDING, "Claim must be Pending"
         assert current_time >= self.claim_before, "Cannot expire before deadline"

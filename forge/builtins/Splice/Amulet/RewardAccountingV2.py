@@ -5,9 +5,10 @@ code for reward accounting based on off-ledger calculations (CIP-104).
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal
 
-from forge.models.types import Party, RelTime, Timestamp
+from forge.models.types import Party
 from ..Amulet.CryptoHash import Hash
 from ..Types import Round
 from typing import Annotated
@@ -32,8 +33,8 @@ class CalculateRewardsV2:
 
     dso: Party
     round: Round
-    round_closed_at: Annotated[Timestamp, DamlName("roundClosedAt")]
-    reward_coupon_time_to_live: Annotated[RelTime, DamlName("rewardCouponTimeToLive")]
+    round_closed_at: Annotated[datetime, DamlName("roundClosedAt")]
+    reward_coupon_time_to_live: Annotated[timedelta, DamlName("rewardCouponTimeToLive")]
     dry_run: Annotated[bool, DamlName("dryRun")]
 
 
@@ -56,9 +57,9 @@ class ProcessRewardsV2:
 
     dso: Party
     round: Round
-    round_closed_at: Annotated[Timestamp, DamlName("roundClosedAt")]
+    round_closed_at: Annotated[datetime, DamlName("roundClosedAt")]
     dry_run: Annotated[bool, DamlName("dryRun")]
-    reward_coupon_time_to_live: Annotated[RelTime, DamlName("rewardCouponTimeToLive")]
+    reward_coupon_time_to_live: Annotated[timedelta, DamlName("rewardCouponTimeToLive")]
     batch_hash: Annotated[Hash, DamlName("batchHash")]
 
 

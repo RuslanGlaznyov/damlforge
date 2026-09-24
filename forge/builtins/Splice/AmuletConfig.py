@@ -4,11 +4,12 @@ support only, see `Splice/__init__.py`.
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Annotated, Generic, Optional, TypeVar
 
-from forge.models.types import RelTime, Text
+from forge.models.types import Text
 from .DecentralizedSynchronizer import AmuletDecentralizedSynchronizerConfig
 from .Fees import FixedFee, RatePerRound, SteppedRate
 from .Issuance import IssuanceConfig
@@ -56,7 +57,7 @@ class TransferConfig(Generic[Unit]):
     max_num_inputs: Annotated[int, DamlName("maxNumInputs")]
     max_num_outputs: Annotated[int, DamlName("maxNumOutputs")]
     max_num_lock_holders: Annotated[int, DamlName("maxNumLockHolders")]
-    token_standard_max_ttl: Annotated[Optional[RelTime], DamlName("tokenStandardMaxTTL")] = None
+    token_standard_max_ttl: Annotated[Optional[timedelta], DamlName("tokenStandardMaxTTL")] = None
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,7 @@ class TransferConfigV2(Generic[Unit]):
     max_num_inputs: Annotated[int, DamlName("maxNumInputs")]
     max_num_outputs: Annotated[int, DamlName("maxNumOutputs")]
     max_num_lock_holders: Annotated[int, DamlName("maxNumLockHolders")]
-    token_standard_max_ttl: Annotated[Optional[RelTime], DamlName("tokenStandardMaxTTL")] = None
+    token_standard_max_ttl: Annotated[Optional[timedelta], DamlName("tokenStandardMaxTTL")] = None
 
 
 @dataclass(frozen=True)
@@ -124,11 +125,11 @@ class AmuletConfig(Generic[Unit]):
     """
 
     transfer_config: Annotated[TransferConfig[Unit], DamlName("transferConfig")]
-    issuance_curve: Annotated[Schedule[RelTime, IssuanceConfig], DamlName("issuanceCurve")]
+    issuance_curve: Annotated[Schedule[timedelta, IssuanceConfig], DamlName("issuanceCurve")]
     decentralized_synchronizer: Annotated[
         AmuletDecentralizedSynchronizerConfig, DamlName("decentralizedSynchronizer")
     ]
-    tick_duration: Annotated[RelTime, DamlName("tickDuration")]
+    tick_duration: Annotated[timedelta, DamlName("tickDuration")]
     package_config: Annotated[PackageConfig, DamlName("packageConfig")]
     transfer_preapproval_fee: Annotated[Optional[Decimal], DamlName("transferPreapprovalFee")] = (
         None
@@ -169,5 +170,5 @@ class RewardConfig:
     minting_version: Annotated[RewardVersion, DamlName("mintingVersion")]
     dry_run_version: Annotated[Optional[RewardVersion], DamlName("dryRunVersion")]
     batch_size: Annotated[int, DamlName("batchSize")]
-    reward_coupon_time_to_live: Annotated[RelTime, DamlName("rewardCouponTimeToLive")]
+    reward_coupon_time_to_live: Annotated[timedelta, DamlName("rewardCouponTimeToLive")]
     app_reward_coupon_threshold: Annotated[Decimal, DamlName("appRewardCouponThreshold")]

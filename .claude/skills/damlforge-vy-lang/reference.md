@@ -20,10 +20,11 @@ The pre-parser rewrites these bare keywords (column 0) into Python `class`:
 | `interface Foo(view=V):` | interface | `interface Foo where viewtype V` |
 | `template Foo(Bar):` | template implementing interface `Bar` | `template Foo with ... where ... interface instance Bar for Foo where ...` |
 | `flag Foo:` / `enum Foo:` | sum type of nullary constructors | `data Foo = A \| B \| ...` |
+| `@variant` then `class Foo:` | sum type with payload constructors | `data Foo = A Type \| B with ...` |
 
-`@template\nclass Foo:` is an accepted alternative spelling of `template Foo:` (byte-identical output) - useful when you want a real decorator-looking header. It needs no import (the pre-parser consumes the `@template` line before it ever becomes a decorator call). **No other decorator combination with bare `class` is legal** - plain `class Foo:` and `@anything_else\nclass Foo:` both raise a hard `SyntaxException` at tokenize time.
+`@template\nclass Foo:` is an accepted alternative spelling of `template Foo:` (byte-identical output). `@variant\nclass Foo:` is the only spelling for a payload variant; the bare `variant Foo:` keyword is rejected. Neither class marker needs an import because the pre-parser consumes it before decorator-name analysis. No other decorator combination with bare `class` is legal - plain `class Foo:` and `@anything_else\nclass Foo:` both raise a hard `SyntaxException` at tokenize time.
 
-`struct`/`interface`/`event`/`enum` (but not `template`/`flag`) are also reserved identifiers - you cannot name a variable or field `struct`, etc. There is no `instance` keyword - a template declares which interface(s) it implements directly via base classes, like real Python subclassing/ABCs (see §10).
+`struct`/`interface`/`event`/`enum` (but not `template`/`flag`) are also reserved identifiers - you cannot name a variable or field `struct`, etc. There is no `instance` keyword - a template declares which interface(s) it implements directly via base classes, like real Python subclassing/ABCs (see §11).
 
 `event`/`error` (`EventDef`/`ErrorDef`) parse but are not wired into codegen; the `exception` decorator explicitly raises `NotImplementedError` - none of these three are usable yet.
 
@@ -31,10 +32,12 @@ The pre-parser rewrites these bare keywords (column 0) into Python `class`:
 
 **Native Python types - always available, no import:** `str`, `int`, `float`, `bool`, `None`, `list[T]`, `tuple[T, ...]`, `set[T]`, `frozenset[T]`. `Optional[T]` needs `from typing import Optional` for the file to remain valid-looking Python, but the compiler itself doesn't require the import.
 
-**DamlForge builtin types - recognized unconditionally by the type checker, but conventionally still imported from `forge.models` for readability:** `Party`, `Decimal`, `Int` (a distinct `Int` for real Daml `Int`, vs. Python `int`), `Date`, `Timestamp`, `RelTime`, `ContractId[T]`, `GenMap[K, V]`, `TextMap[V]`.
+**DamlForge builtin types - recognized unconditionally by the type checker, but conventionally still imported from `forge.models` for readability:** `Party`, `Decimal`, `Int` (a distinct `Int` for real Daml `Int`, vs. Python `int`), `ContractId[T]`, `GenMap[K, V]`, `TextMap[V]`.
 
 ```python
-from forge.models import ContractId, Decimal, Optional, Party, TextMap, Timestamp, choice
+from datetime import datetime
+
+from forge.models import ContractId, Decimal, Optional, Party, TextMap, choice
 ```
 
 **Banned field types:** `dict[...]` and any unrecognized generic like `Map[...]` (`DF1213` - use `GenMap`/`TextMap`), and `bytes`/`bytearray`/`memoryview`/`complex`/`type`/`object`/`slice` (`DF1222` - no Daml equivalent).
@@ -42,6 +45,52 @@ from forge.models import ContractId, Decimal, Optional, Party, TextMap, Timestam
 **Type synonyms the checker treats as equal** when checking call-argument compatibility: `int`↔`Int`, `str`↔`Text`, `float`↔`Decimal`. A bare `X` is compatible where `Optional[X]` is expected (auto-wrapped, see §6). Generic args are checked recursively - `list[A]` is never compatible with `list[B]` unless `A`/`B` match.
 
 **Your own types**: any `struct`/`template`/`interface`/`flag` declared in a reachable module is automatically a valid type name - no import needed within the same module, real `from X import Y` needed across `.vy` files.
+
+Python's `datetime`, `date`, and `timedelta` map to Daml `Time`, `Date`, and
+`RelTime`:
+
+```python
+from datetime import date, datetime, time, timedelta, timezone
+from forge.models import ledger_effect
+
+@ledger_effect
+def current_time() -> datetime:
+    return datetime.now()
+
+def epoch() -> date:
+    return date(1970, 1, 1)
+
+def start_of_epoch() -> datetime:
+    return datetime.combine(epoch(), time())
+
+def cooldown(months: int) -> timedelta:
+    return timedelta(days=30 * months, hours=12)
+
+def deadline(start: datetime) -> datetime:
+    return start + timedelta(days=7)
+
+def elapsed(later: datetime, earlier: datetime) -> timedelta:
+    return later - earlier
+
+def from_seconds(seconds: int) -> datetime:
+    return datetime.fromtimestamp(seconds, timezone.utc)
+```
+
+`datetime.now()` lowers to the ledger effect `getTime`, so it may only be used
+inside a choice or a function marked `@ledger_effect`. `date(...)` accepts
+Python's integer month numbering (`1` through `12`) and automatically imports
+`DA.Date`. `datetime.combine(date_value, time(...))` lowers to DAML's pure
+`DA.Time.time`; a standalone `time(...)` has no DAML equivalent.
+
+Adding a `timedelta` to a `datetime` uses normal Python arithmetic and lowers to
+DAML `addRelTime`; subtracting two datetimes lowers to `subTime`.
+`datetime.fromtimestamp(...)` requires an explicit `timezone.utc` and lowers
+seconds to DAML's microsecond-based `fromUnixMicroseconds`.
+
+The compiler supports Python's fixed units: `weeks`, `days`, `hours`, `minutes`,
+`seconds`, `milliseconds`, and `microseconds`. Weeks lower to seven days. Python
+does not support `years=` because a calendar year is not a fixed duration; use
+explicit date/calendar logic when that distinction matters.
 
 **Qualified module imports** - use when two real Daml packages export a same-named type (Daml itself would raise "Ambiguous occurrence" on an unqualified double-import):
 
@@ -54,12 +103,12 @@ def f(x: FeaturedAppRightV1.FeaturedAppRight): ...
 
 `from X import Y as Z` (aliased *from*-import) is banned outright, as is `from X import *`, importing the same name twice, and importing a module/name that doesn't actually resolve - all raise `DF1213`.
 
-## 3. Decorators - always require import
+## 3. Decorators
 
-Unlike ledger builtins (§4), decorators are ordinary Python objects with no compiler-side "always known" carve-out, so every one must be imported before use - an unimported decorator fails exactly like any other unresolved name (`DF1219`, "not defined"), not with a decorator-specific error.
+Function and method decorators are ordinary Python objects and must be imported before use. An unimported decorator fails like any other unresolved name (`DF1219`, "not defined"). The `@template` and `@variant` class markers are the exception: the pre-parser consumes them, so they need no import.
 
 ```python
-from forge.models import choice, ledger_effect, template, view, interface
+from forge.models import choice, ledger_effect, variant_record, view
 from forge.builtins import DamlName
 ```
 
@@ -68,8 +117,10 @@ from forge.builtins import DamlName
 | `@choice(controller=..., consuming=..., observer=...)` | method inside `template`/`interface` | `controller` required (`DF1203`); `consuming` required, must be a literal `True`/`False` or one of `"preconsuming"`/`"consuming"`/`"nonconsuming"`/`"postconsuming"` (`DF1203`); name can't start with `_` (`DF1218`); `"preconsuming"`/`"postconsuming"` banned on interface choice declarations, and on a template's implementation of an interface choice (`DF1208`) |
 | `@view` | method inside `interface`, or a `template` that implements one | no args (`DF1206`); banned inside a `template` with no interface bases (`DF1207`) |
 | `@ledger_effect` | plain top-level `def` or method | bare only, no args (`DF1204`) |
+| `@variant_record` | constructor method inside an `@variant` class | bare only; emits a named-field Daml constructor using `with` instead of a positional payload |
 | `@DamlName("RealName")` | any function/choice | exactly one string-literal positional arg (`DF1221`); overrides the auto-derived Daml-side name |
-| `@template` | immediately before `class Foo:`, nothing else | see §1 |
+| `@template` | immediately before `class Foo:`, nothing else | import-free class marker; see §1 |
+| `@variant` | immediately before `class Foo:`, nothing else | import-free class marker; see §1 and §9 |
 
 ### `controller=`/`observer=` name rules (`DF1224`)
 
@@ -162,7 +213,48 @@ flag PeriodPaymentStatus:
 
 Members **must** be `SCREAMING_CASE` (`DF1217` on lowercase or mixed case). Access via `PeriodPaymentStatus.PERIOD_PAID`, compare with `==`/`!=`. Flags have no payload and no methods.
 
-## 9. Structs
+## 9. Variants (payload sum types)
+
+Use `@variant` when constructors carry values. Each method declares a
+constructor and its parameters declare the payload:
+
+```python
+from datetime import datetime
+
+from forge.models import Party, variant_record
+
+@variant
+class Result:
+    def Accepted(value: Party): pass
+    def Cancelled(): pass
+
+    @variant_record
+    def Deferred(reason: str, retry_at: datetime): pass
+```
+
+This generates:
+
+```daml
+data Result
+  = Accepted Party
+  | Cancelled
+  | Deferred with
+      reason : Text
+      retry_at : Time
+  deriving (Eq, Show, Serializable)
+```
+
+An ordinary constructor method is positional: its parameter names are not part
+of the generated Daml API. Mark a constructor with `@variant_record` when the
+original Daml shape uses named `with` fields and those field names must be
+preserved. This distinction applies even to a single-field constructor. A
+constructor with no parameters needs no `@variant_record`.
+
+Constructor methods are declarations only and should have `pass` bodies.
+`@variant` itself needs no import; `@variant_record` must be imported from
+`forge.models`.
+
+## 10. Structs
 
 Plain data records - fields only:
 
@@ -182,7 +274,7 @@ def update_milestone_if_due(paid_amount: Decimal, milestone: RepaymentMilestone)
                                paid=True, paid_date=milestone.paid_date)
 ```
 
-## 10. Interfaces - a template implements one via real subclassing
+## 11. Interfaces - a template implements one via real subclassing
 
 There is no `instance` keyword. A `template` declares it implements an `interface` the same way Python declares a class implements an ABC - by listing it as a base:
 
@@ -217,7 +309,7 @@ Under the hood, this compiles to Daml's real interface-choice-delegation mechani
 
 If you build interface+implementation in the same `.vy` module (the common case for a self-contained example), add `-Wno-upgrade-interfaces` to your project's `daml.yaml` `build-options` - real Daml warns-as-error about interfaces and implementations sharing a package, since it affects upgradability; this is a project-level Daml build setting, not something `.vy` can express.
 
-## 11. Functions, loops, calls
+## 12. Functions, loops, calls
 
 Free top-level functions are plain `def`s; call-argument arity (`DF1225`) and type-compatibility (`DF1226`, only for `Name` arguments with a known declared type) are checked for any call to a known top-level `.vy` function.
 
@@ -234,7 +326,7 @@ for _index: int in range(0, count):
 
 `len`, `range`, `ceil`, `floor` are always-available builtins (no import) and rename on the Daml side (`len`→`length`, `ceil`→`ceiling`; `floor`/`range` pass through).
 
-## 12. Error code index
+## 13. Error code index
 
 | Code | Meaning |
 |---|---|
@@ -263,10 +355,12 @@ for _index: int in range(0, count):
 | DF1227 | a `template`'s interface base isn't a plain name, or doesn't resolve to a known `interface` |
 | DF1228 | a `template` implementing an interface is missing a required choice or `@view` implementation |
 
-## 13. Worked example
+## 14. Worked example
 
 ```python
-from forge.models import ContractId, Decimal, Optional, Party, TextMap, Timestamp, choice, view
+from datetime import datetime
+
+from forge.models import ContractId, Decimal, Optional, Party, TextMap, choice, view
 from forge.builtins.daml_lang import archive, create
 
 struct InstrumentId:

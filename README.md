@@ -43,7 +43,9 @@ Use `@variant` on a class to define a Daml variant. Each method declares one
 constructor; its parameters are the constructor payload:
 
 ```python
-from forge.models import Party, Timestamp, variant_record
+from datetime import datetime
+
+from forge.models import Party, variant_record
 
 @variant
 class Result:
@@ -51,7 +53,7 @@ class Result:
     def Cancelled(): pass
 
     @variant_record
-    def Deferred(reason: str, retry_at: Timestamp): pass
+    def Deferred(reason: str, retry_at: datetime): pass
 ```
 
 This generates positional constructors for ordinary methods and a named-field
@@ -71,6 +73,31 @@ data Result
 import. `@variant_record` is an ordinary method decorator and must be imported.
 Use it only when the Daml constructor must use `with` fields; otherwise the
 parameter names are not part of the generated Daml API.
+
+## Dates and time
+
+Use Python's standard `datetime` types directly in `.vy` contracts; do not
+import `Date`, `Timestamp`, or `RelTime` from `forge.models`:
+
+```python
+from datetime import date, datetime, time, timedelta, timezone
+
+def epoch() -> date:
+    return date(1970, 1, 1)
+
+def next_week(start: datetime) -> datetime:
+    return start + timedelta(days=7)
+
+def midnight(value: date) -> datetime:
+    return datetime.combine(value, time())
+
+def from_seconds(seconds: int) -> datetime:
+    return datetime.fromtimestamp(seconds, timezone.utc)
+```
+
+`date`, `datetime`, and `timedelta` compile to Daml `Date`, `Time`, and
+`RelTime`. `datetime.now()` compiles to the ledger effect `getTime`, so use it
+only inside a choice or a function marked `@ledger_effect`.
 
 ## Upgrading
 

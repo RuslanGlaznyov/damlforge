@@ -1,6 +1,7 @@
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional
-from forge.models import ContractId, Party, Timestamp, choice, ledger_effect
+from forge.models import ContractId, Party, choice, ledger_effect
 from forge.builtins import DamlName
 from forge.builtins.daml_lang import archive, create, exercise, fetch
 from loan_terms import LoanRewards, LoanTerms, LoanTracker, PeriodPayment, PeriodPaymentStatus
@@ -34,7 +35,7 @@ struct FundingCampaignView:
     dso: Party
     external_id: str
     target: Decimal
-    deadline: Timestamp
+    deadline: datetime
     raised: Decimal
     status: CampaignStatus
     accepted_instrument_id: InstrumentId
@@ -49,7 +50,7 @@ struct InstallmentReleaseView:
     external_id: str
     installment_number: int
     amount: Decimal
-    release_date: Timestamp
+    release_date: datetime
     released: bool
     escrowed: bool
     paused: bool
@@ -70,7 +71,7 @@ struct InstallmentTransferView:
     installment_number: int
     amount: Decimal
     status: TransferStatus
-    accept_before: Timestamp
+    accept_before: datetime
 
 
 flag FundMode:
@@ -254,7 +255,7 @@ class FundingCampaign:
     dso: Party
     external_id: str
     target: Decimal
-    deadline: Timestamp
+    deadline: datetime
     raised: Decimal
     balance: Decimal
     status: CampaignStatus
@@ -267,7 +268,7 @@ class FundingCampaign:
     unlocked_holdings: Optional[list[tuple[Party, ContractId[Holding]]]]
     refunded_investors: Optional[list[Party]]
     loan_terms: Optional[LoanTerms]
-    finalized_at: Optional[Timestamp]
+    finalized_at: Optional[datetime]
 
     signatory: list[Party] = [platform, developer]
     observer: list[Party] = campaign_observers(
@@ -281,7 +282,7 @@ class FundingCampaign:
         dso: Party,
         external_id: str,
         target: Decimal,
-        deadline: Timestamp,
+        deadline: datetime,
         raised: Decimal,
         balance: Decimal,
         status: CampaignStatus,
@@ -294,7 +295,7 @@ class FundingCampaign:
         unlocked_holdings: Optional[list[tuple[Party, ContractId[Holding]]]],
         refunded_investors: Optional[list[Party]],
         loan_terms: Optional[LoanTerms],
-        finalized_at: Optional[Timestamp],
+        finalized_at: Optional[datetime],
     ):
         assert target > Decimal(0), "target must be positive"
         assert raised >= Decimal(0), "raised must be non-negative"
@@ -482,7 +483,7 @@ class FundingCampaign:
         )
 
     @choice(controller=platform, consuming=True)
-    def finalize(self, current_time: Timestamp) -> ContractId["FundingCampaign"]:
+    def finalize(self, current_time: datetime) -> ContractId["FundingCampaign"]:
         assert self.status == CampaignStatus.ACTIVE, "Must be Active"
 
         if self.terms.fund_mode == FundMode.ALL_OR_NOTHING:
@@ -614,9 +615,9 @@ class FundingCampaign:
             tranche_index = tranche_index + 1
 
         if self.finalized_at != None:
-            anchor_time: Timestamp = self.finalized_at
+            anchor_time: datetime = self.finalized_at
         else:
-            anchor_time: Timestamp = self.deadline
+            anchor_time: datetime = self.deadline
 
         first_installment_amount = installment_amounts[0]
 
@@ -630,7 +631,8 @@ class FundingCampaign:
                 external_id=self.external_id,
                 installment_number=month,
                 amount=first_installment_amount,
-                release_date=add_rel_time(anchor_time, days(self.terms.cooldown_period_days + 30 * month)),
+                release_date=anchor_time
+                + timedelta(days=self.terms.cooldown_period_days + 30 * month),
                 released=False,
                 escrowed=True,
                 platform_fees=self.terms.platform_fees,
@@ -652,8 +654,9 @@ class FundingCampaign:
                         external_id=self.external_id,
                         installment_number=other_month,
                         amount=installment_amounts[other_month - 1],
-                        release_date=add_rel_time(
-                            anchor_time, days(self.terms.cooldown_period_days + 30 * other_month)
+                        release_date=anchor_time
+                        + timedelta(
+                            days=self.terms.cooldown_period_days + 30 * other_month
                         ),
                         released=False,
                         escrowed=False,
@@ -1053,7 +1056,7 @@ class InstallmentRelease:
     external_id: str
     installment_number: int
     amount: Decimal
-    release_date: Timestamp
+    release_date: datetime
     released: bool
     escrowed: bool
     platform_fees: Decimal
@@ -1071,7 +1074,7 @@ class InstallmentRelease:
         external_id: str,
         installment_number: int,
         amount: Decimal,
-        release_date: Timestamp,
+        release_date: datetime,
         released: bool,
         escrowed: bool,
         platform_fees: Decimal,
@@ -1179,7 +1182,7 @@ class InstallmentRelease:
 
     @choice(controller=platform, consuming=True)
     def release(
-        self, current_time: Timestamp, accept_before: Timestamp
+        self, current_time: datetime, accept_before: datetime
     ) -> tuple[ContractId["InstallmentRelease"], ContractId[InstallmentTransfer], list[ContractId[Holding]]]:
         assert not self.paused, "installment is currently paused and cannot be released"
         assert current_time >= self.release_date, "release date not reached"
@@ -1313,7 +1316,7 @@ class InstallmentTransfer:
     installment_number: int
     amount: Decimal
     status: TransferStatus
-    accept_before: Timestamp
+    accept_before: datetime
     holding_cids: list[ContractId[Holding]]
 
     signatory: list[Party] = [platform, developer]
@@ -1327,7 +1330,7 @@ class InstallmentTransfer:
         installment_number: int,
         amount: Decimal,
         status: TransferStatus,
-        accept_before: Timestamp,
+        accept_before: datetime,
         holding_cids: list[ContractId[Holding]],
     ):
         assert amount > Decimal(0), "amount must be positive"
@@ -1346,7 +1349,7 @@ class InstallmentTransfer:
 
     @choice(controller=[developer, platform], consuming=True)
     def accept(
-        self, current_time: Timestamp, app_transfer_context: AppTransferContext
+        self, current_time: datetime, app_transfer_context: AppTransferContext
     ) -> list[ContractId[Holding]]:
         assert self.status == TransferStatus.PENDING, "Transfer must be Pending"
         assert current_time < self.accept_before, "Accept deadline has passed"
@@ -1388,6 +1391,6 @@ class InstallmentTransfer:
         assert self.status == TransferStatus.PENDING, "Transfer must be Pending"
 
     @choice(controller=platform, consuming=True)
-    def withdraw(self, current_time: Timestamp) -> None:
+    def withdraw(self, current_time: datetime) -> None:
         assert self.status == TransferStatus.PENDING, "Transfer must be Pending"
         assert current_time >= self.accept_before, "Cannot withdraw before deadline"

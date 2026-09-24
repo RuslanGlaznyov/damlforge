@@ -2,11 +2,8 @@ from typing import Optional, TypeVar
 
 from forge.models.types import (
     ContractId,
-    Date,
     Party,
-    RelTime,
     Text,
-    Timestamp,
 )
 from . import DamlName
 
@@ -92,47 +89,6 @@ def coerce_interface_contract_id(interface_cid: ContractId[_T1]) -> ContractId[_
         "coerce_interface_contract_id is a real Daml-language builtin - only "
         "meaningful inside compiled .vy source, not callable directly from Python"
     )
-
-
-@DamlName("addRelTime", module="DA.Time")
-def add_rel_time(time: Timestamp, rel: RelTime) -> Timestamp:
-    raise NotImplementedError(
-        "add_rel_time is a real DA.Time builtin - only meaningful inside "
-        "compiled .vy source, not callable directly from Python"
-    )
-
-
-@DamlName("subTime", module="DA.Time")
-def sub_time(t1: Timestamp, t2: Timestamp) -> RelTime:
-    raise NotImplementedError(
-        "sub_time is a real DA.Time builtin - only meaningful inside "
-        "compiled .vy source, not callable directly from Python"
-    )
-
-
-@DamlName("getTime", is_ledger_effect=True)
-def get_time() -> Timestamp:
-    raise NotImplementedError
-
-
-@DamlName("fromUnixMicroseconds", module="DA.Time")
-def from_unix_microseconds(microseconds: int) -> Timestamp:
-    raise NotImplementedError
-
-
-@DamlName("date", module="DA.Date")
-def date(year: int, month: _T1, day: int) -> Date:
-    raise NotImplementedError
-
-
-@DamlName("Jan", module="DA.Date")
-def january() -> _T1:
-    raise NotImplementedError
-
-
-@DamlName("time", module="DA.Time")
-def time(value: Date, hour: int, minute: int, second: int) -> Timestamp:
-    raise NotImplementedError
 
 
 @DamlName("stakeholder")

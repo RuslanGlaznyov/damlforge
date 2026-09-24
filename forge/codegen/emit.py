@@ -1114,5 +1114,6 @@ def generate_daml(module: IRModule, module_name: Optional[str] = None):
     known_effect_fns = (
         frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
         | collect_daml_builtins().ledger_effect_fns
+        | frozenset(module.effect_functions)
     )
     return Emitter(known_effect_fns).generate(module, module_name)

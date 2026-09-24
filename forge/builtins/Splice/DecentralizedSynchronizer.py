@@ -4,9 +4,10 @@ IDE/authoring support only, see `Splice/__init__.py`.
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 
-from forge.models.types import Party, RelTime, Text
+from forge.models.types import Party, Text
 from typing import Annotated
 from .. import DamlName
 
@@ -23,7 +24,7 @@ class BaseRateTrafficLimits:
     """
 
     burst_amount: Annotated[int, DamlName("burstAmount")]
-    burst_window: Annotated[RelTime, DamlName("burstWindow")]
+    burst_window: Annotated[timedelta, DamlName("burstWindow")]
 
 
 @dataclass(frozen=True)

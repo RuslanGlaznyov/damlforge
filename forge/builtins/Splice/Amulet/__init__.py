@@ -12,10 +12,11 @@ AmuletRules_Transfer with ...`) - there's no real restriction against it.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Generic, Optional, TypeVar
 
-from forge.models.types import ContractId, Party, Text, Timestamp
+from forge.models.types import ContractId, Party, Text
 from ..Api.Token.MetadataV1 import Metadata
 from ..ExternalPartyConfigState import ExternalPartyConfigState
 from ..Expiry import TimeLock
@@ -472,7 +473,7 @@ class RewardCouponV2:
     provider: Party
     round: Round
     amount: Decimal
-    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    expires_at: Annotated[datetime, DamlName("expiresAt")]
     provider_is_observer: Annotated[bool, DamlName("providerIsObserver")]
     beneficiary: Optional[Party] = None
 
@@ -643,7 +644,7 @@ class DevelopmentFundCoupon:
     beneficiary: Party
     fund_manager: Annotated[Party, DamlName("fundManager")]
     amount: Decimal
-    expires_at: Annotated[Timestamp, DamlName("expiresAt")]
+    expires_at: Annotated[datetime, DamlName("expiresAt")]
     reason: Text
 
 

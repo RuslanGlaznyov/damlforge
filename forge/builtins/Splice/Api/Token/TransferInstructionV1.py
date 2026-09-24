@@ -8,10 +8,11 @@ choices) is out of scope of the `AmuletRules` choice sweep.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated
 
 from decimal import Decimal
-from forge.models.types import ContractId, Party, Timestamp
+from forge.models.types import ContractId, Party
 from ...Api.Token.HoldingV1 import InstrumentId
 from ...Api.Token.HoldingV1 import Holding
 from ...Api.Token.MetadataV1 import ExtraArgs, Metadata
@@ -34,8 +35,8 @@ class Transfer:
     receiver: Party
     amount: Decimal
     instrument_id: Annotated[InstrumentId, DamlName("instrumentId")]
-    requested_at: Annotated[Timestamp, DamlName("requestedAt")]
-    execute_before: Annotated[Timestamp, DamlName("executeBefore")]
+    requested_at: Annotated[datetime, DamlName("requestedAt")]
+    execute_before: Annotated[datetime, DamlName("executeBefore")]
     input_holding_cids: Annotated[list[ContractId[Holding]], DamlName("inputHoldingCids")]
     meta: Metadata
 

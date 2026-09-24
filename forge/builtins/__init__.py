@@ -1,4 +1,5 @@
 import dataclasses
+import datetime as datetime_module
 import importlib
 import inspect
 import pkgutil
@@ -449,6 +450,13 @@ def _python_type_to_type_ref(py_type) -> "Optional[TypeRef]":
 
     if py_type is None:
         return None
+    daml_name = {
+        datetime_module.date: "Date",
+        datetime_module.datetime: "Timestamp",
+        datetime_module.timedelta: "RelTime",
+    }.get(py_type)
+    if daml_name is not None:
+        return TypeRef(daml_name)
     origin = typing.get_origin(py_type)
     if origin is None:
         name = getattr(py_type, "__name__", None)

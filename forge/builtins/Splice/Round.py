@@ -4,10 +4,11 @@ only, see `Splice/__init__.py`.
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Optional
 
-from forge.models.types import Party, RelTime, Timestamp
+from forge.models.types import Party
 from .AmuletConfig import USD, RewardConfig, TransferConfig
 from .Issuance import IssuanceConfig
 from .Types import Round
@@ -41,12 +42,12 @@ class OpenMiningRound:
     dso: Party
     round: Round
     amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
-    opens_at: Annotated[Timestamp, DamlName("opensAt")]
-    target_closes_at: Annotated[Timestamp, DamlName("targetClosesAt")]
-    issuing_for: Annotated[RelTime, DamlName("issuingFor")]
+    opens_at: Annotated[datetime, DamlName("opensAt")]
+    target_closes_at: Annotated[datetime, DamlName("targetClosesAt")]
+    issuing_for: Annotated[timedelta, DamlName("issuingFor")]
     transfer_config_usd: Annotated[TransferConfig[USD], DamlName("transferConfigUsd")]
     issuance_config: Annotated[IssuanceConfig, DamlName("issuanceConfig")]
-    tick_duration: Annotated[RelTime, DamlName("tickDuration")]
+    tick_duration: Annotated[timedelta, DamlName("tickDuration")]
     traffic_price: Annotated[Optional[Decimal], DamlName("trafficPrice")] = None
     reward_config: Annotated[Optional[RewardConfig], DamlName("rewardConfig")] = None
 
@@ -90,7 +91,7 @@ class SummarizingMiningRound:
     round: Round
     amulet_price: Annotated[Decimal, DamlName("amuletPrice")]
     issuance_config: Annotated[IssuanceConfig, DamlName("issuanceConfig")]
-    tick_duration: Annotated[RelTime, DamlName("tickDuration")]
+    tick_duration: Annotated[timedelta, DamlName("tickDuration")]
     traffic_price: Annotated[Optional[Decimal], DamlName("trafficPrice")] = None
     reward_config: Annotated[Optional[RewardConfig], DamlName("rewardConfig")] = None
 
@@ -127,8 +128,8 @@ class IssuingMiningRound:
         Decimal, DamlName("issuancePerUnfeaturedAppRewardCoupon")
     ]
     issuance_per_sv_reward_coupon: Annotated[Decimal, DamlName("issuancePerSvRewardCoupon")]
-    opens_at: Annotated[Timestamp, DamlName("opensAt")]
-    target_closes_at: Annotated[Timestamp, DamlName("targetClosesAt")]
+    opens_at: Annotated[datetime, DamlName("opensAt")]
+    target_closes_at: Annotated[datetime, DamlName("targetClosesAt")]
     opt_issuance_per_validator_faucet_coupon: Annotated[
         Optional[Decimal], DamlName("optIssuancePerValidatorFaucetCoupon")
     ] = None

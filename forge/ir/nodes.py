@@ -287,3 +287,4 @@ class IRModule:
     functions: tuple[IRFunction, ...] = ()
     imports: tuple[IRImport, ...] = ()
     required_modules: tuple[str, ...] = ()
+    effect_functions: tuple[str, ...] = ()

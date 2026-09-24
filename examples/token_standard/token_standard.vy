@@ -1,4 +1,6 @@
-from forge.models import ContractId, Decimal, Optional, Party, TextMap, Timestamp, choice, view
+from datetime import datetime
+
+from forge.models import ContractId, Decimal, Optional, Party, TextMap, choice, view
 from forge.builtins.daml_lang import create, to_interface_contract_id
 
 struct InstrumentId:
@@ -17,7 +19,7 @@ struct ExtraArgs:
 
 struct Lock:
     holders: list[Party]
-    expires_at: Optional[Timestamp]
+    expires_at: Optional[datetime]
 
 
 struct HoldingView:
@@ -37,7 +39,7 @@ struct Transfer:
     receiver: Party
     amount: Decimal
     instrument_id: InstrumentId
-    execute_before: Timestamp
+    execute_before: datetime
     meta: Metadata
 
 
@@ -92,7 +94,7 @@ class PendingTransfer(TransferInstruction):
     receiver: Party
     amount: Decimal
     instrument_id: InstrumentId
-    execute_before: Timestamp
+    execute_before: datetime
 
     signatory: list[Party] = [sender]
     observer: list[Party] = [receiver]

@@ -1,7 +1,8 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated
 
-from forge.models.types import ContractId, Party, Timestamp
+from forge.models.types import ContractId, Party
 from .... import DamlName
 from .AllocationV2 import AllocationSpecification, SettlementInfo
 from .HoldingV2 import Holding
@@ -25,7 +26,7 @@ class AllocationInstructionView:
 class AllocationFactory_Allocate:
     settlement: SettlementInfo
     allocation: AllocationSpecification
-    requested_at: Annotated[Timestamp, DamlName("requestedAt")]
+    requested_at: Annotated[datetime, DamlName("requestedAt")]
     input_holding_cids: Annotated[list[ContractId[Holding]], DamlName("inputHoldingCids")]
     extra_args: Annotated[ExtraArgs, DamlName("extraArgs")]
     actors: list[Party]

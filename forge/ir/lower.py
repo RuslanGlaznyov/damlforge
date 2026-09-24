@@ -124,6 +124,37 @@ def _lower_expr_Subscript(node):
 
 
 def _lower_expr_Call(node):
+    if node._metadata.get("datetime_now"):
+        return IRCall(IRName("getTime"))
+    if "fromtimestamp_argument" in node._metadata:
+        argument = node._metadata["fromtimestamp_argument"]
+        microseconds = lower_expr(argument)
+        if not node._metadata["fromtimestamp_is_microseconds"]:
+            microseconds = (
+                IRConstant(argument.value * 1_000_000)
+                if isinstance(argument, vy_ast.Int)
+                else IRBinOp("*", microseconds, IRConstant(1_000_000))
+            )
+        return IRCall(IRName("fromUnixMicroseconds"), (microseconds,))
+    if combine_arguments := node._metadata.get("datetime_combine_arguments"):
+        value, hour, minute, second = combine_arguments
+        clock = tuple(
+            IRConstant(0) if part is None else lower_expr(part)
+            for part in (hour, minute, second)
+        )
+        return IRCall(IRName("time"), (lower_expr(value), *clock))
+    if date_arguments := node._metadata.get("date_arguments"):
+        year, month, day = date_arguments
+        month_name = node._metadata.get("date_month_name")
+        daml_month = (
+            IRName(month_name)
+            if month_name
+            else IRCall(
+                IRName("toEnum"),
+                (IRBinOp("-", lower_expr(month), IRConstant(1)),),
+            )
+        )
+        return IRCall(IRName("date"), (lower_expr(year), daml_month, lower_expr(day)))
     if timedelta_arguments := node._metadata.get("timedelta_arguments"):
         terms = []
         for unit, value_node in timedelta_arguments:
@@ -168,6 +199,10 @@ def _lower_expr_Dict(node):
 
 
 def _lower_expr_BinOp(node):
+    if node._metadata.get("add_rel_time"):
+        return IRCall(IRName("addRelTime"), (lower_expr(node.left), lower_expr(node.right)))
+    if node._metadata.get("sub_time"):
+        return IRCall(IRName("subTime"), (lower_expr(node.left), lower_expr(node.right)))
     op = _BIN_OPS[type(node.op).__name__]
     return IRBinOp(op, lower_expr(node.left), lower_expr(node.right))
 
@@ -621,4 +656,5 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
         functions=tuple(functions),
         imports=_lower_imports(module.body, import_graph),
         required_modules=tuple(module._metadata.get("required_daml_modules", ())),
+        effect_functions=tuple(module._metadata.get("intrinsic_effect_fns", ())),
     )
