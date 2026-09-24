@@ -289,12 +289,23 @@ class TransferInput:
     `Transfer`. Never constructed directly; use `InputAmulet(...)`."""
 
 
+class InvalidTransferReason:
+    """Nominal marker for the real transfer-error variant."""
+
+
 def InputAmulet(amulet_cid: ContractId[Amulet]) -> TransferInput:
     """The real Daml `TransferInput`'s `InputAmulet` constructor - an Amulet
     contract used as a transfer input."""
     raise NotImplementedError(
         "InputAmulet is a real Daml data constructor - only meaningful inside "
         "compiled .vy source, not callable directly from Python"
+    )
+
+
+def InputRewardCouponV2(coupon_cid: ContractId[RewardCouponV2]) -> TransferInput:
+    raise NotImplementedError(
+        "InputRewardCouponV2 is a real Daml data constructor - only meaningful "
+        "inside compiled .vy source, not callable directly from Python"
     )
 
 
@@ -1062,6 +1073,7 @@ class AmuletRules_DevNet_FeatureApp:
     """
 
     provider: Party
+    activity_weight: Annotated[Optional[Decimal], DamlName("activityWeight")] = None
 
 
 @dataclass(frozen=True)
@@ -1660,3 +1672,21 @@ class AmuletRules_UpdateExternalPartyConfigStatesResult:
     new_external_party_config_state_cid: Annotated[
         ContractId[ExternalPartyConfigState], DamlName("newExternalPartyConfigStateCid")
     ]
+
+
+@DamlName("exercisePaymentTransfer", is_ledger_effect=True)
+def exercise_payment_transfer(
+    expected_dso: Party, context: PaymentTransferContext, transfer: Transfer
+) -> TransferResult:
+    raise NotImplementedError
+
+
+@DamlName("computeSynchronizerFees", is_ledger_effect=True)
+def compute_synchronizer_fees(
+    dso: Party,
+    validator: Party,
+    traffic_amount: int,
+    amulet_rules: AmuletRules,
+    context: TransferContext,
+) -> tuple[Decimal, Decimal]:
+    raise NotImplementedError

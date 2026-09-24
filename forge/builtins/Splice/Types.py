@@ -5,6 +5,8 @@ only, see `Splice/__init__.py`.
 
 from dataclasses import dataclass
 
+from forge.models.types import Party
+
 
 @dataclass(frozen=True)
 class Round:
@@ -15,3 +17,14 @@ class Round:
     """
 
     number: int
+
+
+@dataclass(frozen=True)
+class ForDso:
+    dso: Party
+
+
+@dataclass(frozen=True)
+class ForOwner:
+    dso: Party
+    owner: Party

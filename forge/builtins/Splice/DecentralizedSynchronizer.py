@@ -91,3 +91,11 @@ class MemberTraffic:
     num_purchases: Annotated[int, DamlName("numPurchases")]
     amulet_spent: Annotated[Decimal, DamlName("amuletSpent")]
     usd_spent: Annotated[Decimal, DamlName("usdSpent")]
+
+
+@dataclass(frozen=True)
+class ForMemberTraffic:
+    dso: Party
+    member_id: Annotated[Text, DamlName("memberId")]
+    synchronizer_id: Annotated[Text, DamlName("synchronizerId")]
+    migration_id: Annotated[int, DamlName("migrationId")]

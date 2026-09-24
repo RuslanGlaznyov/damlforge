@@ -10,7 +10,9 @@ choices) is out of scope of the `AmuletRules` choice sweep.
 from dataclasses import dataclass
 from typing import Annotated
 
-from forge.models.types import ContractId
+from decimal import Decimal
+from forge.models.types import ContractId, Party, Timestamp
+from ...Api.Token.HoldingV1 import InstrumentId
 from ...Api.Token.HoldingV1 import Holding
 from ...Api.Token.MetadataV1 import ExtraArgs, Metadata
 from .... import DamlName
@@ -20,6 +22,49 @@ class TransferInstruction:
     """The real Daml `Splice.Api.Token.TransferInstructionV1.TransferInstruction`
     interface - referenced here only as a nominal type for
     `ContractId[TransferInstruction]`."""
+
+
+class TransferFactory:
+    pass
+
+
+@dataclass(frozen=True)
+class Transfer:
+    sender: Party
+    receiver: Party
+    amount: Decimal
+    instrument_id: Annotated[InstrumentId, DamlName("instrumentId")]
+    requested_at: Annotated[Timestamp, DamlName("requestedAt")]
+    execute_before: Annotated[Timestamp, DamlName("executeBefore")]
+    input_holding_cids: Annotated[list[ContractId[Holding]], DamlName("inputHoldingCids")]
+    meta: Metadata
+
+
+@dataclass(frozen=True)
+class TransferInstructionView:
+    transfer: Transfer
+
+
+@dataclass(frozen=True)
+class TransferFactory_Transfer:
+    expected_admin: Annotated[Party, DamlName("expectedAdmin")]
+    transfer: Transfer
+    extra_args: Annotated[ExtraArgs, DamlName("extraArgs")]
+
+
+@dataclass(frozen=True)
+class TransferInstruction_Accept:
+    extra_args: Annotated[ExtraArgs, DamlName("extraArgs")]
+
+
+@dataclass(frozen=True)
+class TransferInstruction_Reject:
+    extra_args: Annotated[ExtraArgs, DamlName("extraArgs")]
+
+
+@dataclass(frozen=True)
+class TransferInstruction_Withdraw:
+    extra_args: Annotated[ExtraArgs, DamlName("extraArgs")]
 
 
 class TransferInstructionResultOutput:

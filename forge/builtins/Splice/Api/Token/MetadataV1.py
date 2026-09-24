@@ -9,6 +9,15 @@ from forge.models.types import Text, TextMap
 
 
 @dataclass(frozen=True)
+class AnyValue:
+    pass
+
+
+class AnyContractId:
+    pass
+
+
+@dataclass(frozen=True)
 class Metadata:
     """The real Daml `Metadata` record - free-form token-standard metadata
     key/value pairs attached to a transfer event. Real Daml definition:

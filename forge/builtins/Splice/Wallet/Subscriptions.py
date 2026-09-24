@@ -11,9 +11,11 @@ example files.
 from dataclasses import dataclass
 from decimal import Decimal
 
+from typing import Annotated, Optional
+
 from forge.models.types import ContractId, Party, Text
 from ..Amulet import Amulet, LockedAmulet
-from ..AmuletRules import AppTransferContext
+from ..AmuletRules import AppTransferContext, PaymentTransferContext, TransferInput
 from ... import DamlName
 
 
@@ -37,6 +39,85 @@ class SubscriptionData:
     provider: Party
     dso: Party
     description: Text
+
+
+@dataclass(frozen=True)
+class SubscriptionRequest:
+    subscription_data: Annotated[SubscriptionData, DamlName("subscriptionData")]
+
+
+@dataclass(frozen=True)
+class SubscriptionInitialPayment:
+    subscription_data: Annotated[SubscriptionData, DamlName("subscriptionData")]
+
+
+@dataclass(frozen=True)
+class SubscriptionIdleState:
+    subscription_data: Annotated[SubscriptionData, DamlName("subscriptionData")]
+
+
+@dataclass(frozen=True)
+class SubscriptionPayment:
+    subscription_data: Annotated[SubscriptionData, DamlName("subscriptionData")]
+
+
+@dataclass(frozen=True)
+class TerminatedSubscription:
+    subscription_data: Annotated[SubscriptionData, DamlName("subscriptionData")]
+
+
+@dataclass(frozen=True)
+class SubscriptionRequest_AcceptAndMakePayment:
+    inputs: list[TransferInput]
+    context: PaymentTransferContext
+    wallet_provider: Annotated[Party, DamlName("walletProvider")]
+
+
+@dataclass(frozen=True)
+class SubscriptionRequest_AcceptAndMakePaymentResult:
+    subscription_payment: Annotated[
+        ContractId[SubscriptionInitialPayment], DamlName("subscriptionPayment")
+    ]
+    sender_change: Annotated[Optional[ContractId[Amulet]], DamlName("senderChange")]
+
+
+@dataclass(frozen=True)
+class SubscriptionRequest_Reject:
+    pass
+
+
+@dataclass(frozen=True)
+class SubscriptionRequest_RejectResult:
+    terminated_subscription: Annotated[
+        ContractId[TerminatedSubscription], DamlName("terminatedSubscription")
+    ]
+
+
+@dataclass(frozen=True)
+class SubscriptionIdleState_MakePayment:
+    inputs: list[TransferInput]
+    context: PaymentTransferContext
+    wallet_provider: Annotated[Party, DamlName("walletProvider")]
+
+
+@dataclass(frozen=True)
+class SubscriptionIdleState_MakePaymentResult:
+    subscription_payment: Annotated[
+        ContractId[SubscriptionPayment], DamlName("subscriptionPayment")
+    ]
+    sender_change: Annotated[Optional[ContractId[Amulet]], DamlName("senderChange")]
+
+
+@dataclass(frozen=True)
+class SubscriptionIdleState_CancelSubscription:
+    pass
+
+
+@dataclass(frozen=True)
+class SubscriptionIdleState_CancelSubscriptionResult:
+    terminated_subscription: Annotated[
+        ContractId[TerminatedSubscription], DamlName("terminatedSubscription")
+    ]
 
 
 @DamlName("unlockAndTransfer", is_ledger_effect=True)
