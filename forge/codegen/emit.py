@@ -1020,7 +1020,13 @@ class Emitter:
             self.emit_interface_choice_impl(c, template_name, indent=3, field_types=field_types)
         self.record(ii.src, "interface_instance", f"{ii.interface}_for_{template_name}", start)
 
-    def _render_header(self, imports, body_source: str, module_name: Optional[str]) -> str:
+    def _render_header(
+        self,
+        imports,
+        body_source: str,
+        module_name: Optional[str],
+        required_modules=(),
+    ) -> str:
         header = f"module {module_name} where\n\n" if module_name is not None else ""
         builtins = collect_daml_builtins()
         for imp in imports:
@@ -1053,11 +1059,10 @@ class Emitter:
             header += "import DA.List ((!!))\n\n"
         for import_line in required_optional_imports(body_source):
             header += import_line
-        required_modules = {
-            module
-            for daml_name, module in _builtin_import_modules().items()
-            if daml_name in body_source
-        }
+        required_modules = (
+            set(required_modules)
+            | {m for name, m in _builtin_import_modules().items() if name in body_source}
+        ) - {imp.module for imp in imports if imp.alias is None and imp.names is None}
         for module in sorted(required_modules):
             header += f"import {module}\n\n"
         return header
@@ -1086,7 +1091,9 @@ class Emitter:
 
         body_source = "\n".join(self.lines).rstrip("\n") + "\n"
         mappings = self.mappings
-        header = self._render_header(module.imports, body_source, module_name)
+        header = self._render_header(
+            module.imports, body_source, module_name, module.required_modules
+        )
         if header:
             offset = header.count("\n")
             mappings = [

@@ -1,6 +1,9 @@
+import pytest
+
 from forge.ast.parse import parse_to_ast
 from forge.builtins import collect_daml_builtins
 from forge.codegen import generate_daml
+from forge.exceptions import DamlForgeException
 from forge.ir import lower_module
 from forge.semantics import analyze_module
 
@@ -167,6 +170,45 @@ def test_da_time_import_emitted_only_once_when_both_functions_used():
     )
 
     assert daml.count("import DA.Time") == 1
+
+
+def test_python_timedelta_lowers_to_da_time_units():
+    daml = _compile(
+        "from datetime import timedelta\n\n"
+        "def duration(count: int) -> timedelta:\n"
+        "    return timedelta(days=count, hours=2, minutes=3)\n"
+    )
+
+    assert "duration : Int -> RelTime" in daml
+    assert "days count" in daml
+    assert "hours 2" in daml
+    assert "minutes 3" in daml
+    assert daml.count("import DA.Time") == 1
+    assert "import datetime" not in daml
+
+
+def test_qualified_python_timedelta_lowers_weeks_to_days():
+    daml = _compile(
+        "import datetime as dt\n\n"
+        "def duration(count: int) -> dt.timedelta:\n"
+        "    return dt.timedelta(weeks=count, seconds=4, milliseconds=5, microseconds=6)\n"
+    )
+
+    assert "duration : Int -> RelTime" in daml
+    assert "days (count * 7)" in daml
+    assert "seconds 4" in daml
+    assert "milliseconds 5" in daml
+    assert "microseconds 6" in daml
+    assert daml.count("import DA.Time") == 1
+
+
+def test_python_timedelta_rejects_non_python_years_argument():
+    with pytest.raises(DamlForgeException, match="does not support `years=`"):
+        _compile(
+            "from datetime import timedelta\n\n"
+            "def duration() -> timedelta:\n"
+            "    return timedelta(years=1)\n"
+        )
 
 
 def test_builtin_splice_struct_optional_field_auto_wraps_without_manual_some():

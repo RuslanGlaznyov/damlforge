@@ -72,6 +72,8 @@ _COMPARE_OPS = {
 
 
 def lower_type(node: vy_ast.VyperNode) -> TypeRef:
+    if daml_type_name := node._metadata.get("daml_type_name"):
+        return TypeRef(daml_type_name)
     if isinstance(node, vy_ast.Name):
         return TypeRef(node.id)
     if isinstance(node, vy_ast.Str):
@@ -122,6 +124,20 @@ def _lower_expr_Subscript(node):
 
 
 def _lower_expr_Call(node):
+    if timedelta_arguments := node._metadata.get("timedelta_arguments"):
+        terms = []
+        for unit, value_node in timedelta_arguments:
+            value = lower_expr(value_node)
+            if unit == "weeks":
+                value = IRBinOp("*", value, IRConstant(7))
+                unit = "days"
+            terms.append(IRCall(IRName(unit), (value,)))
+        result = terms[0]
+        for term in terms[1:]:
+            result = IRBinOp("+", result, term)
+        return result
+    if "timedelta_arguments" in node._metadata:
+        return IRCall(IRName("microseconds"), (IRConstant(0),))
     args = tuple(lower_expr(a) for a in node.args)
     keywords = tuple((kw.arg, lower_expr(kw.value)) for kw in node.keywords)
     return IRCall(lower_expr(node.func), args, keywords)
@@ -604,4 +620,5 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
         templates=tuple(templates),
         functions=tuple(functions),
         imports=_lower_imports(module.body, import_graph),
+        required_modules=tuple(module._metadata.get("required_daml_modules", ())),
     )

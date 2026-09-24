@@ -110,14 +110,6 @@ def sub_time(t1: Timestamp, t2: Timestamp) -> RelTime:
     )
 
 
-@DamlName("days", module="DA.Time")
-def days(n: int) -> RelTime:
-    raise NotImplementedError(
-        "days is a real DA.Time builtin - only meaningful inside compiled "
-        ".vy source, not callable directly from Python"
-    )
-
-
 @DamlName("getTime", is_ledger_effect=True)
 def get_time() -> Timestamp:
     raise NotImplementedError

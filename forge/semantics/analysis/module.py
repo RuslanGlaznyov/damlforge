@@ -4,6 +4,7 @@ from typing import Optional
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
+from forge.semantics.analysis.intrinsics import DatetimeIntrinsicAnalyzer
 from forge.semantics.analysis.structure import _reachable_modules, check_container
 from forge.semantics.analysis.types import (
     ModuleScope,
@@ -228,6 +229,7 @@ class ModuleAnalyzer:
         self.analyzed.add(marker)
 
         self._analyze_imports()
+        DatetimeIntrinsicAnalyzer(self.module, self.errors).analyze()
         for node in self.module.body:
             self.visit(node)
 

@@ -119,6 +119,7 @@ class ImportsBuilder:
     @classmethod
     def imported_names(cls, module: vy_ast.Module) -> set:
         from forge.builtins import known_decorator_names
+        from forge.semantics.analysis.intrinsics import COMPILER_INTRINSIC_IMPORTS
         from forge.semantics.analysis.types import daml_builtin_type_names
 
         names = set()
@@ -136,6 +137,8 @@ class ImportsBuilder:
                     if (
                         cls.is_annotation_only_root(root)
                         and alias.name not in allowed_from_annotation_only
+                        and alias.name
+                        not in COMPILER_INTRINSIC_IMPORTS.get(stmt.module, frozenset())
                     ):
                         continue
                     names.add(bound)

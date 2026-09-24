@@ -698,6 +698,8 @@ def known_return_types(modules, field_types: dict) -> dict:
 def _infer_expr_type(
     expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict
 ):
+    if isinstance(expr, vy_ast.Call) and "timedelta_arguments" in expr._metadata:
+        return TypeRef("RelTime")
     if isinstance(expr, vy_ast.NameConstant) and expr.value is None:
         return TypeRef("None")
     if isinstance(expr, vy_ast.List):
