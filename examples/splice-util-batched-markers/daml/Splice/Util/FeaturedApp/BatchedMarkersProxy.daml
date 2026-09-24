@@ -87,7 +87,7 @@ template BatchedMarkersProxy
   where
     signatory provider
 
-    nonconsuming choice Batched_markers_proxy_create_markers : BatchedMarkersProxy_CreateMarkersResult
+    nonconsuming choice BatchedMarkersProxy_CreateMarkers : BatchedMarkersProxy_CreateMarkersResult
       with
         featured_app_right_cid : ContractId FeaturedAppRightV1.FeaturedAppRight
         batches : [RewardBatch]
@@ -136,7 +136,7 @@ template BatchedMarkersProxy
         assertMsg "weight >= 10.0" (all (\entry -> entry.weight >= (10.0 : Decimal)) parties)
         pure (val1 == val2)
 
-    nonconsuming choice Batched_markers_proxy_create_markers_v2 : BatchedMarkersProxy_CreateMarkersV2Result
+    nonconsuming choice BatchedMarkersProxy_CreateMarkersV2 : BatchedMarkersProxy_CreateMarkersV2Result
       with
         featured_app_right_cid : ContractId FeaturedAppRightV2.FeaturedAppRight
         batches : [RewardBatchV2]

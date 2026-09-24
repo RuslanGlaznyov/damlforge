@@ -57,6 +57,7 @@ class BatchedMarkersProxy:
 
     signatory: Party = provider
 
+    @DamlName("BatchedMarkersProxy_CreateMarkers")
     @choice(
         controller=provider,
         consuming=False,
@@ -104,6 +105,7 @@ class BatchedMarkersProxy:
 
         return val1 == val2
 
+    @DamlName("BatchedMarkersProxy_CreateMarkersV2")
     @choice(
         controller=provider,
         consuming=False,
