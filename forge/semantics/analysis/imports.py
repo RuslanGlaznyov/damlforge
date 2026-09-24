@@ -9,7 +9,10 @@ from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 from forge.utils import sha256sum
 
-BUILTIN_MODULE_ROOTS = {"Splice": "forge.builtins.Splice"}
+BUILTIN_MODULE_ROOTS = {
+    "DA": "forge.builtins.DA",
+    "Splice": "forge.builtins.Splice",
+}
 
 
 class ImportInfo:
@@ -241,8 +244,14 @@ class ImportsBuilder:
                 self.graph.add_edge(this_key, key)
 
                 if key not in self.graph:
+                    current_module_path = Path(getattr(module, "path", "") or "")
+                    sibling_module_path = (
+                        current_module_path.parent / self._module_str_to_relpath(module_str)
+                    ).with_suffix(".vy")
                     sibling_ast = parse_to_ast(
-                        path.read_text(), module_path=path.name, resolved_path=str(path)
+                        path.read_text(),
+                        module_path=str(sibling_module_path),
+                        resolved_path=str(path),
                     )
                     self.graph.add_module(key, sibling_ast)
                     self.resolve_imports(sibling_ast, errors, _stack=stack)
@@ -257,7 +266,30 @@ class ImportsBuilder:
         return self.graph
 
     @staticmethod
-    def check_sibling_import_names_resolve(node, errors: ExceptionList) -> None:
+    def _choice_export_name(node) -> "str | None":
+        if not isinstance(node, vy_ast.FunctionDef):
+            return None
+        has_choice = False
+        override = None
+        for decorator in node.decorator_list:
+            target = decorator.func if isinstance(decorator, vy_ast.Call) else decorator
+            if not isinstance(target, vy_ast.Name):
+                continue
+            if target.id == "choice":
+                has_choice = True
+            elif (
+                target.id == "DamlName"
+                and isinstance(decorator, vy_ast.Call)
+                and decorator.args
+                and isinstance(decorator.args[0], vy_ast.Str)
+            ):
+                override = decorator.args[0].value
+        if not has_choice:
+            return None
+        return override or node.name[:1].upper() + node.name[1:]
+
+    @classmethod
+    def check_sibling_import_names_resolve(cls, node, errors: ExceptionList) -> None:
         if not isinstance(node, vy_ast.ImportFrom):
             return
 
@@ -280,6 +312,13 @@ class ImportsBuilder:
                 ),
             )
         }
+        declared.update(
+            export_name
+            for info in infos
+            for container in info.ast.body
+            for child in getattr(container, "body", ())
+            if (export_name := cls._choice_export_name(child)) is not None
+        )
 
         for alias in node.names:
             if alias.name == "*" or alias.name in declared:

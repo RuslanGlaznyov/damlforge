@@ -221,7 +221,7 @@ VYPER_CLASS_TYPES = {
 CUSTOM_STATEMENT_TYPES = {"log": "Log"}
 
 # class declarations that can be expressed using a bare decorator
-DECORATED_CLASS_TYPES = {"template": "TemplateDef"}
+DECORATED_CLASS_TYPES = {"template": "TemplateDef", "variant": "VariantDef"}
 
 
 class PreParser:

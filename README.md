@@ -37,6 +37,41 @@ forge json path/to/file.vy --pretty-json    # .vy -> JSON AST, printed to stdout
 
 Add `--traceback` to any subcommand to get a Python traceback instead of a short error message on compile failure - useful while debugging a new `.vy` file.
 
+## Variants
+
+Use `@variant` on a class to define a Daml variant. Each method declares one
+constructor; its parameters are the constructor payload:
+
+```python
+from forge.models import Party, Timestamp, variant_record
+
+@variant
+class Result:
+    def Accepted(value: Party): pass
+    def Cancelled(): pass
+
+    @variant_record
+    def Deferred(reason: str, retry_at: Timestamp): pass
+```
+
+This generates positional constructors for ordinary methods and a named-field
+constructor for the method marked `@variant_record`:
+
+```daml
+data Result
+  = Accepted Party
+  | Cancelled
+  | Deferred with
+      reason : Text
+      retry_at : Time
+  deriving (Eq, Show, Serializable)
+```
+
+`@variant` is a DamlForge class marker, like `@template`, and does not need an
+import. `@variant_record` is an ordinary method decorator and must be imported.
+Use it only when the Daml constructor must use `with` fields; otherwise the
+parameter names are not part of the generated Daml API.
+
 ## Upgrading
 
 Uninstall the old wheel first if you installed into a long-lived environment, then install the new one:

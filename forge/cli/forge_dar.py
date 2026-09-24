@@ -132,10 +132,10 @@ def build_dar(
     for file in vy_files:
         logger.info(f"Compiling: {file}")
         source = file.read_text()
-        module = parse_to_ast(source, module_path=file.name, resolved_path=str(file))
+        rel = file.relative_to(source_dir)
+        module = parse_to_ast(source, module_path=str(rel), resolved_path=str(file))
         import_graph = analyze_module(module)
         ir = lower_module(module, import_graph=import_graph)
-        rel = file.relative_to(source_dir)
         mod_stem = daml_module_name(rel.stem)
         mod_name = ".".join((*rel.parent.parts, mod_stem))
         daml_source, _ = generate_daml(ir, module_name=mod_name)

@@ -761,6 +761,10 @@ class StructDef(TopLevel):
     __slots__ = ("name", "body")
 
 
+class VariantDef(TopLevel):
+    __slots__ = ("name", "body")
+
+
 class TemplateDef(TopLevel):
     __slots__ = ("name", "body", "bases")
 

@@ -272,6 +272,28 @@ class template(VyDecorator):
             )
 
 
+class variant(VyDecorator):
+    def __new__(cls, cls_obj):
+        cls_obj.__vy_decorator__ = True
+        cls_obj.__variant__ = True
+        return cls_obj
+
+    @classmethod
+    def __post_vy_check__(
+        cls, container: vy_ast.TopLevel, fn: vy_ast.FunctionDef, dec, errors: ExceptionList
+    ):
+        from forge.models.error_codes import ErrorCodes
+
+        if isinstance(dec, vy_ast.Call):
+            errors.append(
+                DamlForgeException(
+                    f"`@{cls.__name__}` on `{container.name}` takes no arguments",
+                    fn,
+                    code=ErrorCodes.DF1205.value,
+                )
+            )
+
+
 class ledger_effect(VyDecorator):
     def __new__(cls, fn):
         fn.__vy_decorator__ = True
@@ -344,10 +366,42 @@ def interface(*, view, requires=()):
 @dataclasses.dataclass(frozen=True)
 class DamlCaseAccessor:
     constructor: str
+    arity: int = 1
+    result_constructor: Optional[str] = None
+    field_names: Tuple[str, ...] = dataclasses.field(default_factory=tuple)
 
     def __call__(self, fn):
         fn.__daml_case_accessor__ = self.constructor
+        fn.__daml_case_accessor_arity__ = self.arity
+        fn.__daml_case_accessor_result_constructor__ = self.result_constructor
+        fn.__daml_case_accessor_field_names__ = self.field_names
         return fn
+
+
+class variant_record(VyDecorator):
+    """Mark a variant constructor as using Daml's named ``with`` payload syntax."""
+
+    def __new__(cls, fn):
+        fn.__vy_decorator__ = True
+        fn.__variant_record__ = True
+        return fn
+
+    @classmethod
+    def __post_vy_check__(cls, container, fn, dec, errors):
+        return None
+
+
+class checked_fetch(VyDecorator):
+    """Declare a ``HasCheckedFetch`` instance for the enclosing template."""
+
+    def __new__(cls, fn):
+        fn.__vy_decorator__ = True
+        fn.__checked_fetch__ = True
+        return fn
+
+    @classmethod
+    def __post_vy_check__(cls, container, fn, dec, errors):
+        return None
 
 
 def no_derive(cls):
@@ -442,7 +496,22 @@ def collect_daml_builtins() -> BuiltinMetadata:
 
             case_constructor = getattr(obj, "__daml_case_accessor__", None)
             if case_constructor is not None and callable(obj):
-                case_accessors[name] = case_constructor
+                arity = getattr(obj, "__daml_case_accessor_arity__", 1)
+                result_constructor = getattr(
+                    obj, "__daml_case_accessor_result_constructor__", None
+                )
+                field_names = getattr(obj, "__daml_case_accessor_field_names__", ())
+                if result_constructor is not None:
+                    case_accessors[name] = (
+                        case_constructor,
+                        arity,
+                        result_constructor,
+                        field_names,
+                    )
+                else:
+                    case_accessors[name] = (
+                        case_constructor if arity == 1 else (case_constructor, arity)
+                    )
 
             if isinstance(obj, type):
                 if getattr(obj, "__daml_no_derive__", False):

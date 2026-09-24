@@ -42,6 +42,7 @@ from forge.ir.nodes import (
     IRTemplate,
     IRTuple,
     IRUnaryOp,
+    IRVariant,
     SourceSpan,
     TypeRef,
 )
@@ -162,7 +163,9 @@ def _render_infix_operand(e) -> str:
 
 def _render_call_arg(e) -> str:
     rendered = render_expr(e)
-    if isinstance(e, _NEEDS_PARENS_AS_CALL_ARG):
+    if isinstance(e, _NEEDS_PARENS_AS_CALL_ARG) or (
+        isinstance(e, IRConstant) and isinstance(e.value, (int, Decimal)) and e.value < 0
+    ):
         return f"({rendered})"
     return rendered
 
@@ -284,9 +287,27 @@ def _render_call(e: IRCall) -> str:
         constructor = _case_accessors().get(e.func.id)
         if constructor is not None:
             scrutinee = _render_call_arg(e.args[0])
+            if isinstance(constructor, tuple):
+                constructor, arity, *result = constructor
+            else:
+                arity = 1
+                result = []
+            names = [f"_damlforge_case_val{i}" for i in range(arity)]
+            pattern = " ".join([constructor, *names])
+            if result:
+                result_constructor, field_names = result
+                fields = ", ".join(
+                    f"{field} = {name}" for field, name in zip(field_names, names)
+                )
+                value = f"({result_constructor} with {fields})"
+            elif arity == 0:
+                value = "()"
+            elif arity == 1:
+                value = names[0]
+            else:
+                value = "(" + ", ".join(names) + ")"
             return (
-                f"(case {scrutinee} of {constructor} _damlforge_case_val -> "
-                "Some _damlforge_case_val; _ -> None)"
+                f"(case {scrutinee} of {pattern} -> Some {value}; _ -> None)"
             )
 
     func_name = render_expr(e.func)
@@ -725,10 +746,14 @@ class Emitter:
                 for f in s.fields
             )
             parts.append(nest(2, concat([line(), text("with"), nest(2, field_lines)])))
+        derivations = ["Serializable"]
         if not any(
             _type_ref_references_non_derivable_type(_required_field_type(f)) for f in s.fields
         ):
-            parts.append(nest(2, concat([line(), text("deriving (Eq, Show)")])))
+            derivations[:0] = ["Eq", "Show"]
+        parts.append(
+            nest(2, concat([line(), text(f"deriving ({', '.join(derivations)})")]))
+        )
         self.lines_block(render(concat(parts)))
         self.record(s.src, "struct", s.name, start)
 
@@ -740,11 +765,40 @@ class Emitter:
             doc = concat(
                 [
                     text(f"data {f.name} = " + " | ".join(f.values)),
-                    nest(2, concat([line(), text("deriving (Eq, Show)")])),
+                    nest(2, concat([line(), text("deriving (Eq, Show, Serializable)")])),
                 ]
             )
         self.lines_block(render(doc))
         self.record(f.src, "flag", f.name, start)
+
+    def emit_variant(self, variant: IRVariant) -> None:
+        start = len(self.lines) + 1
+        self.line(f"data {variant.name}")
+        for index, constructor in enumerate(variant.constructors):
+            prefix = "=" if index == 0 else "|"
+            suffix = " with" if constructor.record and constructor.fields else ""
+            if constructor.fields and not constructor.record:
+                suffix = " " + " ".join(
+                    render_type(_required_field_type(field), as_arg=True)
+                    for field in constructor.fields
+                )
+            self.line(f"  {prefix} {constructor.name}{suffix}")
+            if constructor.record:
+                for field in constructor.fields:
+                    self.line(
+                        f"      {field.name} : {render_type(_required_field_type(field))}"
+                    )
+
+        field_types = [
+            _required_field_type(field)
+            for constructor in variant.constructors
+            for field in constructor.fields
+        ]
+        derivations = ["Serializable"]
+        if not any(_type_ref_references_non_derivable_type(field) for field in field_types):
+            derivations[:0] = ["Eq", "Show"]
+        self.line(f"  deriving ({', '.join(derivations)})")
+        self.record(variant.src, "variant", variant.name, start)
 
     def emit_choice(
         self,
@@ -864,6 +918,8 @@ class Emitter:
             where_parts.extend([line(), text(f"observer {render_expr(t.observer)}")])
 
         ensure_conditions = []
+        if t.ensure is not None:
+            ensure_conditions.append(render_expr(t.ensure))
         if t.init:
             for b in t.init.body:
                 if (
@@ -889,6 +945,20 @@ class Emitter:
         for ii in t.interface_instances:
             self.line("")
             self.emit_interface_instance(ii, t.name, field_types)
+        if t.checked_fetch is not None and t.checked_fetch.return_type is not None:
+            body = SelfFieldRewriter.rewrite_stmts(
+                list(t.checked_fetch.body), field_types
+            )
+            value = (
+                body[-1].value
+                if len(body) == 1 and isinstance(body[-1], IRReturn)
+                else None
+            )
+            if value is not None:
+                self.line("")
+                group_type = render_type(t.checked_fetch.return_type)
+                self.line(f"instance HasCheckedFetch {t.name} {group_type} where")
+                self.line(f"  contractGroupId self = {render_expr(value)}")
         self.record(t.src, "template", t.name, start)
 
     def emit_interface(self, i: IRInterface) -> None:
@@ -977,6 +1047,8 @@ class Emitter:
             header += import_line
         if "foldlA" in body_source:
             header += "import DA.Action (foldlA)\n\n"
+        if "instance HasCheckedFetch" in body_source:
+            header += "import Splice.Util (HasCheckedFetch(..))\n\n"
         if " !! " in body_source:
             header += "import DA.List ((!!))\n\n"
         for import_line in required_optional_imports(body_source):
@@ -996,6 +1068,9 @@ class Emitter:
             self.line("")
         for f in module.flags:
             self.emit_flag(f)
+            self.line("")
+        for variant in module.variants:
+            self.emit_variant(variant)
             self.line("")
         for fn in module.functions:
             self.emit_function(fn)

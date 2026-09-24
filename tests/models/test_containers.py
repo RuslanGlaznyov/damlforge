@@ -1,6 +1,6 @@
 import pytest
 
-from forge.models import exception, interface, template
+from forge.models import exception, interface, template, variant
 
 
 def test_template_preserves_class_identity():
@@ -17,6 +17,14 @@ def test_template_marks_class():
         pass
 
     assert Asset.__template__ is True
+
+
+def test_variant_marks_class():
+    @variant
+    class Result:
+        pass
+
+    assert Result.__variant__ is True
 
 
 def test_interface_marks_class_with_view_type():

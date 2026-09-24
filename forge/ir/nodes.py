@@ -224,6 +224,20 @@ class IRFlag:
 
 
 @dataclass(frozen=True)
+class IRVariantConstructor:
+    name: str
+    fields: tuple[Field, ...]
+    record: bool = False
+
+
+@dataclass(frozen=True)
+class IRVariant:
+    name: str
+    constructors: tuple[IRVariantConstructor, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
 class IRInterface:
     name: str
     view: Optional[TypeRef]
@@ -251,6 +265,7 @@ class IRTemplate:
     init: Optional[IRFunction]
     choices: tuple[IRChoice, ...]
     interface_instances: tuple[IRInterfaceInstance, ...] = ()
+    checked_fetch: Optional[IRFunction] = None
     src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
@@ -266,6 +281,7 @@ class IRImport:
 class IRModule:
     structs: tuple[IRStruct, ...] = ()
     flags: tuple[IRFlag, ...] = ()
+    variants: tuple[IRVariant, ...] = ()
     interfaces: tuple[IRInterface, ...] = ()
     templates: tuple[IRTemplate, ...] = ()
     functions: tuple[IRFunction, ...] = ()

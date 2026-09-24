@@ -381,6 +381,27 @@ def check_container(
 ) -> None:
     if isinstance(node, vy_ast.FlagDef):
         check_flag_member_names(node, errors)
+    elif isinstance(node, vy_ast.VariantDef):
+        for constructor in node.body:
+            if not isinstance(constructor, vy_ast.FunctionDef):
+                errors.append(
+                    DamlForgeException(
+                        f"Variant `{node.name}` may contain only constructor declarations",
+                        constructor,
+                        code=ErrorCodes.DF1203.value,
+                    )
+                )
+                continue
+            for arg in constructor.args.args:
+                if arg.arg != "self" and arg.annotation is None:
+                    errors.append(
+                        DamlForgeException(
+                            f"Variant constructor `{constructor.name}` argument "
+                            f"`{arg.arg}` requires a type annotation",
+                            arg,
+                            code=ErrorCodes.DF1213.value,
+                        )
+                    )
     elif isinstance(node, vy_ast.TemplateDef):
         check_template_signatory(node, errors)
         check_template_key_maintainer(node, errors)

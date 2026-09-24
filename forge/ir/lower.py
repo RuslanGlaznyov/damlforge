@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from forge.ast import nodes as vy_ast
 from forge.exceptions import CompilerPanic
 from forge.ir.nodes import (
@@ -31,6 +33,8 @@ from forge.ir.nodes import (
     IRTemplate,
     IRTuple,
     IRUnaryOp,
+    IRVariant,
+    IRVariantConstructor,
     SourceSpan,
     TypeRef,
 )
@@ -266,7 +270,7 @@ def _lower_consuming(node) -> Consuming:
 def lower_function(fn: vy_ast.FunctionDef) -> IRFunction:
     return_type = lower_type(fn.returns) if fn.returns is not None else None
     return IRFunction(
-        name=fn.name,
+        name=_daml_name_override(fn) or fn.name,
         args=_lower_args(fn),
         return_type=return_type,
         decorators=_decorator_names(fn),
@@ -356,6 +360,22 @@ def lower_flag(node: vy_ast.FlagDef) -> IRFlag:
     return IRFlag(node.name, values, src=_src(node))
 
 
+def lower_variant(node: vy_ast.VariantDef) -> IRVariant:
+    constructors = []
+    for fn in node.body:
+        if not isinstance(fn, vy_ast.FunctionDef):
+            continue
+        fields = tuple(
+            Field(arg.arg, lower_type(arg.annotation))
+            for arg in fn.args.args
+            if arg.arg != "self"
+        )
+        constructors.append(
+            IRVariantConstructor(fn.name, fields, record=_has_decorator(fn, "variant_record"))
+        )
+    return IRVariant(node.name, tuple(constructors), src=_src(node))
+
+
 def lower_interface(node: vy_ast.InterfaceDef) -> IRInterface:
     view = None
     keywords = []
@@ -431,6 +451,7 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
             interface_view_type[view_type] = iface_name
 
     init = None
+    checked_fetch = None
     own_choices = []
     interface_choices: dict = {name: [] for name, _ in implemented}
     interface_views: dict = {}
@@ -439,6 +460,8 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
             continue
         if stmt.name == "__init__":
             init = lower_function(stmt)
+        elif _has_decorator(stmt, "checked_fetch"):
+            checked_fetch = lower_function(stmt)
         elif _has_decorator(stmt, "view") and isinstance(stmt.returns, vy_ast.Name):
             iface_name = interface_view_type.get(stmt.returns.id)
             if iface_name is not None:
@@ -468,11 +491,17 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
         init,
         tuple(own_choices),
         interface_instances,
+        checked_fetch,
         src=_src(node),
     )
 
 
-_CONSTRUCTOR_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.TemplateDef, vy_ast.FlagDef)
+_CONSTRUCTOR_DECLARATION_TYPES = (
+    vy_ast.StructDef,
+    vy_ast.TemplateDef,
+    vy_ast.FlagDef,
+    vy_ast.VariantDef,
+)
 
 
 def _sibling_constructor_names(node) -> frozenset:
@@ -481,6 +510,12 @@ def _sibling_constructor_names(node) -> frozenset:
         for decl in info.ast.body:
             if isinstance(decl, _CONSTRUCTOR_DECLARATION_TYPES):
                 names.add(decl.name)
+            if isinstance(decl, (vy_ast.TemplateDef, vy_ast.InterfaceDef)):
+                names.update(
+                    _daml_name_override(fn) or fn.name
+                    for fn in decl.body
+                    if isinstance(fn, vy_ast.FunctionDef) and _choice_call(fn) is not None
+                )
     return frozenset(names)
 
 
@@ -491,12 +526,27 @@ def _lower_imports(body, import_graph=None) -> tuple:
 
     case_accessor_names = frozenset(collect_daml_builtins().case_accessors)
 
-    def _daml_module_ref(module_str: str) -> str:
+    def _daml_module_ref(module_str: str, node=None) -> str:
         if import_graph is not None:
             is_sibling = module_str in import_graph.sibling_module_strs
         else:
             is_sibling = "." not in module_str
-        return daml_module_name(module_str) if is_sibling else module_str
+        if not is_sibling:
+            return module_str
+        if node is not None:
+            info = next(
+                (
+                    info
+                    for info in node._metadata.get("import_infos", ())
+                    if info.alias == module_str
+                ),
+                None,
+            )
+            target_path = getattr(getattr(info, "ast", None), "path", None)
+            if target_path:
+                path = Path(target_path).with_suffix("")
+                return ".".join(daml_module_name(part) for part in path.parts)
+        return daml_module_name(module_str)
 
     imports = []
     for node in body:
@@ -509,13 +559,17 @@ def _lower_imports(body, import_graph=None) -> tuple:
             )
             if names:
                 constructor_names = frozenset(names) & _sibling_constructor_names(node)
-                imports.append(IRImport(_daml_module_ref(node.module), names, constructor_names))
+                imports.append(
+                    IRImport(_daml_module_ref(node.module, node), names, constructor_names)
+                )
         elif isinstance(node, vy_ast.Import):
             for alias in node.names:
                 if ImportsBuilder.is_annotation_only_root(alias.name.split(".", 1)[0]):
                     continue
                 imports.append(
-                    IRImport(_daml_module_ref(alias.name), names=None, alias=alias.asname)
+                    IRImport(
+                        _daml_module_ref(alias.name, node), names=None, alias=alias.asname
+                    )
                 )
     return tuple(imports)
 
@@ -523,6 +577,7 @@ def _lower_imports(body, import_graph=None) -> tuple:
 def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
     structs = []
     flags = []
+    variants = []
     interfaces = []
     templates = []
     functions = []
@@ -532,6 +587,8 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
             structs.append(lower_struct(node))
         elif isinstance(node, vy_ast.FlagDef):
             flags.append(lower_flag(node))
+        elif isinstance(node, vy_ast.VariantDef):
+            variants.append(lower_variant(node))
         elif isinstance(node, vy_ast.InterfaceDef):
             interfaces.append(lower_interface(node))
         elif isinstance(node, vy_ast.TemplateDef):
@@ -542,6 +599,7 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
     return IRModule(
         structs=tuple(structs),
         flags=tuple(flags),
+        variants=tuple(variants),
         interfaces=tuple(interfaces),
         templates=tuple(templates),
         functions=tuple(functions),

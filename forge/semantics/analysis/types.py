@@ -49,6 +49,10 @@ class TimestampT(_PrimT):
     _id = "Timestamp"
 
 
+class RelTimeT(_PrimT):
+    _id = "RelTime"
+
+
 class BoolT(_PrimT):
     _id = "bool"
 
@@ -68,6 +72,7 @@ def _get_primitive_types() -> dict:
         DecimalT(),
         DateT(),
         TimestampT(),
+        RelTimeT(),
         BoolT(),
         NoneT(),
     ]
@@ -113,7 +118,13 @@ def daml_builtin_type_names() -> set:
     return set(_get_primitive_types()) | set(_get_generic_types()) | set(known_map_types())
 
 
-_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.FlagDef, vy_ast.InterfaceDef, vy_ast.TemplateDef)
+_DECLARATION_TYPES = (
+    vy_ast.StructDef,
+    vy_ast.FlagDef,
+    vy_ast.VariantDef,
+    vy_ast.InterfaceDef,
+    vy_ast.TemplateDef,
+)
 
 
 class ModuleScope:
@@ -167,6 +178,12 @@ def _direct_imported_declarations(module: vy_ast.Module) -> dict:
             for node in info.ast.body
             if isinstance(node, importable_types)
         }
+        for info in stmt._metadata.get("import_infos", ()):
+            for container in info.ast.body:
+                for child in getattr(container, "body", ()):
+                    export_name = ImportsBuilder._choice_export_name(child)
+                    if export_name is not None:
+                        imported[export_name] = child
         for alias in stmt.names:
             if alias.name == "*":
                 declarations.update(imported)
@@ -279,6 +296,10 @@ def known_global_names(modules) -> frozenset:
         for node in module.body:
             if isinstance(node, vy_ast.FunctionDef):
                 names.add(node.name)
+            elif isinstance(node, vy_ast.VariantDef):
+                names.update(
+                    fn.name for fn in node.body if isinstance(fn, vy_ast.FunctionDef)
+                )
     names |= _LANGUAGE_BUILTIN_NAMES
     names |= set(collect_daml_builtins().function_renames.keys())
     return frozenset(names)
@@ -312,8 +333,15 @@ def check_unresolved_names(
     fns = (
         [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
     )
+    enclosing_fields = {
+        stmt.target.id
+        for stmt in getattr(node, "body", ())
+        if isinstance(node, vy_ast.TemplateDef)
+        and isinstance(stmt, vy_ast.AnnAssign)
+        and isinstance(stmt.target, vy_ast.Name)
+    }
     for fn in fns:
-        local_names = _local_bound_names(fn)
+        local_names = _local_bound_names(fn) | enclosing_fields
         for attr in fn.get_descendants(vy_ast.Attribute):
             if not isinstance(attr.value, vy_ast.Name):
                 continue
@@ -372,6 +400,15 @@ def known_function_param_types(modules) -> dict:
                 for a in node.args.args
                 if a.arg != "self"
             )
+        elif isinstance(node, vy_ast.VariantDef):
+            for constructor in node.body:
+                if not isinstance(constructor, vy_ast.FunctionDef):
+                    continue
+                types[constructor.name] = tuple(
+                    lower_type(a.annotation) if a.annotation is not None else None
+                    for a in constructor.args.args
+                    if a.arg != "self"
+                )
     return types
 
 
@@ -619,6 +656,16 @@ def known_field_types(modules) -> dict:
 
     registry = dict(collect_daml_builtins().field_types)
     for node in _scope_nodes(modules):
+        if isinstance(node, vy_ast.VariantDef):
+            for constructor in node.body:
+                if not isinstance(constructor, vy_ast.FunctionDef):
+                    continue
+                registry[constructor.name] = {
+                    arg.arg: lower_type(arg.annotation)
+                    for arg in constructor.args.args
+                    if arg.arg != "self" and arg.annotation is not None
+                }
+            continue
         if not isinstance(node, (vy_ast.StructDef, vy_ast.TemplateDef)):
             continue
         fields = {}
@@ -637,6 +684,14 @@ def known_return_types(modules, field_types: dict) -> dict:
     for node in _scope_nodes(modules):
         if isinstance(node, vy_ast.FunctionDef) and node.returns is not None:
             types[node.name] = lower_type(node.returns)
+        elif isinstance(node, vy_ast.VariantDef):
+            types.update(
+                {
+                    constructor.name: TypeRef(node.name)
+                    for constructor in node.body
+                    if isinstance(constructor, vy_ast.FunctionDef)
+                }
+            )
     return types
 
 
@@ -869,6 +924,12 @@ def check_container_type_annotations(
 ) -> None:
     if isinstance(node, vy_ast.StructDef):
         check_struct_type_annotations(node, known_names, errors)
+        return
+
+    if isinstance(node, vy_ast.VariantDef):
+        for constructor in node.body:
+            if isinstance(constructor, vy_ast.FunctionDef):
+                check_function_type_annotations(constructor, known_names, errors)
         return
 
     if isinstance(node, vy_ast.TemplateDef):

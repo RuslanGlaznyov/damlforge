@@ -98,7 +98,7 @@ def test_funding_campaign_example_translates_every_loop_for_real():
 def test_batched_markers_assertion_loop_uses_all():
     daml_source, _ = _full_pipeline(BATCHED_MARKERS_PROXY)
     choice_body = daml_source.split("choice BatchedMarkersProxy_TestEqual", 1)[1].split(
-        "choice Batched_markers_proxy_create_markers_v2", 1
+        "choice BatchedMarkersProxy_CreateMarkersV2", 1
     )[0]
 
     assert "all (\\entry -> entry.weight >= (10.0 : Decimal)) parties" in choice_body

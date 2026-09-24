@@ -1,6 +1,6 @@
 import pytest
 
-from forge.ast.nodes import InterfaceDef, NameConstant, TemplateDef
+from forge.ast.nodes import InterfaceDef, NameConstant, TemplateDef, VariantDef
 from forge.ast.parse import parse_to_ast
 from forge.codegen import generate_daml
 from forge.exceptions import SyntaxException
@@ -91,6 +91,26 @@ def test_template_decorator_on_class_produces_template_def():
     assert isinstance(template, TemplateDef)
     assert template.name == "Asset"
     assert len(template.body) == 1
+
+
+def test_variant_decorator_on_class_produces_variant_def():
+    module = _parse(
+        "@variant\n"
+        "class Result:\n"
+        "    def Accepted(value: Party): pass\n"
+        "    def Rejected(reason: str): pass\n"
+    )
+
+    variant = module.body[0]
+
+    assert isinstance(variant, VariantDef)
+    assert variant.name == "Result"
+    assert [constructor.name for constructor in variant.body] == ["Accepted", "Rejected"]
+
+
+def test_variant_keyword_is_rejected():
+    with pytest.raises(SyntaxException):
+        _parse("variant Result:\n    pass\n")
 
 
 def test_bare_class_without_template_decorator_is_still_rejected():

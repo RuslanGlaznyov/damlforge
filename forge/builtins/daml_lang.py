@@ -1,6 +1,13 @@
 from typing import Optional, TypeVar
 
-from forge.models.types import ContractId, RelTime, Timestamp
+from forge.models.types import (
+    ContractId,
+    Date,
+    Party,
+    RelTime,
+    Text,
+    Timestamp,
+)
 from . import DamlName
 
 _T1 = TypeVar("_T1")
@@ -109,3 +116,48 @@ def days(n: int) -> RelTime:
         "days is a real DA.Time builtin - only meaningful inside compiled "
         ".vy source, not callable directly from Python"
     )
+
+
+@DamlName("getTime", is_ledger_effect=True)
+def get_time() -> Timestamp:
+    raise NotImplementedError
+
+
+@DamlName("fromUnixMicroseconds", module="DA.Time")
+def from_unix_microseconds(microseconds: int) -> Timestamp:
+    raise NotImplementedError
+
+
+@DamlName("date", module="DA.Date")
+def date(year: int, month: _T1, day: int) -> Date:
+    raise NotImplementedError
+
+
+@DamlName("Jan", module="DA.Date")
+def january() -> _T1:
+    raise NotImplementedError
+
+
+@DamlName("time", module="DA.Time")
+def time(value: Date, hour: int, minute: int, second: int) -> Timestamp:
+    raise NotImplementedError
+
+
+@DamlName("stakeholder")
+def stakeholder(value: _T1) -> list[Party]:
+    raise NotImplementedError
+
+
+@DamlName("reverse")
+def reverse(values: list[_T1]) -> list[_T1]:
+    raise NotImplementedError
+
+
+@DamlName("DA.Text.length", module="DA.Text")
+def text_length(value: Text) -> int:
+    raise NotImplementedError
+
+
+@DamlName("error")
+def error(message: Text) -> _T1:
+    raise NotImplementedError

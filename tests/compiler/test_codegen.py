@@ -211,7 +211,7 @@ def test_generate_daml_struct():
     source, _ = generate_daml(module)
     assert "data Point = Point" in source
     assert "x : Party" in source
-    assert "deriving (Eq, Show)" in source
+    assert "deriving (Eq, Show, Serializable)" in source
 
 
 def test_generate_daml_struct_with_no_derive_field_type_skips_deriving():

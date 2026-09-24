@@ -1,21 +1,27 @@
 from forge.builtins import (
     ChoiceMeta,
+    checked_fetch,
     Consuming,
     InterfaceMeta,
     choice,
     interface,
     ledger_effect,
+    variant,
+    variant_record,
     view,
     template,
 )
 
 __all__ = (
     "ChoiceMeta",
+    "checked_fetch",
     "Consuming",
     "InterfaceMeta",
     "choice",
     "interface",
     "ledger_effect",
+    "variant",
+    "variant_record",
     "view",
     "template",
 )
