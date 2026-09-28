@@ -815,10 +815,10 @@ class Num(Constant):
     __slots__ = ()
 
     def validate(self):
-        if self.value < SizeLimits.MIN_INT256:
-            raise OverflowException("Value is below lower bound for all numeric types", self)
-        if self.value > SizeLimits.MAX_UINT256:
-            raise OverflowException("Value exceeds upper bound for all numeric types", self)
+        # Daml's primitive bounds are type-directed and are enforced once the
+        # semantic analyzer knows whether a value is Int, Decimal, or another
+        # type.  Parser-time EVM limits would reject valid Daml Int values.
+        return None
 
 
 class Int(Num):
@@ -857,13 +857,8 @@ class Decimal(Num):
         return ast_dict
 
     def validate(self):
-        # note: maybe use self.value == quantize(self.value) for this check
-        if self.value.as_tuple().exponent < -MAX_DECIMAL_PLACES:
-            raise InvalidLiteral("Vyper supports a maximum of ten decimal points", self)
-        if self.value < SizeLimits.MIN_AST_DECIMAL:
-            raise OverflowException("Value is below lower bound for decimal types", self)
-        if self.value > SizeLimits.MAX_AST_DECIMAL:
-            raise OverflowException("Value exceeds upper bound for decimal types", self)
+        # Decimal policy is Daml-specific and belongs in semantic analysis.
+        return None
 
 
 class Hex(Constant):
@@ -912,12 +907,9 @@ class Str(Constant):
     __slots__ = ()
 
     def validate(self):
-        for c in self.value:
-            # in utf-8, bytes in the 128 and up range deviate from latin1 and
-            # can be control bytes, allowing multi-byte characters.
-            # reject them here.
-            if ord(c) >= 128:
-                raise InvalidLiteral(f"'{c}' is not an allowed string literal character", self)
+        # Daml Text is Unicode.  Invalid surrogate code points, if any, are
+        # diagnosed by the semantic primitive-policy pass.
+        return None
 
 
 class Bytes(Constant):

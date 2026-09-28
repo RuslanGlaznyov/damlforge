@@ -22,9 +22,9 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 | Concept | `.vy` syntax |
 |---|---|
 | Record type | `struct Foo:` |
-| Contract type | `template Foo:` or `@template\nclass Foo:` |
+| Contract type | `@template\nclass Foo:` |
 | Interface | `interface Foo(view=FooView):` |
-| Interface impl | `template Bar(Foo):` (subclass the interface directly - no `instance` keyword) |
+| Interface impl | `@template\nclass Bar(Foo):` (subclass the interface directly - no `instance` keyword) |
 | Payload variant | `@variant\nclass Result:\n    def Ok(value: int): pass` |
 | Named-field variant constructor | `@variant_record` on a constructor method; emits Daml `Constructor with ...` |
 | Payload-free enum | `flag Status:\n    PENDING\n    PAID` (members MUST be `SCREAMING_CASE`) |

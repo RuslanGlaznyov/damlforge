@@ -102,11 +102,10 @@ def _get_generic_types() -> dict:
     return {t._id: t for t in types}
 ```
 
-**The semantic layer never validates arity.** `_walk_type_ref` only checks
-that `type_ref.name` is a known name — `GenMap[Party]` (missing the value
-type) or `set[Party, Decimal]` (too many) both pass semantic analysis
-untouched. Arity is validated later, in codegen, by whatever `render_*`
-function handles the type — see `forge/codegen/sets.py::render_set_type`:
+The semantic layer validates generic arity through the policy registry in
+`forge/semantics/primitive_specs.py`. Codegen still keeps a defensive check in
+the relevant `render_*` function — for example
+`forge/codegen/sets.py::render_set_type`:
 
 ```python
 def render_set_type(t, render_type) -> str:
@@ -117,11 +116,9 @@ def render_set_type(t, render_type) -> str:
     return f"{_MODULE}.{_MODULE} {render_type(t.args[0], as_arg=True)}"
 ```
 
-This is a `CompilerPanic`, not a `DamlForgeException` — it's deliberately a
-"should have been caught earlier" backstop, not a user-facing diagnostic. If
-a type's arity mistakes are common enough to deserve a real error code and
-message, add a proper semantic check instead (see
-`how-to-add-a-semantic-rejection.md`) rather than relying on this panic.
+This remains a `CompilerPanic`, not a `DamlForgeException`; it is only a
+defensive backstop because malformed source should already have received the
+user-facing `DF1229` semantic diagnostic.
 
 Wire the new type into `forge/codegen/emit.py`'s `_render_type_inner`, in the
 same `is_map_type`/`is_optional_type` style:

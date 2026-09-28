@@ -5,6 +5,7 @@ from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.analysis.intrinsics import DatetimeIntrinsicAnalyzer
+from forge.semantics.analysis.primitive_values import check_primitive_policies
 from forge.semantics.analysis.structure import _reachable_modules, check_container
 from forge.semantics.analysis.types import (
     ModuleScope,
@@ -256,6 +257,13 @@ class ModuleAnalyzer:
     def visit_top_level(self, node: vy_ast.TopLevel) -> None:
         check_container(node, self.errors, self.scope.declarations)
         check_container_type_annotations(node, self.scope.type_names, self.errors)
+        check_primitive_policies(
+            node,
+            self.scope.field_types,
+            self.scope.return_types,
+            self.scope.function_param_types,
+            self.errors,
+        )
         check_flag_value_access(node, self.scope.declarations, self.errors)
         mark_list_subscripts(node, self.scope.list_returning_functions)
         check_unresolved_names(node, self.scope.declarations, self.scope.global_names, self.errors)

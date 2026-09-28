@@ -7,6 +7,7 @@ from forge.ir.nodes import TypeRef
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.analysis.imports import ImportsBuilder
 from forge.semantics.analysis.structure import _reachable_modules
+from forge.semantics.primitive_specs import TYPE_NAME_ALIASES, generic_spec, type_is_ordered
 
 
 class _PrimT:
@@ -297,9 +298,7 @@ def known_global_names(modules) -> frozenset:
             if isinstance(node, vy_ast.FunctionDef):
                 names.add(node.name)
             elif isinstance(node, vy_ast.VariantDef):
-                names.update(
-                    fn.name for fn in node.body if isinstance(fn, vy_ast.FunctionDef)
-                )
+                names.update(fn.name for fn in node.body if isinstance(fn, vy_ast.FunctionDef))
     names |= _LANGUAGE_BUILTIN_NAMES
     names |= set(collect_daml_builtins().function_renames.keys())
     return frozenset(names)
@@ -429,7 +428,7 @@ def _flat_local_types(fn: vy_ast.FunctionDef) -> dict:
     return types
 
 
-_TYPE_NAME_SYNONYMS = {"int": "Int", "str": "Text", "float": "Decimal"}
+_TYPE_NAME_SYNONYMS = dict(TYPE_NAME_ALIASES)
 
 
 def _normalize_type_name(name: str) -> str:
@@ -604,6 +603,53 @@ def check_type_annotation(node, known_names: set, context: str, errors: Exceptio
         return
     type_ref = lower_type(node)
     _walk_type_ref(type_ref, known_names, node, context, errors)
+    _check_generic_policy(type_ref, node, context, errors)
+
+
+def _check_generic_policy(type_ref: TypeRef, node, context: str, errors: ExceptionList) -> None:
+    """Validate arity and container-specific Daml policies in one place."""
+
+    spec = generic_spec(type_ref.name)
+    if spec is not None:
+        arity = len(type_ref.args)
+        if not spec.min_arity <= arity <= spec.max_arity:
+            expected = (
+                str(spec.min_arity)
+                if spec.min_arity == spec.max_arity
+                else f"{spec.min_arity}..{spec.max_arity}"
+            )
+            errors.append(
+                DamlForgeException(
+                    f"`{type_ref.name}` expects {expected} type argument(s), got {arity} "
+                    f"({context})",
+                    node,
+                    code=ErrorCodes.DF1229.value,
+                )
+            )
+        if spec.ordered_key_position is not None and type_ref.args:
+            key = type_ref.args[spec.ordered_key_position]
+            if not type_is_ordered(key):
+                errors.append(
+                    DamlForgeException(
+                        f"`{type_ref.name}` keys must be ordered Daml values; "
+                        f"`{_render_type_ref(key)}` "
+                        f"cannot be used as a key ({context})",
+                        node,
+                        code=ErrorCodes.DF1229.value,
+                    )
+                )
+        if spec.ordered_element and type_ref.args and not type_is_ordered(type_ref.args[0]):
+            element = type_ref.args[0]
+            errors.append(
+                DamlForgeException(
+                    f"`{type_ref.name}` elements must be ordered Daml values; "
+                    f"`{_render_type_ref(element)}` cannot be used as an element ({context})",
+                    node,
+                    code=ErrorCodes.DF1229.value,
+                )
+            )
+    for arg in type_ref.args:
+        _check_generic_policy(arg, node, context, errors)
 
 
 def check_function_type_annotations(

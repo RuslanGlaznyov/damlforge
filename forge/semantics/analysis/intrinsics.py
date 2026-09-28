@@ -1,6 +1,13 @@
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
+from forge.semantics.primitive_specs import (
+    INT_MAX,
+    INT_MIN,
+    date_policy_error,
+    reltime_policy_error,
+    time_policy_error,
+)
 
 COMPILER_INTRINSIC_IMPORTS = {
     "datetime": frozenset({"date", "datetime", "time", "timedelta", "timezone"})
@@ -18,20 +25,7 @@ _TIMEDELTA_PARAMETERS = (
 
 _DATE_PARAMETERS = ("year", "month", "day")
 _TIME_PARAMETERS = ("hour", "minute", "second")
-_MONTH_NAMES = (
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-)
+_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
 class DatetimeIntrinsicAnalyzer:
@@ -175,9 +169,7 @@ class DatetimeIntrinsicAnalyzer:
         values = dict(zip(_TIMEDELTA_PARAMETERS, call.args))
         for keyword in call.keywords:
             if keyword.arg is None:
-                self._invalid_timedelta_call(
-                    call, "does not support unpacked keyword arguments"
-                )
+                self._invalid_timedelta_call(call, "does not support unpacked keyword arguments")
                 return None
             if keyword.arg not in _TIMEDELTA_PARAMETERS:
                 self._invalid_timedelta_call(
@@ -222,12 +214,10 @@ class DatetimeIntrinsicAnalyzer:
             return None
         return tuple(values[name] for name in _DATE_PARAMETERS)
 
-    def _invalid_date_call(self, call: vy_ast.Call, reason: str) -> None:
-        self.errors.append(
-            DamlForgeException(
-                f"`datetime.date(...)` {reason}", call, code=ErrorCodes.DF1225.value
-            )
-        )
+    def _invalid_date_call(
+        self, call: vy_ast.Call, reason: str, code: str = ErrorCodes.DF1225.value
+    ) -> None:
+        self.errors.append(DamlForgeException(f"`datetime.date(...)` {reason}", call, code=code))
 
     def _analyze_date(self, call: vy_ast.Call, local_names: set[str]) -> bool:
         if not self._is_date(call.func, local_names):
@@ -236,12 +226,13 @@ class DatetimeIntrinsicAnalyzer:
         if arguments is None:
             return False
 
-        month = arguments[1]
-        if isinstance(month, vy_ast.Int):
-            if not 1 <= month.value <= len(_MONTH_NAMES):
-                self._invalid_date_call(call, "month must be in 1..12")
+        if all(isinstance(value, vy_ast.Int) for value in arguments):
+            year, month, day = (value.value for value in arguments)
+            reason = date_policy_error(year, month, day)
+            if reason is not None:
+                self._invalid_date_call(call, reason, code=ErrorCodes.DF1229.value)
                 return False
-            call._metadata["date_month_name"] = _MONTH_NAMES[month.value - 1]
+            call._metadata["date_month_name"] = _MONTH_NAMES[month - 1]
         call._metadata["date_arguments"] = arguments
         return True
 
@@ -258,9 +249,7 @@ class DatetimeIntrinsicAnalyzer:
             )
             return False
         call._metadata.update(
-            datetime_now=True,
-            is_ledger_effect=True,
-            intrinsic_name="datetime.now",
+            datetime_now=True, is_ledger_effect=True, intrinsic_name="datetime.now"
         )
         return True
 
@@ -281,12 +270,10 @@ class DatetimeIntrinsicAnalyzer:
             values[keyword.arg] = keyword.value
         return tuple(values.get(name) for name in _TIME_PARAMETERS)
 
-    def _invalid_time_call(self, call: vy_ast.Call, reason: str) -> None:
-        self.errors.append(
-            DamlForgeException(
-                f"`datetime.time(...)` {reason}", call, code=ErrorCodes.DF1225.value
-            )
-        )
+    def _invalid_time_call(
+        self, call: vy_ast.Call, reason: str, code: str = ErrorCodes.DF1225.value
+    ) -> None:
+        self.errors.append(DamlForgeException(f"`datetime.time(...)` {reason}", call, code=code))
 
     def _analyze_datetime_combine(
         self, call: vy_ast.Call, local_names: set[str], consumed_time_calls: set[int]
@@ -302,10 +289,7 @@ class DatetimeIntrinsicAnalyzer:
             return False
 
         value, time_call = call.args
-        if not (
-            isinstance(time_call, vy_ast.Call)
-            and self._is_time(time_call.func, local_names)
-        ):
+        if not (isinstance(time_call, vy_ast.Call) and self._is_time(time_call.func, local_names)):
             self.errors.append(
                 DamlForgeException(
                     "`datetime.combine(...)` requires `datetime.time(...)` as its second argument",
@@ -319,12 +303,18 @@ class DatetimeIntrinsicAnalyzer:
         time_arguments = self._normalize_time_arguments(time_call)
         if time_arguments is None:
             return False
+        if all(value is None or isinstance(value, vy_ast.Int) for value in time_arguments):
+            hour, minute, second = (
+                value.value if isinstance(value, vy_ast.Int) else 0 for value in time_arguments
+            )
+            reason = time_policy_error(hour, minute, second)
+            if reason is not None:
+                self._invalid_time_call(time_call, reason, code=ErrorCodes.DF1229.value)
+                return False
         call._metadata["datetime_combine_arguments"] = (value, *time_arguments)
         return True
 
-    def _analyze_datetime_fromtimestamp(
-        self, call: vy_ast.Call, local_names: set[str]
-    ) -> bool:
+    def _analyze_datetime_fromtimestamp(self, call: vy_ast.Call, local_names: set[str]) -> bool:
         if not 1 <= len(call.args) <= 2:
             self.errors.append(
                 DamlForgeException(
@@ -366,9 +356,7 @@ class DatetimeIntrinsicAnalyzer:
             and isinstance(timestamp.right, vy_ast.Int)
             and timestamp.right.value == 1_000_000
         )
-        call._metadata["fromtimestamp_argument"] = (
-            timestamp.left if is_microseconds else timestamp
-        )
+        call._metadata["fromtimestamp_argument"] = timestamp.left if is_microseconds else timestamp
         call._metadata["fromtimestamp_is_microseconds"] = is_microseconds
         return True
 
@@ -413,6 +401,30 @@ class DatetimeIntrinsicAnalyzer:
             arguments = self._normalize_timedelta_arguments(call)
             if arguments is None:
                 continue
+            if all(
+                isinstance(value, vy_ast.Int) and INT_MIN <= value.value <= INT_MAX
+                for _, value in arguments
+            ):
+                units = {
+                    "weeks": 7 * 24 * 60 * 60 * 1_000_000,
+                    "days": 24 * 60 * 60 * 1_000_000,
+                    "hours": 60 * 60 * 1_000_000,
+                    "minutes": 60 * 1_000_000,
+                    "seconds": 1_000_000,
+                    "milliseconds": 1_000,
+                    "microseconds": 1,
+                }
+                total = sum(value.value * units[name] for name, value in arguments)
+                reason = reltime_policy_error(total)
+                if reason is not None:
+                    self.errors.append(
+                        DamlForgeException(
+                            f"`datetime.timedelta(...)` result {reason}",
+                            call,
+                            code=ErrorCodes.DF1229.value,
+                        )
+                    )
+                    continue
             call._metadata["timedelta_arguments"] = arguments
             timedelta_used = True
 

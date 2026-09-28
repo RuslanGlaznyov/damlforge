@@ -11,18 +11,18 @@ python -m forge json <file>                       # .vy -> JSON AST
 
 ## 1. Container keywords
 
-The pre-parser rewrites these bare keywords (column 0) into Python `class`:
+The pre-parser translates these container forms into Python `class` declarations:
 
 | `.vy` keyword | Compiles to | Real Daml shape |
 |---|---|---|
 | `struct Foo:` | plain data record | `data Foo = Foo with ...` |
-| `template Foo:` | contract template | `template Foo where ...` |
+| `@template` then `class Foo:` | contract template | `template Foo where ...` |
 | `interface Foo(view=V):` | interface | `interface Foo where viewtype V` |
-| `template Foo(Bar):` | template implementing interface `Bar` | `template Foo with ... where ... interface instance Bar for Foo where ...` |
+| `@template` then `class Foo(Bar):` | template implementing interface `Bar` | `template Foo with ... where ... interface instance Bar for Foo where ...` |
 | `flag Foo:` / `enum Foo:` | sum type of nullary constructors | `data Foo = A \| B \| ...` |
 | `@variant` then `class Foo:` | sum type with payload constructors | `data Foo = A Type \| B with ...` |
 
-`@template\nclass Foo:` is an accepted alternative spelling of `template Foo:` (byte-identical output). `@variant\nclass Foo:` is the only spelling for a payload variant; the bare `variant Foo:` keyword is rejected. Neither class marker needs an import because the pre-parser consumes it before decorator-name analysis. No other decorator combination with bare `class` is legal - plain `class Foo:` and `@anything_else\nclass Foo:` both raise a hard `SyntaxException` at tokenize time.
+`@template\nclass Foo:` is the only template spelling; bare `template Foo:` is not supported. Likewise, `@variant\nclass Foo:` is the only spelling for a payload variant. Neither class marker needs an import because the pre-parser consumes it before decorator-name analysis. No other decorator combination with bare `class` is legal - plain `class Foo:` and `@anything_else\nclass Foo:` both raise a hard `SyntaxException` at tokenize time.
 
 `struct`/`interface`/`event`/`enum` (but not `template`/`flag`) are also reserved identifiers - you cannot name a variable or field `struct`, etc. There is no `instance` keyword - a template declares which interface(s) it implements directly via base classes, like real Python subclassing/ABCs (see §11).
 
@@ -163,7 +163,8 @@ Choice bodies are exempt - a `@choice` method may call ledger builtins directly 
 ## 5. Template fields
 
 ```python
-template Asset:
+@template
+class Asset:
     owner: Party
     asset_id: Text
 
@@ -287,7 +288,8 @@ interface Holding(view=HoldingView):
     def withdraw(self, actors: list[Party], extra_args: ExtraArgs) -> bool:
         pass                      # interface choices are declared once, with `pass` bodies
 
-template SimpleHolding(Holding):
+@template
+class SimpleHolding(Holding):
     owner: Party
     issuer: Party
     signatory: list[Party] = [owner, issuer]
@@ -301,7 +303,7 @@ template SimpleHolding(Holding):
         ...                       # real implementation - same field/self access as any other choice
 ```
 
-Any method inside the template whose name matches one of the interface's own `@choice`-declared names is treated as that interface's implementation (not a separate template choice); everything else stays a normal template choice. A template can implement more than one interface (`template Foo(A, B):`) - a `@view` method is matched to the right interface by its return type, so implementing two interfaces needs two `@view` methods, one per interface's declared `view=` type.
+Any method inside the template whose name matches one of the interface's own `@choice`-declared names is treated as that interface's implementation (not a separate template choice); everything else stays a normal template choice. A template can implement more than one interface (`@template` followed by `class Foo(A, B):`) - a `@view` method is matched to the right interface by its return type, so implementing two interfaces needs two `@view` methods, one per interface's declared `view=` type.
 
 **Compile-time completeness check (`DF1228`)**: a template that lists an interface as a base must implement every one of that interface's `@choice`-declared members by name, and have exactly one `@view` method whose return type matches the interface's `view=` type - both are checked before codegen, not left to fail later inside `damlc`. The base itself must resolve to a real `interface` declaration (`DF1227` otherwise).
 
@@ -379,7 +381,8 @@ struct HoldingView:
 interface Holding(view=HoldingView):
     pass
 
-template SimpleHolding(Holding):
+@template
+class SimpleHolding(Holding):
     owner: Party
     issuer: Party
     amount: Decimal
@@ -396,7 +399,8 @@ template SimpleHolding(Holding):
             meta=Metadata(values={}),
         )
 
-template PendingTransfer:
+@template
+class PendingTransfer:
     sender: Party
     receiver: Party
     amount: Decimal
