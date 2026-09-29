@@ -246,8 +246,9 @@ def _lower_stmt_If(node):
 
 
 def _lower_stmt_For(node):
-    target = node.target.target
-    target_type = lower_type(node.target.annotation) if node.target.annotation else None
+    target = node.target.target if hasattr(node.target, "target") else node.target
+    annotation = getattr(node.target, "annotation", None)
+    target_type = lower_type(annotation) if annotation else None
     body = tuple(lower_stmt(s) for s in node.body)
     return IRFor(target.id, target_type, lower_expr(node.iter), body, src=_src(node))
 

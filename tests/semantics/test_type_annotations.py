@@ -36,6 +36,15 @@ def test_known_types_pass(source_path):
     _analyze(_read_fixture(source_path))
 
 
+def test_unannotated_for_loop_uses_iterable_element_type():
+    _analyze(
+        "def first(xs: list[Text]) -> Text:\n"
+        "    for item in xs:\n"
+        "        return item\n"
+        '    return ""\n'
+    )
+
+
 @pytest.mark.parametrize(
     "source_path,expected_code",
     [

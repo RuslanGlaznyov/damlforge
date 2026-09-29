@@ -530,6 +530,21 @@ def test_for_statement_lowers_target_type_and_body():
     assert isinstance(stmt, IRFor)
     assert stmt.target == "item"
     assert stmt.target_type == TypeRef("int128")
+
+
+def test_for_statement_without_target_type_lowers_with_inferred_type_placeholder():
+    ir = _lower(
+        "def f(xs: list[int128]) -> int128:\n"
+        "    for item in xs:\n"
+        "        return item\n"
+        "    return 0\n"
+    )
+
+    (fn,) = ir.functions
+    stmt = fn.body[0]
+    assert isinstance(stmt, IRFor)
+    assert stmt.target == "item"
+    assert stmt.target_type is None
     assert stmt.iter == IRName("xs")
     assert stmt.body == (IRReturn(IRName("item")),)
 

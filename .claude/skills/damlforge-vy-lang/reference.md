@@ -317,7 +317,7 @@ Free top-level functions are plain `def`s; call-argument arity (`DF1225`) and ty
 
 Direct self-recursion is banned (`DF1209`) - a function/choice cannot call itself.
 
-For-loops require an explicit type annotation on the loop variable before `in` (this is `.vy`-specific sugar the pre-parser slurps out, since bare PEP-526 annotations aren't legal there in real Python):
+For-loops may include a type annotation on the loop variable before `in` (this is `.vy`-specific sugar the pre-parser slurps out, since bare PEP-526 annotations aren't legal there in real Python). The annotation is optional when the iterable type is known:
 
 ```python
 for milestone: RepaymentMilestone in milestones:

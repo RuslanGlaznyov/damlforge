@@ -39,7 +39,7 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 | Unix timestamp | `datetime.fromtimestamp(seconds, timezone.utc)`; lowers to `DA.Time.fromUnixMicroseconds` |
 | Relative time | `timedelta(days=..., hours=...)` from Python's `datetime`; lowers to `DA.Time` |
 | Map | `GenMap[K, V]` / `TextMap[V]`, dict literal `{...}`, `m[k]`, `k in m` |
-| Typed for-loop | `for x: T in xs:` (annotation is mandatory before `in`) |
+| Typed for-loop | `for x: T in xs:` (annotation is optional when the iterable type is known) |
 
 For date/time values, import Python's standard types directly:
 

@@ -324,17 +324,7 @@ class AnnotatingVisitor(python_ast.NodeTransformer):
                     node.target.lineno,
                     node.target.col_offset,
                 )
-
-            # a common case for people migrating to 0.4.0, provide a more
-            # specific error message than "invalid type annotation"
-            raise SyntaxException(
-                "missing type annotation\n\n"
-                "  (hint: did you mean something like "
-                f"`for {node.target.id}: uint256 in ...`?)",
-                self._source_code,
-                node.lineno,
-                node.col_offset,
-            )
+            return self.generic_visit(node)
 
         # some kind of black magic. untokenize preserves the line and column
         # offsets, giving us something like `\
