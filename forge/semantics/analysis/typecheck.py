@@ -1,0 +1,684 @@
+"""Bidirectional, statement-ordered type checking for DamlForge expressions.
+
+The checker deliberately separates two ideas which are easy to conflate:
+
+* statements extend the local environment in source order; and
+* expression types are inferred with expected-type propagation and unification.
+
+That means the first element of a list never permanently decides its type.
+Every element is checked against the same expected type or inference variable.
+"""
+
+from dataclasses import dataclass, field
+
+from forge.ast import nodes as vy_ast
+from forge.exceptions import DamlForgeException, ExceptionList
+from forge.ir.lower import lower_type
+from forge.ir.nodes import TypeRef
+from forge.models.error_codes import ErrorCodes
+from forge.semantics.primitive_specs import canonical_type_name, generic_spec, primitive_spec
+
+_NUMERIC_TYPES = {"Int", "Decimal", "RelTime"}
+_COLLECTION_TYPES = {"list", "set", "frozenset", "Optional"}
+_MAP_TYPES = {"TextMap", "GenMap"}
+
+
+@dataclass(frozen=True)
+class TypeVariable:
+    """A type placeholder which is solved by the inference context."""
+
+    number: int
+
+
+@dataclass(frozen=True)
+class AppliedType:
+    """A type constructor whose arguments may still contain type variables."""
+
+    name: str
+    args: tuple["TypeTerm", ...] = ()
+
+
+TypeTerm = TypeVariable | AppliedType
+
+
+def _term_from_ref(type_ref: TypeRef) -> AppliedType:
+    return AppliedType(
+        canonical_type_name(type_ref.name), tuple(_term_from_ref(arg) for arg in type_ref.args)
+    )
+
+
+def _display_term(term: TypeTerm) -> str:
+    if isinstance(term, TypeVariable):
+        return f"?T{term.number}"
+    if not term.args:
+        return term.name
+    return f"{term.name}[{', '.join(_display_term(arg) for arg in term.args)}]"
+
+
+class InferenceContext:
+    """Creates and solves equality constraints between type terms."""
+
+    def __init__(self) -> None:
+        self._next_variable = 0
+        self._substitutions: dict[int, TypeTerm] = {}
+
+    def fresh(self) -> TypeVariable:
+        variable = TypeVariable(self._next_variable)
+        self._next_variable += 1
+        return variable
+
+    def resolve(self, term: TypeTerm) -> TypeTerm:
+        if isinstance(term, TypeVariable):
+            replacement = self._substitutions.get(term.number)
+            if replacement is None:
+                return term
+            resolved = self.resolve(replacement)
+            self._substitutions[term.number] = resolved
+            return resolved
+        return AppliedType(term.name, tuple(self.resolve(arg) for arg in term.args))
+
+    def _occurs(self, variable: TypeVariable, term: TypeTerm) -> bool:
+        term = self.resolve(term)
+        if isinstance(term, TypeVariable):
+            return term.number == variable.number
+        return any(self._occurs(variable, arg) for arg in term.args)
+
+    def unify(self, left: TypeTerm, right: TypeTerm) -> bool:
+        left = self.resolve(left)
+        right = self.resolve(right)
+        if left == right:
+            return True
+        if isinstance(left, TypeVariable):
+            if self._occurs(left, right):
+                return False
+            self._substitutions[left.number] = right
+            return True
+        if isinstance(right, TypeVariable):
+            if self._occurs(right, left):
+                return False
+            self._substitutions[right.number] = left
+            return True
+        if left.name != right.name or len(left.args) != len(right.args):
+            return False
+        return all(self.unify(a, b) for a, b in zip(left.args, right.args))
+
+
+@dataclass
+class TypeEnvironment:
+    """Lexical value bindings visible while checking a function or container."""
+
+    values: dict[str, TypeTerm] = field(default_factory=dict)
+
+    def child(self) -> "TypeEnvironment":
+        return TypeEnvironment(dict(self.values))
+
+    def bind(self, name: str, type_term: TypeTerm) -> None:
+        self.values[name] = type_term
+
+    def get(self, name: str) -> TypeTerm | None:
+        return self.values.get(name)
+
+
+class BidirectionalTypeChecker:
+    """Check one top-level declaration using expected types and constraints."""
+
+    def __init__(
+        self,
+        node: vy_ast.TopLevel,
+        field_types: dict,
+        return_types: dict,
+        function_param_types: dict,
+        errors: ExceptionList,
+        known_names: set[str] | None = None,
+    ) -> None:
+        self.node = node
+        self.field_types = field_types
+        self.return_types = return_types
+        self.function_param_types = function_param_types
+        self.errors = errors
+        self.known_names = known_names or set()
+        self.inference = InferenceContext()
+        self._reported: set[tuple[int, str]] = set()
+
+    def _error(self, node, message: str, *, call: bool = False) -> None:
+        key = (id(node), message)
+        if key in self._reported:
+            return
+        self._reported.add(key)
+        code = ErrorCodes.DF1226.value if call else ErrorCodes.DF1230.value
+        self.errors.append(DamlForgeException(message, node, code=code))
+
+    def _term(self, value: TypeRef | TypeTerm | None) -> TypeTerm | None:
+        if value is None:
+            return None
+        if isinstance(value, (TypeVariable, AppliedType)):
+            return value
+        return _term_from_ref(value)
+
+    def _resolved(self, value: TypeTerm | None) -> TypeTerm | None:
+        return None if value is None else self.inference.resolve(value)
+
+    def _name(self, value: TypeTerm | None) -> str | None:
+        value = self._resolved(value)
+        return value.name if isinstance(value, AppliedType) else None
+
+    def _known_type_name(self, name: str) -> bool:
+        return (
+            name in self.known_names
+            or primitive_spec(name) is not None
+            or generic_spec(name) is not None
+        )
+
+    def _is_unknown(self, term: TypeTerm) -> bool:
+        return isinstance(term, AppliedType) and not self._known_type_name(term.name)
+
+    def _compatible(
+        self, actual: TypeTerm | None, expected: TypeTerm | None, node, *, call: bool = False
+    ) -> bool:
+        if actual is None or expected is None:
+            return True
+        actual = self._resolved(actual)
+        expected = self._resolved(expected)
+        if actual is None or expected is None:
+            return True
+        if self._is_unknown(actual) or self._is_unknown(expected):
+            return True
+
+        if self._name(expected) == "Optional":
+            return self._compatible_optional(actual, expected, node, call=call)
+        if self._name(actual) == "Optional":
+            return self._unwrap_optional(actual, expected, node, call=call)
+
+        if (
+            isinstance(actual, AppliedType)
+            and isinstance(expected, AppliedType)
+            and actual.name == expected.name
+            and len(actual.args) == len(expected.args)
+        ):
+            return all(
+                self._compatible(a, b, node, call=call) for a, b in zip(actual.args, expected.args)
+            )
+
+        if self.inference.unify(actual, expected):
+            return True
+
+        self._error(
+            node,
+            f"value has type `{_display_term(actual)}`, but `{_display_term(expected)}` "
+            "was expected",
+            call=call,
+        )
+        return False
+
+    def _compatible_optional(
+        self, actual: TypeTerm, expected: TypeTerm, node, *, call: bool
+    ) -> bool:
+        if not isinstance(expected, AppliedType) or not expected.args:
+            return True
+        if self._name(actual) == "None":
+            return True
+        if isinstance(actual, AppliedType) and actual.name == "Optional" and actual.args:
+            return self._compatible(actual.args[0], expected.args[0], node, call=call)
+        if self._compatible(actual, expected.args[0], node, call=call):
+            if not isinstance(node, vy_ast.NameConstant):
+                node._metadata["needs_some_wrap"] = True
+            return True
+        return False
+
+    def _unwrap_optional(self, actual: TypeTerm, expected: TypeTerm, node, *, call: bool) -> bool:
+        if isinstance(actual, AppliedType) and actual.args:
+            if self._compatible(actual.args[0], expected, node, call=call):
+                node._metadata["needs_from_some_unwrap"] = True
+                return True
+        return False
+
+    def _finish(
+        self, expr, actual: TypeTerm | None, expected: TypeTerm | None, *, call: bool = False
+    ) -> TypeTerm | None:
+        if actual is None:
+            return None
+        if expected is not None:
+            self._compatible(actual, expected, expr, call=call)
+        actual = self._resolved(actual)
+        if actual is not None:
+            expr._metadata["inferred_type"] = _display_term(actual)
+        return actual
+
+    @staticmethod
+    def _is_numeric(name: str | None) -> bool:
+        return name in _NUMERIC_TYPES
+
+    def _literal(self, expr, expected: TypeTerm | None) -> TypeTerm | None:
+        if isinstance(expr, vy_ast.Int):
+            if self._name(expected) == "Decimal":
+                return AppliedType("Decimal")
+            return AppliedType("Int")
+        if isinstance(expr, vy_ast.Decimal):
+            return AppliedType("Decimal")
+        if isinstance(expr, vy_ast.Str):
+            return AppliedType("Text")
+        if isinstance(expr, vy_ast.NameConstant):
+            if expr.value is None:
+                return AppliedType("None")
+            if isinstance(expr.value, bool):
+                return AppliedType("Bool")
+        return None
+
+    def _attribute_type(self, expr, env: TypeEnvironment) -> TypeTerm | None:
+        base_type = (
+            env.get("self")
+            if isinstance(expr.value, vy_ast.Name) and expr.value.id == "self"
+            else self.check_expr(expr.value, None, env)
+        )
+        name = self._name(base_type)
+        if name is None:
+            return None
+        fields = self.field_types.get(name)
+        if fields is None:
+            return None
+        return self._term(fields.get(expr.attr))
+
+    def _element_type(self, value: TypeTerm | None) -> TypeTerm | None:
+        value = self._resolved(value)
+        if not isinstance(value, AppliedType):
+            return None
+        if value.name in _COLLECTION_TYPES and value.args:
+            return value.args[0]
+        if value.name in _MAP_TYPES and value.args:
+            return value.args[-1]
+        return None
+
+    def _key_type(self, value: TypeTerm | None) -> TypeTerm | None:
+        value = self._resolved(value)
+        if not isinstance(value, AppliedType):
+            return None
+        if value.name == "TextMap":
+            return AppliedType("Text")
+        if value.name == "GenMap" and value.args:
+            return value.args[0]
+        if value.name in _COLLECTION_TYPES - {"Optional"} and value.args:
+            return value.args[0]
+        return None
+
+    def _check_args(self, args, types, env: TypeEnvironment) -> None:
+        for arg, type_ref in zip(args, types):
+            self.check_expr(arg, self._term(type_ref), env, call=True)
+
+    def _check_call_arguments(
+        self, call: vy_ast.Call, env: TypeEnvironment, function_name: str | None
+    ) -> None:
+        if function_name is not None:
+            expected = self.function_param_types.get(function_name)
+            if expected is not None and not call.keywords:
+                self._check_args(call.args, expected, env)
+                return
+
+            fields = self.field_types.get(function_name)
+            if fields is not None:
+                self._check_args(call.args, fields.values(), env)
+                for keyword in call.keywords:
+                    type_ref = fields.get(keyword.arg)
+                    if type_ref is not None:
+                        self.check_expr(keyword.value, self._term(type_ref), env, call=True)
+                return
+
+        for arg in call.args:
+            self.check_expr(arg, None, env, call=True)
+        for keyword in call.keywords:
+            self.check_expr(keyword.value, None, env, call=True)
+
+    def _call_type(
+        self, call: vy_ast.Call, expected: TypeTerm | None, env: TypeEnvironment
+    ) -> TypeTerm | None:
+        function_name = call.func.id if isinstance(call.func, vy_ast.Name) else None
+
+        for metadata, type_name in (
+            ("datetime_now", "Time"),
+            ("datetime_combine_arguments", "Time"),
+            ("fromtimestamp_argument", "Time"),
+            ("date_arguments", "Date"),
+            ("timedelta_arguments", "RelTime"),
+        ):
+            if metadata in call._metadata:
+                return AppliedType(type_name)
+
+        if isinstance(call.func, vy_ast.Attribute):
+            receiver = self.check_expr(call.func.value, None, env)
+            if call.func.attr == "append":
+                element = self._element_type(receiver)
+                if call.args:
+                    self.check_expr(call.args[0], element, env, call=True)
+                return AppliedType("Unit")
+            self._check_call_arguments(call, env, None)
+            return None
+
+        self._check_call_arguments(call, env, function_name)
+        builtin_types = {
+            "int": "Int",
+            "Int": "Int",
+            "float": "Decimal",
+            "Decimal": "Decimal",
+            "str": "Text",
+            "Text": "Text",
+            "bool": "Bool",
+            "Bool": "Bool",
+            "len": "Int",
+            "range": "list",
+        }
+        if function_name in builtin_types:
+            type_name = builtin_types[function_name]
+            if type_name == "list":
+                return AppliedType("list", (AppliedType("Int"),))
+            return AppliedType(type_name)
+        if function_name == "fetch" and call.args:
+            cid = self.check_expr(call.args[0], None, env)
+            if isinstance(cid, AppliedType) and cid.name == "ContractId" and cid.args:
+                return cid.args[0]
+        if function_name == "create" and call.args:
+            payload = self.check_expr(call.args[0], None, env)
+            if payload is not None:
+                return AppliedType("ContractId", (payload,))
+        if function_name == "error":
+            return expected
+        result = self.return_types.get(function_name) if function_name else None
+        return self._term(result)
+
+    def _binary_type(
+        self, expr: vy_ast.BinOp, expected: TypeTerm | None, env: TypeEnvironment
+    ) -> TypeTerm | None:
+        if expr._metadata.get("add_rel_time"):
+            self.check_expr(expr.left, AppliedType("Time"), env)
+            self.check_expr(expr.right, AppliedType("RelTime"), env)
+            return AppliedType("Time")
+        if expr._metadata.get("sub_time"):
+            self.check_expr(expr.left, AppliedType("Time"), env)
+            self.check_expr(expr.right, AppliedType("Time"), env)
+            return AppliedType("RelTime")
+
+        op_type = type(expr.op)
+        if op_type in (vy_ast.Add, vy_ast.Sub, vy_ast.Mult, vy_ast.Div):
+            operand_expected = expected if self._is_numeric(self._name(expected)) else None
+            left = self.check_expr(expr.left, operand_expected, env)
+            right = self.check_expr(expr.right, operand_expected, env)
+            left_name = self._name(left)
+            right_name = self._name(right)
+
+            if left_name is None:
+                return right
+            if right_name is None:
+                return left
+            if op_type is vy_ast.Sub and {left_name, right_name} == {"Time"}:
+                return AppliedType("RelTime")
+            if op_type is vy_ast.Add and {left_name, right_name} == {"Time", "RelTime"}:
+                return AppliedType("Time")
+            if left_name == right_name and self._is_numeric(left_name):
+                return AppliedType(left_name)
+            self._compatible(right, left, expr)
+            return left
+
+        operand_type = AppliedType("Int") if op_type in (vy_ast.Mod, vy_ast.Pow) else None
+        left = self.check_expr(expr.left, operand_type, env)
+        right = self.check_expr(expr.right, operand_type, env)
+        return left or right
+
+    def _list_type(self, expr, expected, env, call: bool) -> TypeTerm:
+        element_type = None
+        if self._name(expected) == "list" and isinstance(expected, AppliedType):
+            element_type = expected.args[0] if expected.args else None
+        element_type = element_type or self.inference.fresh()
+        for element in expr.elements:
+            self.check_expr(element, element_type, env, call=call)
+        return AppliedType("list", (self.inference.resolve(element_type),))
+
+    def _tuple_type(self, expr, expected, env, call: bool) -> TypeTerm:
+        expected_args: tuple[TypeTerm, ...] = ()
+        if isinstance(expected, AppliedType) and self._name(expected) == "tuple":
+            expected_args = expected.args
+
+        actual_args = []
+        for index, element in enumerate(expr.elements):
+            item_expected = expected_args[index] if index < len(expected_args) else None
+            item_type = self.check_expr(element, item_expected, env, call=call)
+            if item_type is not None:
+                actual_args.append(item_type)
+        return AppliedType("tuple", tuple(actual_args))
+
+    def _dict_type(self, expr, expected, env, call: bool) -> TypeTerm | None:
+        map_name = self._name(expected)
+        if map_name == "TextMap" and isinstance(expected, AppliedType):
+            value_expected = expected.args[0] if expected.args else None
+            for key, value in zip(expr.keys, expr.values):
+                self.check_expr(key, AppliedType("Text"), env, call=call)
+                self.check_expr(value, value_expected, env, call=call)
+            expr._metadata["map_kind"] = "TextMap"
+            return expected
+
+        if map_name == "GenMap" and isinstance(expected, AppliedType):
+            key_expected = expected.args[0] if expected.args else None
+            value_expected = expected.args[1] if len(expected.args) > 1 else None
+            for key, value in zip(expr.keys, expr.values):
+                self.check_expr(key, key_expected, env, call=call)
+                self.check_expr(value, value_expected, env, call=call)
+            expr._metadata["map_kind"] = "GenMap"
+            return expected
+
+        for key, value in zip(expr.keys, expr.values):
+            self.check_expr(key, None, env, call=call)
+            self.check_expr(value, None, env, call=call)
+        return None
+
+    def _compare_type(self, expr, env: TypeEnvironment) -> TypeTerm:
+        left = self.check_expr(expr.left, None, env)
+        if isinstance(expr.op, (vy_ast.In, vy_ast.NotIn)):
+            right = self.check_expr(expr.right, None, env)
+            key_type = self._key_type(right)
+            if left is not None and key_type is not None:
+                self._compatible(left, key_type, expr.left)
+        else:
+            right = self.check_expr(expr.right, left, env)
+            if isinstance(expr.op, (vy_ast.Eq, vy_ast.NotEq)) and left is not None:
+                self._compatible(right, left, expr.right)
+        return AppliedType("Bool")
+
+    def _subscript_type(self, expr, env: TypeEnvironment) -> TypeTerm | None:
+        value = self.check_expr(expr.value, None, env)
+        if self._name(value) in _MAP_TYPES and isinstance(value, AppliedType):
+            key_type = value.args[0] if value.args else None
+        else:
+            key_type = AppliedType("Int")
+        self.check_expr(expr.slice, key_type, env)
+        return self._element_type(value)
+
+    def _conditional_type(self, expr, expected, env: TypeEnvironment) -> TypeTerm | None:
+        self.check_expr(expr.test, AppliedType("Bool"), env)
+        body = self.check_expr(expr.body, expected, env)
+        orelse = self.check_expr(expr.orelse, expected or body, env)
+        if body is not None and orelse is not None:
+            self._compatible(orelse, body, expr)
+        return body or orelse
+
+    def check_expr(
+        self, expr, expected: TypeRef | TypeTerm | None, env: TypeEnvironment, *, call: bool = False
+    ) -> TypeTerm | None:
+        if expr is None:
+            return None
+        expected_term = self._term(expected)
+
+        literal = self._literal(expr, expected_term)
+        if literal is not None:
+            return self._finish(expr, literal, expected_term, call=call)
+        if isinstance(expr, vy_ast.Name):
+            return self._finish(expr, env.get(expr.id), expected_term, call=call)
+        if isinstance(expr, vy_ast.Attribute):
+            return self._finish(expr, self._attribute_type(expr, env), expected_term, call=call)
+        if isinstance(expr, vy_ast.List):
+            return self._finish(
+                expr, self._list_type(expr, expected_term, env, call), expected_term, call=call
+            )
+        if isinstance(expr, vy_ast.Tuple):
+            return self._finish(
+                expr, self._tuple_type(expr, expected_term, env, call), expected_term, call=call
+            )
+        if isinstance(expr, vy_ast.Dict):
+            actual = self._dict_type(expr, expected_term, env, call)
+            return self._finish(expr, actual, expected_term, call=call)
+        if isinstance(expr, vy_ast.Call):
+            return self._finish(
+                expr, self._call_type(expr, expected_term, env), expected_term, call=call
+            )
+        if isinstance(expr, vy_ast.UnaryOp):
+            if isinstance(expr.op, vy_ast.Not):
+                self.check_expr(expr.operand, AppliedType("Bool"), env)
+                return self._finish(expr, AppliedType("Bool"), expected_term, call=call)
+            operand = self.check_expr(expr.operand, expected_term, env)
+            return self._finish(expr, operand, expected_term, call=call)
+        if isinstance(expr, vy_ast.BinOp):
+            return self._finish(
+                expr, self._binary_type(expr, expected_term, env), expected_term, call=call
+            )
+        if isinstance(expr, vy_ast.BoolOp):
+            for value in expr.values:
+                self.check_expr(value, AppliedType("Bool"), env)
+            return self._finish(expr, AppliedType("Bool"), expected_term, call=call)
+        if isinstance(expr, vy_ast.Compare):
+            return self._finish(expr, self._compare_type(expr, env), expected_term, call=call)
+        if isinstance(expr, vy_ast.Subscript):
+            return self._finish(expr, self._subscript_type(expr, env), expected_term, call=call)
+        if isinstance(expr, vy_ast.IfExp):
+            return self._finish(
+                expr, self._conditional_type(expr, expected_term, env), expected_term, call=call
+            )
+
+        for child in expr.get_descendants(vy_ast.ExprNode, include_self=False):
+            self.check_expr(child, None, env, call=call)
+        return None
+
+    def _check_statements(
+        self, statements: list, env: TypeEnvironment, return_type: TypeTerm | None
+    ) -> None:
+        for stmt in statements:
+            if isinstance(stmt, vy_ast.AnnAssign):
+                expected = self._term(lower_type(stmt.annotation))
+                if stmt.value is not None:
+                    self.check_expr(stmt.value, expected, env)
+                if isinstance(stmt.target, vy_ast.Name) and expected is not None:
+                    env.bind(stmt.target.id, expected)
+                elif isinstance(stmt.target, vy_ast.Attribute):
+                    self.check_expr(stmt.target, expected, env)
+            elif isinstance(stmt, vy_ast.Assign):
+                existing = None
+                if isinstance(stmt.target, vy_ast.Name):
+                    existing = env.get(stmt.target.id)
+                elif isinstance(stmt.target, vy_ast.Attribute):
+                    existing = self._attribute_type(stmt.target, env)
+                actual = self.check_expr(stmt.value, existing, env)
+                if isinstance(stmt.target, vy_ast.Name) and actual is not None:
+                    env.bind(stmt.target.id, actual)
+                elif isinstance(stmt.target, vy_ast.Attribute) and existing is not None:
+                    self._compatible(actual, existing, stmt.value)
+            elif isinstance(stmt, vy_ast.Return):
+                self.check_expr(stmt.value, return_type, env)
+            elif isinstance(stmt, vy_ast.If):
+                self.check_expr(stmt.test, AppliedType("Bool"), env)
+                body_env = env.child()
+                orelse_env = env.child()
+                self._check_statements(stmt.body, body_env, return_type)
+                self._check_statements(stmt.orelse, orelse_env, return_type)
+                for name in set(body_env.values) & set(orelse_env.values):
+                    body_type = body_env.get(name)
+                    orelse_type = orelse_env.get(name)
+                    if body_type is not None and orelse_type is not None:
+                        if self.inference.unify(body_type, orelse_type):
+                            env.bind(name, self.inference.resolve(body_type))
+            elif isinstance(stmt, vy_ast.For):
+                iterator = self.check_expr(stmt.iter, None, env)
+                element = self._element_type(iterator)
+                body_env = env.child()
+                target = stmt.target.target if hasattr(stmt.target, "target") else stmt.target
+                annotation = getattr(stmt.target, "annotation", None)
+                target_type = self._term(lower_type(annotation)) if annotation else element
+                if isinstance(target, vy_ast.Name) and target_type is not None:
+                    body_env.bind(target.id, target_type)
+                self._check_statements(stmt.body, body_env, return_type)
+            elif isinstance(stmt, vy_ast.Assert):
+                self.check_expr(stmt.test, AppliedType("Bool"), env)
+                self.check_expr(stmt.msg, AppliedType("Text"), env)
+            elif isinstance(stmt, vy_ast.Expr):
+                self.check_expr(stmt.value, None, env)
+            elif isinstance(stmt, vy_ast.Log):
+                self.check_expr(stmt.value, None, env)
+
+    def _base_environment(self, container_name: str | None = None) -> TypeEnvironment:
+        env = TypeEnvironment()
+        if container_name is not None:
+            env.bind("self", AppliedType(container_name))
+            for name, type_ref in self.field_types.get(container_name, {}).items():
+                term = self._term(type_ref)
+                if term is not None:
+                    env.bind(name, term)
+        return env
+
+    def _check_function(self, fn: vy_ast.FunctionDef, container_name: str | None) -> None:
+        env = self._base_environment(container_name)
+        for argument in fn.args.args:
+            if argument.arg == "self":
+                continue
+            if argument.annotation is not None:
+                term = self._term(lower_type(argument.annotation))
+                if term is not None:
+                    env.bind(argument.arg, term)
+        return_type = self._term(lower_type(fn.returns)) if fn.returns is not None else None
+        if any(
+            (isinstance(decorator, vy_ast.Name) and decorator.id == "choice")
+            or (
+                isinstance(decorator, vy_ast.Call)
+                and isinstance(decorator.func, vy_ast.Name)
+                and decorator.func.id == "choice"
+            )
+            for decorator in fn.decorator_list
+        ):
+            # Choice bodies are lowered as ledger actions.  Their Python
+            # return annotation describes the generated choice result, while
+            # the source body may return the action's terminal value.
+            return_type = None
+        self._check_statements(fn.body, env, return_type)
+
+    def _check_container_values(self, container: vy_ast.TopLevel) -> None:
+        if not isinstance(container, (vy_ast.StructDef, vy_ast.TemplateDef)):
+            return
+        env = self._base_environment(container.name)
+        for stmt in container.body:
+            if not isinstance(stmt, vy_ast.AnnAssign) or not isinstance(stmt.target, vy_ast.Name):
+                continue
+            type_ref = self.field_types.get(container.name, {}).get(stmt.target.id)
+            type_term = self._term(type_ref)
+            if stmt.value is not None:
+                self.check_expr(stmt.value, type_term, env)
+            if type_term is not None:
+                env.bind(stmt.target.id, type_term)
+
+    def run(self) -> None:
+        self._check_container_values(self.node)
+        if isinstance(self.node, vy_ast.FunctionDef):
+            self._check_function(self.node, None)
+        elif isinstance(self.node, (vy_ast.TemplateDef, vy_ast.InterfaceDef)):
+            for child in self.node.body:
+                if isinstance(child, vy_ast.FunctionDef):
+                    self._check_function(
+                        child, self.node.name if isinstance(self.node, vy_ast.TemplateDef) else None
+                    )
+
+
+def check_bidirectional_types(
+    node: vy_ast.TopLevel,
+    field_types: dict,
+    return_types: dict,
+    function_param_types: dict,
+    errors: ExceptionList,
+    known_names: set[str] | None = None,
+) -> None:
+    """Run type-directed expression checking for one top-level AST node."""
+
+    BidirectionalTypeChecker(
+        node, field_types, return_types, function_param_types, errors, known_names
+    ).run()

@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation, localcontext
 
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
+from forge.ir.lower import lower_type
 from forge.ir.nodes import TypeRef
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.primitive_specs import (
@@ -210,14 +211,8 @@ class PrimitivePolicyChecker:
                     self._check_expr(keyword.value, field_type)
 
     def _check_function(self, fn: vy_ast.FunctionDef) -> None:
-        return_type = None
-        if fn.returns is not None:
-            from forge.ir.lower import lower_type
-
-            return_type = lower_type(fn.returns)
+        return_type = lower_type(fn.returns) if fn.returns is not None else None
         local_types = {}
-        from forge.ir.lower import lower_type
-
         for argument in fn.args.args:
             if argument.arg != "self" and argument.annotation is not None:
                 local_types[argument.arg] = lower_type(argument.annotation)
@@ -226,8 +221,6 @@ class PrimitivePolicyChecker:
             self._check_statement(stmt, return_type, local_types)
 
     def _check_statement(self, stmt, return_type: TypeRef | None, local_types: dict) -> None:
-        from forge.ir.lower import lower_type
-
         expected_type: TypeRef | None = None
         if isinstance(stmt, vy_ast.AnnAssign):
             expected_type = lower_type(stmt.annotation)
@@ -261,8 +254,6 @@ class PrimitivePolicyChecker:
                 self._check_primitive(value[0], value[1], literal)
 
         if isinstance(self.node, (vy_ast.StructDef, vy_ast.TemplateDef)):
-            from forge.ir.lower import lower_type
-
             for stmt in self.node.body:
                 if isinstance(stmt, vy_ast.AnnAssign) and stmt.value is not None:
                     self._check_expr(stmt.value, lower_type(stmt.annotation))

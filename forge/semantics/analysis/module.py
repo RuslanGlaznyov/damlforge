@@ -6,10 +6,10 @@ from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.analysis.intrinsics import DatetimeIntrinsicAnalyzer
 from forge.semantics.analysis.primitive_values import check_primitive_policies
+from forge.semantics.analysis.typecheck import check_bidirectional_types
 from forge.semantics.analysis.structure import _reachable_modules, check_container
 from forge.semantics.analysis.types import (
     ModuleScope,
-    check_call_argument_types,
     check_call_arity,
     check_container_type_annotations,
     check_flag_value_access,
@@ -268,5 +268,12 @@ class ModuleAnalyzer:
         mark_list_subscripts(node, self.scope.list_returning_functions)
         check_unresolved_names(node, self.scope.declarations, self.scope.global_names, self.errors)
         check_call_arity(node, self.scope.function_param_types, self.errors)
-        check_call_argument_types(node, self.scope.function_param_types, self.errors)
+        check_bidirectional_types(
+            node,
+            self.scope.field_types,
+            self.scope.return_types,
+            self.scope.function_param_types,
+            self.errors,
+            self.scope.type_names,
+        )
         mark_optional_conversions(node, self.scope.field_types, self.scope.return_types)
