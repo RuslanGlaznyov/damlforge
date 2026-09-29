@@ -1,9 +1,10 @@
+from enum import Enum, auto
 from forge.models import choice, ledger_effect, template, view, interface
 from forge.builtins import DamlName
 
-flag Status:
-    PENDING
-    PAID
+class Status(Enum):
+    PENDING = auto()
+    PAID = auto()
 
 @template
 class Asset:

@@ -12,7 +12,7 @@ from forge.semantics.analysis.types import (
     ModuleScope,
     check_call_arity,
     check_container_type_annotations,
-    check_flag_value_access,
+    check_enum_value_access,
     check_unresolved_names,
     mark_list_subscripts,
     mark_optional_conversions,
@@ -264,7 +264,7 @@ class ModuleAnalyzer:
             self.scope.function_param_types,
             self.errors,
         )
-        check_flag_value_access(node, self.scope.declarations, self.errors)
+        check_enum_value_access(node, self.scope.declarations, self.errors)
         mark_list_subscripts(node, self.scope.list_returning_functions)
         check_unresolved_names(node, self.scope.declarations, self.scope.global_names, self.errors)
         check_call_arity(node, self.scope.function_param_types, self.errors)

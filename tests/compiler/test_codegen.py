@@ -1,6 +1,7 @@
 import pytest
 
 from forge.codegen.emit import generate_daml, render_body, render_expr, render_stmt, render_type
+from forge.daml_versions import DamlCodegenSettings
 from forge.ir.nodes import (
     Field,
     IRAssert,
@@ -13,7 +14,7 @@ from forge.ir.nodes import (
     IRCompare,
     IRConstant,
     IRExprStmt,
-    IRFlag,
+    IREnum,
     IRFor,
     IRIf,
     IRInterface,
@@ -194,11 +195,7 @@ def test_render_body_for_with_accumulator_uses_fold_and_fresh_binding():
 
 
 def test_if_without_branch_carried_values_does_not_create_continuation():
-    stmt = IRIf(
-        IRName("cond"),
-        (IRAssert(IRConstant(True)),),
-        (IRAssert(IRConstant(False)),),
-    )
+    stmt = IRIf(IRName("cond"), (IRAssert(IRConstant(True)),), (IRAssert(IRConstant(False)),))
     lines = render_body([stmt, IRReturn(IRConstant(True))], indent=0)
     joined = "\n".join(lines)
 
@@ -211,6 +208,14 @@ def test_generate_daml_struct():
     source, _ = generate_daml(module)
     assert "data Point = Point" in source
     assert "x : Party" in source
+    assert "deriving (Eq, Show)" in source
+    assert "Serializable" not in source
+
+
+def test_generate_daml_struct_derives_serializable_for_daml_35_explicit_mode():
+    module = IRModule(structs=(IRStruct("Point", (Field("x", TypeRef("Party")),)),))
+    settings = DamlCodegenSettings("3.5.0", ("--explicit-serializable=yes",))
+    source, _ = generate_daml(module, settings=settings)
     assert "deriving (Eq, Show, Serializable)" in source
 
 
@@ -236,8 +241,8 @@ def test_generate_daml_struct_with_no_derive_field_type_skips_deriving():
     assert "deriving (Eq, Show)" not in source
 
 
-def test_generate_daml_flag():
-    module = IRModule(flags=(IRFlag("Status", ("PENDING", "DONE")),))
+def test_generate_daml_enum():
+    module = IRModule(enums=(IREnum("Status", ("PENDING", "DONE")),))
     source, _ = generate_daml(module)
     assert "data Status = PENDING | DONE" in source
 

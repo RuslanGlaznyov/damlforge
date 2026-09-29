@@ -217,7 +217,7 @@ class IRStruct:
 
 
 @dataclass(frozen=True)
-class IRFlag:
+class IREnum:
     name: str
     values: tuple[str, ...]
     src: Optional[SourceSpan] = field(default=None, compare=False)
@@ -280,7 +280,7 @@ class IRImport:
 @dataclass(frozen=True)
 class IRModule:
     structs: tuple[IRStruct, ...] = ()
-    flags: tuple[IRFlag, ...] = ()
+    enums: tuple[IREnum, ...] = ()
     variants: tuple[IRVariant, ...] = ()
     interfaces: tuple[IRInterface, ...] = ()
     templates: tuple[IRTemplate, ...] = ()

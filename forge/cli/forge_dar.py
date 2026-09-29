@@ -8,6 +8,7 @@ from loguru import logger
 
 from forge.ast.parse import parse_to_ast
 from forge.codegen import daml_module_name, generate_daml
+from forge.daml_versions import DamlCodegenSettings
 from forge.ir import lower_module
 from forge.semantics import analyze_module
 
@@ -111,6 +112,7 @@ def build_dar(
             raise ValueError(f"-o must end in `.dar`: {output_dar}")
 
     config = check_project_structure(input_dir)
+    codegen_settings = DamlCodegenSettings.from_config(config)
 
     source_dir = (input_dir / str(config["source"])).resolve()
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -138,7 +140,7 @@ def build_dar(
         ir = lower_module(module, import_graph=import_graph)
         mod_stem = daml_module_name(rel.stem)
         mod_name = ".".join((*rel.parent.parts, mod_stem))
-        daml_source, _ = generate_daml(ir, module_name=mod_name)
+        daml_source, _ = generate_daml(ir, module_name=mod_name, settings=codegen_settings)
         out_dir = source_dir / rel.parent
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / f"{mod_stem}.daml").write_text(daml_source)

@@ -3,6 +3,7 @@ from functools import lru_cache
 from typing import Optional
 
 from forge.builtins import collect_daml_builtins
+from forge.daml_versions import DamlCodegenSettings
 from forge.codegen.doc import concat, line, nest, render, text
 from forge.codegen.maps import is_map_type, render_map_literal, render_map_type
 from forge.codegen.maps import required_imports as required_map_imports
@@ -25,7 +26,7 @@ from forge.ir.nodes import (
     Field,
     IRDict,
     IRExprStmt,
-    IRFlag,
+    IREnum,
     IRFor,
     IRFunction,
     IRIf,
@@ -296,9 +297,7 @@ def _render_call(e: IRCall) -> str:
             pattern = " ".join([constructor, *names])
             if result:
                 result_constructor, field_names = result
-                fields = ", ".join(
-                    f"{field} = {name}" for field, name in zip(field_names, names)
-                )
+                fields = ", ".join(f"{field} = {name}" for field, name in zip(field_names, names))
                 value = f"({result_constructor} with {fields})"
             elif arity == 0:
                 value = "()"
@@ -306,9 +305,7 @@ def _render_call(e: IRCall) -> str:
                 value = names[0]
             else:
                 value = "(" + ", ".join(names) + ")"
-            return (
-                f"(case {scrutinee} of {pattern} -> Some {value}; _ -> None)"
-            )
+            return f"(case {scrutinee} of {pattern} -> Some {value}; _ -> None)"
 
     func_name = render_expr(e.func)
     if e.keywords:
@@ -429,9 +426,7 @@ class BodyTranslator:
                     cont_name = self.namer.next_cont()
                     params = " ".join(cont_vars)
                     header = f"{cont_name} {params}".rstrip()
-                    cont_lines = [
-                        f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="
-                    ]
+                    cont_lines = [f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="]
                     cont_renames = {k: v for k, v in renames.items() if k not in cont_vars}
                     cont_lines.extend(
                         self._translate(
@@ -562,14 +557,7 @@ class BodyTranslator:
         return lines
 
     def _translate_fold(
-        self,
-        node: IRFor,
-        plan: LoopPlan,
-        indent,
-        monadic,
-        make_tail,
-        known,
-        renames,
+        self, node: IRFor, plan: LoopPlan, indent, monadic, make_tail, known, renames
     ) -> list:
         pad = "  " * indent
         accumulators = list(plan.accumulators)
@@ -586,12 +574,7 @@ class BodyTranslator:
 
         body_indent = indent + (3 if plan.monadic else 5)
         body_lines = self._translate(
-            list(plan.body),
-            body_indent,
-            plan.monadic,
-            fold_tail,
-            inner_known,
-            inner_renames,
+            list(plan.body), body_indent, plan.monadic, fold_tail, inner_known, inner_renames
         )
         body_lines[-1] += ")"
         fresh_names = [self.namer.next_rebind(name) for name in accumulators]
@@ -620,14 +603,7 @@ class BodyTranslator:
         return lines
 
     def _translate_early_return_loop(
-        self,
-        node: IRFor,
-        plan: LoopPlan,
-        indent,
-        monadic,
-        make_tail,
-        known,
-        renames,
+        self, node: IRFor, plan: LoopPlan, indent, monadic, make_tail, known, renames
     ) -> list:
         pad = "  " * indent
         helper = self.namer.next()
@@ -704,12 +680,17 @@ def render_stmt(stmt, indent: int, monadic: bool = True) -> list:
 
 
 class Emitter:
-    def __init__(self, known_effect_fns: frozenset = frozenset()):
+    def __init__(
+        self,
+        known_effect_fns: frozenset = frozenset(),
+        settings: DamlCodegenSettings = DamlCodegenSettings(),
+    ):
         self.lines: list = []
         self.mappings: list = []
         self.namer = LoopNamer()
         self.hoisted: list = []
         self.known_effect_fns = known_effect_fns
+        self.derive_serializable = settings.derive_serializable
 
     def line(self, text: str = "") -> None:
         self.lines.append(text)
@@ -737,6 +718,12 @@ class Emitter:
     def _translator(self, self_type: Optional[str] = None) -> BodyTranslator:
         return BodyTranslator(self.namer, self.hoisted, self.known_effect_fns, self_type)
 
+    def _derivations(self, can_derive_eq_show: bool) -> list[str]:
+        derivations = ["Eq", "Show"] if can_derive_eq_show else []
+        if self.derive_serializable:
+            derivations.append("Serializable")
+        return derivations
+
     def emit_struct(self, s: IRStruct) -> None:
         start = len(self.lines) + 1
         parts = [text(f"data {s.name} = {s.name}")]
@@ -746,30 +733,29 @@ class Emitter:
                 for f in s.fields
             )
             parts.append(nest(2, concat([line(), text("with"), nest(2, field_lines)])))
-        derivations = ["Serializable"]
-        if not any(
+        can_derive_eq_show = not any(
             _type_ref_references_non_derivable_type(_required_field_type(f)) for f in s.fields
-        ):
-            derivations[:0] = ["Eq", "Show"]
-        parts.append(
-            nest(2, concat([line(), text(f"deriving ({', '.join(derivations)})")]))
         )
+        derivations = self._derivations(can_derive_eq_show)
+        if derivations:
+            parts.append(nest(2, concat([line(), text(f"deriving ({', '.join(derivations)})")])))
         self.lines_block(render(concat(parts)))
         self.record(s.src, "struct", s.name, start)
 
-    def emit_flag(self, f: IRFlag) -> None:
+    def emit_enum(self, enum: IREnum) -> None:
         start = len(self.lines) + 1
-        if not f.values:
-            doc = text(f"data {f.name}")
+        if not enum.values:
+            doc = text(f"data {enum.name}")
         else:
+            derivations = self._derivations(True)
             doc = concat(
                 [
-                    text(f"data {f.name} = " + " | ".join(f.values)),
-                    nest(2, concat([line(), text("deriving (Eq, Show, Serializable)")])),
+                    text(f"data {enum.name} = " + " | ".join(enum.values)),
+                    nest(2, concat([line(), text(f"deriving ({', '.join(derivations)})")])),
                 ]
             )
         self.lines_block(render(doc))
-        self.record(f.src, "flag", f.name, start)
+        self.record(enum.src, "enum", enum.name, start)
 
     def emit_variant(self, variant: IRVariant) -> None:
         start = len(self.lines) + 1
@@ -785,19 +771,19 @@ class Emitter:
             self.line(f"  {prefix} {constructor.name}{suffix}")
             if constructor.record:
                 for field in constructor.fields:
-                    self.line(
-                        f"      {field.name} : {render_type(_required_field_type(field))}"
-                    )
+                    self.line(f"      {field.name} : {render_type(_required_field_type(field))}")
 
         field_types = [
             _required_field_type(field)
             for constructor in variant.constructors
             for field in constructor.fields
         ]
-        derivations = ["Serializable"]
-        if not any(_type_ref_references_non_derivable_type(field) for field in field_types):
-            derivations[:0] = ["Eq", "Show"]
-        self.line(f"  deriving ({', '.join(derivations)})")
+        can_derive_eq_show = not any(
+            _type_ref_references_non_derivable_type(field) for field in field_types
+        )
+        derivations = self._derivations(can_derive_eq_show)
+        if derivations:
+            self.line(f"  deriving ({', '.join(derivations)})")
         self.record(variant.src, "variant", variant.name, start)
 
     def emit_choice(
@@ -946,14 +932,8 @@ class Emitter:
             self.line("")
             self.emit_interface_instance(ii, t.name, field_types)
         if t.checked_fetch is not None and t.checked_fetch.return_type is not None:
-            body = SelfFieldRewriter.rewrite_stmts(
-                list(t.checked_fetch.body), field_types
-            )
-            value = (
-                body[-1].value
-                if len(body) == 1 and isinstance(body[-1], IRReturn)
-                else None
-            )
+            body = SelfFieldRewriter.rewrite_stmts(list(t.checked_fetch.body), field_types)
+            value = body[-1].value if len(body) == 1 and isinstance(body[-1], IRReturn) else None
             if value is not None:
                 self.line("")
                 group_type = render_type(t.checked_fetch.return_type)
@@ -1021,11 +1001,7 @@ class Emitter:
         self.record(ii.src, "interface_instance", f"{ii.interface}_for_{template_name}", start)
 
     def _render_header(
-        self,
-        imports,
-        body_source: str,
-        module_name: Optional[str],
-        required_modules=(),
+        self, imports, body_source: str, module_name: Optional[str], required_modules=()
     ) -> str:
         header = f"module {module_name} where\n\n" if module_name is not None else ""
         builtins = collect_daml_builtins()
@@ -1071,8 +1047,8 @@ class Emitter:
         for s in module.structs:
             self.emit_struct(s)
             self.line("")
-        for f in module.flags:
-            self.emit_flag(f)
+        for enum in module.enums:
+            self.emit_enum(enum)
             self.line("")
         for variant in module.variants:
             self.emit_variant(variant)
@@ -1110,10 +1086,14 @@ class Emitter:
         return source, {"mappings": mappings}
 
 
-def generate_daml(module: IRModule, module_name: Optional[str] = None):
+def generate_daml(
+    module: IRModule,
+    module_name: Optional[str] = None,
+    settings: DamlCodegenSettings = DamlCodegenSettings(),
+):
     known_effect_fns = (
         frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
         | collect_daml_builtins().ledger_effect_fns
         | frozenset(module.effect_functions)
     )
-    return Emitter(known_effect_fns).generate(module, module_name)
+    return Emitter(known_effect_fns, settings).generate(module, module_name)

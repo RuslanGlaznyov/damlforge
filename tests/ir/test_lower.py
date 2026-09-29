@@ -56,19 +56,25 @@ def test_struct_lowers_to_fields_with_type_refs():
     assert point.fields == (Field("x", TypeRef("int128")), Field("y", TypeRef("Party")))
 
 
-def test_flag_lowers_to_values():
-    ir = _lower("flag Status:\n    PENDING\n    DONE\n")
+def test_enum_lowers_to_values():
+    ir = _lower(
+        "from enum import Enum, auto\n\n"
+        "class Status(Enum):\n"
+        "    PENDING = auto()\n"
+        "    DONE = auto()\n"
+    )
 
-    (status,) = ir.flags
+    (status,) = ir.enums
     assert status.name == "Status"
     assert status.values == ("PENDING", "DONE")
 
 
-def test_validated_flag_value_access_lowers_to_bare_name():
+def test_validated_enum_value_access_lowers_to_bare_name():
     ir = _analyze_and_lower(
-        "flag Status:\n"
-        "    PENDING\n"
-        "    DONE\n\n"
+        "from enum import Enum, auto\n\n"
+        "class Status(Enum):\n"
+        "    PENDING = auto()\n"
+        "    DONE = auto()\n\n"
         "def f() -> bool:\n"
         "    return Status.PENDING == Status.DONE\n"
     )

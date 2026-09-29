@@ -10,8 +10,6 @@ module: ( DOCSTRING
         | interface_def
         | constant_def
         | variable_def
-        | enum_def // TODO deprecate at some point in favor of flag
-        | flag_def
         | error_def
         | event_def
         | function_def
@@ -78,19 +76,6 @@ error_member: NAME ":" type
 // Errors which use no args use a pass statement instead
 error_body: _NEWLINE _INDENT ((error_member _NEWLINE)+ | _PASS _NEWLINE) _DEDENT
 error_def: _ERROR_DECL NAME ":" ( error_body | _PASS )
-
-// TODO deprecate in favor of flag
-// Enums
-_ENUM_DECL: "enum"
-enum_member: NAME
-enum_body: _NEWLINE _INDENT (enum_member _NEWLINE)+ _DEDENT
-enum_def: _ENUM_DECL NAME ":" enum_body
-
-// Flags
-_FLAG_DECL: "flag"
-flag_member: NAME
-flag_body: _NEWLINE _INDENT (flag_member _NEWLINE)+ _DEDENT
-flag_def: _FLAG_DECL NAME ":" flag_body
 
 // Types
 array_def: (NAME | array_def | dyn_array_def) "[" expr "]"

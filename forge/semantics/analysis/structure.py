@@ -6,7 +6,7 @@ from forge.builtins import choice, collect_daml_builtins, ledger_effect
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 
-FLAG_MEMBER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+ENUM_MEMBER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 # preconsuming/postconsuming are template-only; not supported on interface choices
 # (compiler/damlc/daml-lf-conversion/src/DA/Daml/LFConversion.hs, "Preconsuming/Postconsuming
@@ -217,8 +217,7 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
                 else None
             )
             if effect_name is None and (
-                isinstance(call.func, vy_ast.Name)
-                and call.func.id in ledger_effect_fns
+                isinstance(call.func, vy_ast.Name) and call.func.id in ledger_effect_fns
             ):
                 effect_name = call.func.id
             if effect_name is not None:
@@ -369,26 +368,61 @@ def _reachable_modules(modules) -> list[vy_ast.Module]:
     return ordered
 
 
-def check_flag_member_names(node: vy_ast.FlagDef, errors: ExceptionList) -> None:
+def check_enum_member_names(node: vy_ast.EnumDef, errors: ExceptionList) -> None:
+    members = set()
     for stmt in node.body:
-        if not (isinstance(stmt, vy_ast.Expr) and isinstance(stmt.value, vy_ast.Name)):
-            continue
-        name = stmt.value.id
-        if not FLAG_MEMBER_NAME.match(name):
+        name = vy_ast.enum_member_name(stmt)
+        if name is None:
             errors.append(
                 DamlForgeException(
-                    f"Flag member `{name}` of `{node.name}` must be SCREAMING_SNAKE_CASE",
+                    f"Enum `{node.name}` members must be bare names or assigned `auto()`",
+                    stmt,
+                    code=ErrorCodes.DF1231.value,
+                )
+            )
+            continue
+        if name in members:
+            errors.append(
+                DamlForgeException(
+                    f"Enum member `{name}` is declared more than once",
+                    stmt,
+                    code=ErrorCodes.DF1231.value,
+                )
+            )
+        members.add(name)
+        if not ENUM_MEMBER_NAME.match(name):
+            errors.append(
+                DamlForgeException(
+                    f"Enum member `{name}` of `{node.name}` must be SCREAMING_SNAKE_CASE",
                     stmt,
                     code=ErrorCodes.DF1217.value,
                 )
             )
+        if isinstance(stmt, vy_ast.Assign) and not _is_auto_call(stmt.value):
+            errors.append(
+                DamlForgeException(
+                    f"Enum member `{name}` must use `auto()`; explicit values are not supported",
+                    stmt.value,
+                    code=ErrorCodes.DF1231.value,
+                )
+            )
+
+
+def _is_auto_call(value) -> bool:
+    return (
+        isinstance(value, vy_ast.Call)
+        and isinstance(value.func, vy_ast.Name)
+        and value.func.id == "auto"
+        and not value.args
+        and not value.keywords
+    )
 
 
 def check_container(
     node: vy_ast.TopLevel, errors: ExceptionList, declarations: Optional[dict] = None
 ) -> None:
-    if isinstance(node, vy_ast.FlagDef):
-        check_flag_member_names(node, errors)
+    if isinstance(node, vy_ast.EnumDef):
+        check_enum_member_names(node, errors)
     elif isinstance(node, vy_ast.VariantDef):
         for constructor in node.body:
             if not isinstance(constructor, vy_ast.FunctionDef):

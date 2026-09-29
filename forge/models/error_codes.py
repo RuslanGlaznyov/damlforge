@@ -34,3 +34,4 @@ class ErrorCodes(Enum):
     DF1228 = "DF1228"
     DF1229 = "DF1229"
     DF1230 = "DF1230"
+    DF1231 = "DF1231"

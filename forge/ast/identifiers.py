@@ -58,8 +58,6 @@ RESERVED_KEYWORDS = _PYTHON_RESERVED_KEYWORDS | {
     "interface",
     "struct",
     "event",
-    "enum",
-    # "flag", # allowed since it's useful as an identifier per user feedback
     # special functions (no name mangling)
     "init",
     "_init_",

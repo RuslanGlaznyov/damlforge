@@ -246,10 +246,6 @@ class FunctionDeclarationException(VyperException):
     """Invalid function declaration."""
 
 
-class FlagDeclarationException(VyperException):
-    """Invalid flag declaration."""
-
-
 class EventDeclarationException(VyperException):
     """Invalid event declaration."""
 

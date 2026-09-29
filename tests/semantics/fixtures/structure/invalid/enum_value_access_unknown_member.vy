@@ -1,7 +1,8 @@
+from enum import Enum, auto
 
-flag Status:
-    PENDING
-    PAID
+class Status(Enum):
+    PENDING = auto()
+    PAID = auto()
 
 @template
 class Asset:

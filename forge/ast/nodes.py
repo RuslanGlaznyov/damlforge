@@ -25,14 +25,11 @@ from forge.exceptions import (
     ZeroDivisionException,
 )
 from forge.utils import (
-    MAX_DECIMAL_PLACES,
-    SizeLimits,
     annotate_source_code,
     evm_div,
     quantize,
     sha256sum,
 )
-from forge.warnings import EnumUsage, vyper_warn
 
 NODE_BASE_ATTRIBUTES = (
     "_children",
@@ -110,11 +107,6 @@ def get_node(
         else:
             ast_struct["ast_type"] = "VariableDecl"
 
-    enum_warn = False
-    if ast_struct["ast_type"] == "EnumDef":
-        enum_warn = True
-        ast_struct["ast_type"] = "FlagDef"
-
     vy_class = getattr(sys.modules[__name__], ast_struct["ast_type"], None)
 
     if vy_class is None:
@@ -131,11 +123,6 @@ def get_node(
             )
 
     node = vy_class(parent=parent, **ast_struct)
-
-    if enum_warn:
-        vyper_warn(
-            EnumUsage("enum will be deprecated in a future release, use flag instead.", node)
-        )
 
     node.validate()
 
@@ -741,8 +728,18 @@ class Log(Stmt):
             raise StructureException("Log must call an event", self.value)
 
 
-class FlagDef(TopLevel):
+class EnumDef(TopLevel):
     __slots__ = ("name", "body")
+
+
+def enum_member_name(node: VyperNode) -> str | None:
+    value = getattr(node, "value", None)
+    if isinstance(value, Name):
+        return value.id
+    target = getattr(node, "target", None)
+    if isinstance(target, Name):
+        return target.id
+    return None
 
 
 class EventDef(TopLevel):

@@ -1,6 +1,6 @@
 import pytest
 
-from forge.ast.nodes import InterfaceDef, NameConstant, TemplateDef, VariantDef
+from forge.ast.nodes import EnumDef, InterfaceDef, NameConstant, TemplateDef, VariantDef
 from forge.ast.parse import parse_to_ast
 from forge.codegen import generate_daml
 from forge.exceptions import SyntaxException
@@ -46,6 +46,26 @@ def test_interface_keyword_captures_view_keyword_argument():
 def test_bare_class_keyword_still_rejected():
     with pytest.raises(SyntaxException):
         _parse("class Asset:\n    pass\n")
+
+
+def test_python_enum_class_produces_enum_def():
+    module = _parse(
+        "from enum import Enum, auto\n\n"
+        "class Status(Enum):\n"
+        "    ACTIVE = auto()\n"
+        "    CLOSED = auto()\n"
+    )
+
+    enum = module.body[1]
+
+    assert isinstance(enum, EnumDef)
+    assert enum.name == "Status"
+    assert [stmt.target.id for stmt in enum.body] == ["ACTIVE", "CLOSED"]
+
+
+def test_flag_keyword_is_rejected():
+    with pytest.raises(SyntaxException):
+        _parse("flag Status:\n    ACTIVE\n")
 
 
 def test_interface_keyword_captures_requires_base_interfaces():

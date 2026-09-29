@@ -66,13 +66,31 @@ data Result
   | Deferred with
       reason : Text
       retry_at : Time
-  deriving (Eq, Show, Serializable)
+  deriving (Eq, Show)
 ```
 
 `@variant` is a DamlForge class marker, like `@template`, and does not need an
 import. `@variant_record` is an ordinary method decorator and must be imported.
 Use it only when the Daml constructor must use `with` fields; otherwise the
 parameter names are not part of the generated Daml API.
+
+Generated derivations follow `daml.yaml`: Daml 3.4 uses inferred serializability;
+Daml 3.5 adds `Serializable` only when `--explicit-serializable=yes` is enabled.
+
+## Enums
+
+Use Python's `Enum` syntax. Members must be bare names or use `auto()`; explicit
+values are rejected. Only member names become Daml constructors:
+
+```python
+from enum import Enum, auto
+
+class Status(Enum):
+    PENDING = auto()
+    COMPLETE = auto()
+```
+
+This generates `data Status = PENDING | COMPLETE` in Daml.
 
 ## Dates and time
 

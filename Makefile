@@ -1,4 +1,4 @@
-VERSION ?= 0.0.4
+VERSION ?= 0.0.6
 
 .PHONY: test dev dev-deps lint clean clean-pyc clean-build clean-test build release
 

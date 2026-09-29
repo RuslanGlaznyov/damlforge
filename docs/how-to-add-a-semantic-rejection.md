@@ -111,7 +111,7 @@ user-defined type" message, they get a specific one.
   "is this name/type known" — required fields, naming conventions, argument
   presence, cross-field consistency. Each one is independent, takes the
   declaration node + `errors`, and gets wired into `check_container`'s
-  `TemplateDef`/`InterfaceDef`/`InstanceDef`/`FlagDef` branches as
+  `TemplateDef`/`InterfaceDef`/`InstanceDef`/`EnumDef` branches as
   appropriate. Look at `check_template_signatory` (`DF1201`) for the
   simplest shape, or `check_choice_decorators`-turned-`choice.__post_vy_check__`
   (`DF1203`/`DF1218`) for one that moved onto a decorator's own class instead

@@ -10,6 +10,6 @@ class Asset:
 
     @choice(controller=owner, consuming=True)
     def transfer(self, new_owner: Party) -> bool:
-        flag: bool = True
-        total = sum_amounts(flag)
+        value: bool = True
+        total = sum_amounts(value)
         return total > Decimal(0)

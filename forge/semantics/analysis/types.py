@@ -121,7 +121,7 @@ def daml_builtin_type_names() -> set:
 
 _DECLARATION_TYPES = (
     vy_ast.StructDef,
-    vy_ast.FlagDef,
+    vy_ast.EnumDef,
     vy_ast.VariantDef,
     vy_ast.InterfaceDef,
     vy_ast.TemplateDef,
@@ -252,30 +252,28 @@ def known_type_names(modules) -> set:
     return names
 
 
-def _flag_members(node: vy_ast.FlagDef) -> frozenset:
+def _enum_members(node: vy_ast.EnumDef) -> frozenset:
     return frozenset(
-        stmt.value.id
-        for stmt in node.body
-        if isinstance(stmt, vy_ast.Expr) and isinstance(stmt.value, vy_ast.Name)
+        name for stmt in node.body if (name := vy_ast.enum_member_name(stmt)) is not None
     )
 
 
-def check_flag_value_access(
+def check_enum_value_access(
     node: vy_ast.TopLevel, declarations: dict, errors: ExceptionList
 ) -> None:
     for attr in node.get_descendants(vy_ast.Attribute):
         if not isinstance(attr.value, vy_ast.Name):
             continue
         declaration = declarations.get(attr.value.id)
-        if not isinstance(declaration, vy_ast.FlagDef):
+        if not isinstance(declaration, vy_ast.EnumDef):
             continue
-        members = _flag_members(declaration)
+        members = _enum_members(declaration)
         if attr.attr in members:
-            attr._metadata["is_flag_value"] = True
+            attr._metadata["is_enum_value"] = True
             continue
         errors.append(
             DamlForgeException(
-                f"`{attr.attr}` is not a member of flag `{attr.value.id}` "
+                f"`{attr.attr}` is not a member of enum `{attr.value.id}` "
                 f"(known members: {', '.join(sorted(members))})",
                 attr,
                 code=ErrorCodes.DF1216.value,
@@ -348,7 +346,7 @@ def check_unresolved_names(
             if name in local_names:
                 continue
             declaration = declarations.get(name)
-            if isinstance(declaration, vy_ast.FlagDef):
+            if isinstance(declaration, vy_ast.EnumDef):
                 continue
             if isinstance(declaration, _NON_VARIABLE_DECLARATION_TYPES):
                 errors.append(

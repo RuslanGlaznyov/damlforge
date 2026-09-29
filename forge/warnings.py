@@ -52,14 +52,6 @@ class ContractSizeLimit(VyperWarning):
     pass
 
 
-class EnumUsage(VyperWarning):
-    """
-    Warn about using `enum` instead of `flag
-    """
-
-    pass
-
-
 class Deprecation(VyperWarning):
     """
     General deprecation warning

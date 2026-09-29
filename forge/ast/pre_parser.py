@@ -206,11 +206,31 @@ def _get_bare_decorated_class_type(token_list: list[TokenInfo], class_index: int
     return DECORATED_CLASS_TYPES.get(name_tok.string)
 
 
+def _is_enum_class(token_list: list[TokenInfo], class_index: int) -> bool:
+    """Return whether ``class Name(Enum):`` starts at ``class_index``."""
+
+    tokens = token_list[class_index + 1 :]
+    if len(tokens) < 5:
+        return False
+    if tokens[0].type != NAME or tokens[1].string != "(":
+        return False
+
+    if tokens[2].type == NAME and tokens[2].string == "Enum":
+        return tokens[3].string == ")" and tokens[4].string == ":"
+
+    return (
+        len(tokens) >= 7
+        and tokens[2].type == NAME
+        and tokens[3].string == "."
+        and tokens[4].type == NAME
+        and tokens[4].string == "Enum"
+        and tokens[5].string == ")"
+        and tokens[6].string == ":"
+    )
+
+
 # compound statements that are replaced with `class`
-# TODO remove enum in favor of flag
 VYPER_CLASS_TYPES = {
-    "flag": "FlagDef",
-    "enum": "EnumDef",
     "event": "EventDef",
     "error": "ErrorDef",
     "interface": "InterfaceDef",
@@ -250,7 +270,7 @@ class PreParser:
         Re-formats a vyper source string into a python source string and performs
         some validation.  More specifically,
 
-        * Translates "interface", "struct", "flag", and "event" keywords into python "class" keyword
+        * Translates Vyper-style container keywords into Python-compatible syntax
         * Validates "@version" pragma against current compiler version
         * Prevents direct use of python "class" keyword
         * Prevents use of python semi-colon statement separator
@@ -314,6 +334,8 @@ class PreParser:
                 decorated_class_type = _get_bare_decorated_class_type(token_list, i)
                 if decorated_class_type is not None:
                     keyword_translations[newstart] = decorated_class_type
+                elif _is_enum_class(token_list, i):
+                    keyword_translations[newstart] = "EnumDef"
                 else:
                     raise SyntaxException(
                         f"The `{string}` keyword is not allowed. ", code, start[0], start[1]

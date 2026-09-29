@@ -16,7 +16,7 @@ from forge.ir.nodes import (
     IRDict,
     IRExpr,
     IRExprStmt,
-    IRFlag,
+    IREnum,
     IRFor,
     IRFunction,
     IRIf,
@@ -113,7 +113,7 @@ def _lower_expr_Name(node):
 
 
 def _lower_expr_Attribute(node):
-    if node._metadata.get("is_flag_value"):
+    if node._metadata.get("is_enum_value"):
         return IRName(node.attr)
     return IRAttribute(lower_expr(node.value), node.attr)
 
@@ -139,8 +139,7 @@ def _lower_expr_Call(node):
     if combine_arguments := node._metadata.get("datetime_combine_arguments"):
         value, hour, minute, second = combine_arguments
         clock = tuple(
-            IRConstant(0) if part is None else lower_expr(part)
-            for part in (hour, minute, second)
+            IRConstant(0) if part is None else lower_expr(part) for part in (hour, minute, second)
         )
         return IRCall(IRName("time"), (lower_expr(value), *clock))
     if date_arguments := node._metadata.get("date_arguments"):
@@ -149,10 +148,7 @@ def _lower_expr_Call(node):
         daml_month = (
             IRName(month_name)
             if month_name
-            else IRCall(
-                IRName("toEnum"),
-                (IRBinOp("-", lower_expr(month), IRConstant(1)),),
-            )
+            else IRCall(IRName("toEnum"), (IRBinOp("-", lower_expr(month), IRConstant(1)),))
         )
         return IRCall(IRName("date"), (lower_expr(year), daml_month, lower_expr(day)))
     if timedelta_arguments := node._metadata.get("timedelta_arguments"):
@@ -402,13 +398,13 @@ def lower_struct(node: vy_ast.StructDef) -> IRStruct:
     return IRStruct(node.name, fields, src=_src(node))
 
 
-def lower_flag(node: vy_ast.FlagDef) -> IRFlag:
-    values = tuple(
-        stmt.value.id
-        for stmt in node.body
-        if isinstance(stmt, vy_ast.Expr) and isinstance(stmt.value, vy_ast.Name)
-    )
-    return IRFlag(node.name, values, src=_src(node))
+def lower_enum(node: vy_ast.EnumDef) -> IREnum:
+    values = []
+    for stmt in node.body:
+        name = vy_ast.enum_member_name(stmt)
+        if name is not None:
+            values.append(name)
+    return IREnum(node.name, tuple(values), src=_src(node))
 
 
 def lower_variant(node: vy_ast.VariantDef) -> IRVariant:
@@ -417,9 +413,7 @@ def lower_variant(node: vy_ast.VariantDef) -> IRVariant:
         if not isinstance(fn, vy_ast.FunctionDef):
             continue
         fields = tuple(
-            Field(arg.arg, lower_type(arg.annotation))
-            for arg in fn.args.args
-            if arg.arg != "self"
+            Field(arg.arg, lower_type(arg.annotation)) for arg in fn.args.args if arg.arg != "self"
         )
         constructors.append(
             IRVariantConstructor(fn.name, fields, record=_has_decorator(fn, "variant_record"))
@@ -550,7 +544,7 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
 _CONSTRUCTOR_DECLARATION_TYPES = (
     vy_ast.StructDef,
     vy_ast.TemplateDef,
-    vy_ast.FlagDef,
+    vy_ast.EnumDef,
     vy_ast.VariantDef,
 )
 
@@ -618,16 +612,14 @@ def _lower_imports(body, import_graph=None) -> tuple:
                 if ImportsBuilder.is_annotation_only_root(alias.name.split(".", 1)[0]):
                     continue
                 imports.append(
-                    IRImport(
-                        _daml_module_ref(alias.name, node), names=None, alias=alias.asname
-                    )
+                    IRImport(_daml_module_ref(alias.name, node), names=None, alias=alias.asname)
                 )
     return tuple(imports)
 
 
 def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
     structs = []
-    flags = []
+    enums = []
     variants = []
     interfaces = []
     templates = []
@@ -636,8 +628,8 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
     for node in module.body:
         if isinstance(node, vy_ast.StructDef):
             structs.append(lower_struct(node))
-        elif isinstance(node, vy_ast.FlagDef):
-            flags.append(lower_flag(node))
+        elif isinstance(node, vy_ast.EnumDef):
+            enums.append(lower_enum(node))
         elif isinstance(node, vy_ast.VariantDef):
             variants.append(lower_variant(node))
         elif isinstance(node, vy_ast.InterfaceDef):
@@ -649,7 +641,7 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
 
     return IRModule(
         structs=tuple(structs),
-        flags=tuple(flags),
+        enums=tuple(enums),
         variants=tuple(variants),
         interfaces=tuple(interfaces),
         templates=tuple(templates),

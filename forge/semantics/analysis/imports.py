@@ -9,10 +9,7 @@ from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 from forge.utils import sha256sum
 
-BUILTIN_MODULE_ROOTS = {
-    "DA": "forge.builtins.DA",
-    "Splice": "forge.builtins.Splice",
-}
+BUILTIN_MODULE_ROOTS = {"DA": "forge.builtins.DA", "Splice": "forge.builtins.Splice"}
 
 
 class ImportInfo:
@@ -308,7 +305,7 @@ class ImportsBuilder:
                 n,
                 (
                     vy_ast.StructDef,
-                    vy_ast.FlagDef,
+                    vy_ast.EnumDef,
                     vy_ast.InterfaceDef,
                     vy_ast.TemplateDef,
                     vy_ast.FunctionDef,
