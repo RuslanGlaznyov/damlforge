@@ -1,12 +1,12 @@
+from enum import Enum, auto
 from datetime import datetime
 
-from forge.models import ContractId, Decimal, Optional, Party, choice, ledger_effect
+from forge.models import ContractId, Decimal, Optional, Party, choice, ledger_effect, GenMap, template
 from forge.builtins import DamlName
 from forge.builtins.daml_lang import create, fetch
 from Splice.Amulet import Amulet
 from Splice.AmuletRules import (
     AppTransferContext,
-    CreatedAmulet,
     InputAmulet,
     Transfer,
     TransferInput,
@@ -14,7 +14,7 @@ from Splice.AmuletRules import (
     created_amulet_to_holding,
     exercise_app_transfer,
 )
-from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
+from Splice.Api.Token.HoldingV1 import Holding
 
 struct RepaymentMilestone:
     due_date: datetime
@@ -27,9 +27,9 @@ struct RepaymentSchedule:
     milestones: list[RepaymentMilestone]
 
 
-flag PeriodPaymentStatus:
-    PERIOD_PENDING
-    PERIOD_PAID
+class PeriodPaymentStatus(Enum):
+    PERIOD_PENDING = auto()
+    PERIOD_PAID = auto()
 
 
 struct PeriodPayment:
@@ -62,10 +62,10 @@ struct RepaymentDistribution:
     distributed_at: datetime
 
 
-flag RepaymentClaimStatus:
-    CLAIM_PENDING
-    CLAIM_ACCEPTED
-    CLAIM_EXPIRED
+class RepaymentClaimStatus(Enum):
+    CLAIM_PENDING = auto()
+    CLAIM_ACCEPTED = auto()
+    CLAIM_EXPIRED = auto()
 
 
 struct RepaymentClaimView:
@@ -102,7 +102,7 @@ def update_milestone_if_due(paid_amount: Decimal, milestone: RepaymentMilestone)
 
 def update_milestones(paid_amount: Decimal, milestones: list[RepaymentMilestone]) -> list[RepaymentMilestone]:
     updated: list[RepaymentMilestone] = []
-    for milestone: RepaymentMilestone in milestones:
+    for milestone in milestones:
         updated.append(update_milestone_if_due(paid_amount, milestone))
     return updated
 
@@ -110,7 +110,7 @@ def update_milestones(paid_amount: Decimal, milestones: list[RepaymentMilestone]
 @ledger_effect
 def verify_amulets(dso_party: Party, amulets: list[ContractId[Amulet]]) -> Decimal:
     total = Decimal(0)
-    for amulet_cid: ContractId[Amulet] in amulets:
+    for amulet_cid in amulets:
         amulet = fetch(amulet_cid)
         assert amulet.dso == dso_party, "Amulet DSO must match"
         total = total + amulet.amount.initial_amount
@@ -123,14 +123,14 @@ def calculate_num_holdings_for_amount(holdings: list[ContractId[Holding]], amoun
 
 def investment_parties(investments: list[tuple[Party, Decimal]]) -> list[Party]:
     parties: list[Party] = []
-    for entry: tuple[Party, Decimal] in investments:
+    for entry in investments:
         parties.append(entry[0])
     return parties
 
 
 def next_period_number(period_payments: list[PeriodPayment]) -> int:
     paid_count = 0
-    for payment: PeriodPayment in period_payments:
+    for payment in period_payments:
         if payment.status == PeriodPaymentStatus.PERIOD_PAID:
             paid_count = paid_count + 1
     return paid_count + 1
@@ -138,7 +138,7 @@ def next_period_number(period_payments: list[PeriodPayment]) -> int:
 
 def already_paid_periods(period_payments: list[PeriodPayment]) -> list[int]:
     paid_periods: list[int] = []
-    for payment: PeriodPayment in period_payments:
+    for payment in period_payments:
         if payment.status == PeriodPaymentStatus.PERIOD_PAID:
             paid_periods.append(payment.period_number)
     return paid_periods
@@ -161,6 +161,19 @@ class LoanTracker:
     signatory: list[Party] = [platform, developer]
     observer: list[Party] = investment_parties(investments)
 
+    def __init__(
+        self, 
+        total_raised: Decimal, 
+        total_repaid: Decimal, 
+        balance: Decimal):
+
+        assert total_raised >= Decimal(0), "total_raised must be non-negative"
+        assert total_repaid >= Decimal(0), "total_repaid must be non-negative"
+        assert balance >= Decimal(0), "balance must be non-negative"
+        self.total_raised = total_raised
+        self.total_repaid = total_repaid
+        self.balance = balance
+
     @choice(controller=[platform, developer], consuming=True)
     @DamlName("LoanTracker_Deposit")
     def deposit(
@@ -182,7 +195,7 @@ class LoanTracker:
         )
 
         transfer_inputs: list[TransferInput] = []
-        for input_cid: ContractId[Amulet] in inputs:
+        for input_cid in inputs:
             transfer_inputs.append(InputAmulet(input_cid))
 
         transfer = Transfer(
@@ -196,13 +209,13 @@ class LoanTracker:
         transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         new_holdings: list[ContractId[Holding]] = []
-        for created_amulet: CreatedAmulet in transfer_result.created_amulets:
+        for created_amulet in transfer_result.created_amulets:
             new_holdings.append(created_amulet_to_holding(created_amulet))
 
         combined_holdings: list[ContractId[Holding]] = []
-        for existing_holding: ContractId[Holding] in self.holding_cids:
+        for existing_holding in self.holding_cids:
             combined_holdings.append(existing_holding)
-        for new_holding: ContractId[Holding] in new_holdings:
+        for new_holding in new_holdings:
             combined_holdings.append(new_holding)
 
         return create(
@@ -236,7 +249,7 @@ class LoanTracker:
         repayment_holdings: list[ContractId[Holding]] = []
         remaining_holdings: list[ContractId[Holding]] = []
         index = 0
-        for holding_cid: ContractId[Holding] in self.holding_cids:
+        for holding_cid in self.holding_cids:
             if index < num_holdings_needed:
                 repayment_holdings.append(holding_cid)
             else:
@@ -245,7 +258,7 @@ class LoanTracker:
 
         claim_cids: list[ContractId[RepaymentClaim]] = []
         new_distributions: list[RepaymentDistribution] = []
-        for entry: tuple[Party, Decimal] in self.investments:
+        for entry in self.investments:
             investor: Party = entry[0]
             invested_amount: Decimal = entry[1]
             share = invested_amount / self.total_raised
@@ -290,9 +303,9 @@ class LoanTracker:
             )
 
         combined_history: list[RepaymentDistribution] = []
-        for existing_distribution: RepaymentDistribution in self.repayment_history:
+        for existing_distribution in self.repayment_history:
             combined_history.append(existing_distribution)
-        for new_distribution: RepaymentDistribution in new_distributions:
+        for new_distribution in new_distributions:
             combined_history.append(new_distribution)
 
         new_tracker = create(
@@ -313,17 +326,19 @@ class LoanTracker:
 
         return (new_tracker, claim_cids)
 
+    @DamlName("LoanTracker_CheckDefault")
     @choice(controller=platform, consuming=False)
     def check_default(self, current_time: datetime) -> bool:
         if self.loan_terms.loan_rewards == None:
             return False
 
         rewards: LoanRewards = self.loan_terms.loan_rewards
-        for milestone: RepaymentMilestone in rewards.repayment_schedule.milestones:
+        for milestone in rewards.repayment_schedule.milestones:
             if not milestone.paid and current_time > milestone.due_date:
                 return True
         return False
 
+    @DamlName("LoanTracker_RepayWithRewards")
     @choice(controller=platform, consuming=True)
     def loan_rewards_repay(
         self, repay_amount: Decimal, current_time: datetime, claim_before: datetime
@@ -358,7 +373,7 @@ class LoanTracker:
         repayment_holdings: list[ContractId[Holding]] = []
         remaining_holdings: list[ContractId[Holding]] = []
         index = 0
-        for holding_cid: ContractId[Holding] in self.holding_cids:
+        for holding_cid in self.holding_cids:
             if index < num_holdings_needed:
                 repayment_holdings.append(holding_cid)
             else:
@@ -368,7 +383,7 @@ class LoanTracker:
         claim_cids: list[ContractId[RepaymentClaim]] = []
         new_distributions: list[RepaymentDistribution] = []
         total_distributed = Decimal(0)
-        for entry: tuple[Party, Decimal] in self.investments:
+        for entry in self.investments:
             investor: Party = entry[0]
             invested_amount: Decimal = entry[1]
             share = invested_amount / self.total_raised
@@ -410,7 +425,7 @@ class LoanTracker:
         )
 
         updated_period_payments: list[PeriodPayment] = []
-        for payment: PeriodPayment in rewards.period_payments:
+        for payment in rewards.period_payments:
             updated_period_payments.append(payment)
         updated_period_payments.append(new_period_payment)
 
@@ -426,9 +441,9 @@ class LoanTracker:
         )
 
         combined_history: list[RepaymentDistribution] = []
-        for existing_distribution: RepaymentDistribution in self.repayment_history:
+        for existing_distribution in self.repayment_history:
             combined_history.append(existing_distribution)
-        for new_distribution: RepaymentDistribution in new_distributions:
+        for new_distribution in new_distributions:
             combined_history.append(new_distribution)
 
         new_tracker = create(
@@ -480,9 +495,9 @@ class LoanTracker:
                 )
 
         combined: list[PeriodPayment] = []
-        for existing_payment: PeriodPayment in existing_payments:
+        for existing_payment in existing_payments:
             combined.append(existing_payment)
-        for pending_payment: PeriodPayment in pending_payments:
+        for pending_payment in pending_payments:
             combined.append(pending_payment)
         return combined
 
@@ -511,28 +526,13 @@ class RepaymentClaim:
 
     def __init__(
         self,
-        platform: Party,
-        developer: Party,
-        investor: Party,
-        dso: Party,
-        campaign_external_id: str,
         amount: Decimal,
-        status: RepaymentClaimStatus,
-        claim_before: datetime,
         holding_cids: list[ContractId[Holding]],
     ):
         assert amount > Decimal(0), "amount must be positive"
         assert len(holding_cids) > 0, "holding_cids must not be empty"
-        self.platform = platform
-        self.developer = developer
-        self.investor = investor
-        self.dso = dso
-        self.campaign_external_id = campaign_external_id
-        self.amount = amount
-        self.status = status
-        self.claim_before = claim_before
-        self.holding_cids = holding_cids
 
+    @DamlName("RepaymentClaim_Accept")
     @choice(controller=[investor, platform], consuming=True)
     def accept(
         self, current_time: datetime, app_transfer_context: AppTransferContext
@@ -541,7 +541,7 @@ class RepaymentClaim:
         assert current_time < self.claim_before, "Claim deadline has passed"
 
         total_amount = Decimal(0)
-        for holding_cid: ContractId[Holding] in self.holding_cids:
+        for holding_cid in self.holding_cids:
             amulet_cid: ContractId[Amulet] = from_interface_contract_id(holding_cid)
             amulet = fetch(amulet_cid)
             total_amount = total_amount + amulet.amount.initial_amount
@@ -554,7 +554,7 @@ class RepaymentClaim:
         )
 
         transfer_inputs: list[TransferInput] = []
-        for holding_cid: ContractId[Holding] in self.holding_cids:
+        for holding_cid in self.holding_cids:
             transfer_inputs.append(InputAmulet(from_interface_contract_id(holding_cid)))
 
         transfer = Transfer(
@@ -568,7 +568,7 @@ class RepaymentClaim:
         transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         new_holdings: list[ContractId[Holding]] = []
-        for created_amulet: CreatedAmulet in transfer_result.created_amulets:
+        for created_amulet in transfer_result.created_amulets:
             new_holdings.append(created_amulet_to_holding(created_amulet))
         return new_holdings
 

@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional
-from forge.models import ContractId, Party, choice, ledger_effect
+from forge.models import ContractId, Party, choice, ledger_effect, template
 from forge.builtins import DamlName
+from enum import Enum, auto
 from forge.builtins.daml_lang import archive, create, exercise, fetch
 from loan_terms import LoanRewards, LoanTerms, LoanTracker, PeriodPayment, PeriodPaymentStatus
 from Splice.Amulet import Amulet, LockedAmulet, LockedAmulet_UnlockV2
@@ -20,13 +21,13 @@ from Splice.AmuletRules import (
 from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
 from Splice.Expiry import TimeLock
 
-flag CampaignStatus:
-    ACTIVE
-    SUCCESSFUL
-    FAILED
-    COMPLETED
-    CANCELLED
-    PAUSED
+class CampaignStatus(Enum):
+    ACTIVE = auto()
+    SUCCESSFUL = auto()
+    FAILED = auto()
+    COMPLETED = auto()
+    CANCELLED = auto()
+    PAUSED = auto()
 
 
 struct FundingCampaignView:
@@ -56,11 +57,11 @@ struct InstallmentReleaseView:
     paused: bool
 
 
-flag TransferStatus:
-    PENDING
-    ACCEPTED
-    REJECTED
-    WITHDRAWN
+class TransferStatus(Enum):
+    PENDING = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+    WITHDRAWN = auto()
 
 
 struct InstallmentTransferView:
@@ -74,9 +75,9 @@ struct InstallmentTransferView:
     accept_before: datetime
 
 
-flag FundMode:
-    ALL_OR_NOTHING
-    FLEXIBLE
+class FundMode(Enum):
+    ALL_OR_NOTHING = auto()
+    FLEXIBLE = auto()
 
 
 struct Terms:
@@ -122,7 +123,7 @@ def update_investments(
 ) -> list[tuple[Party, Decimal]]:
     updated: list[tuple[Party, Decimal]] = []
     found = False
-    for entry: tuple[Party, Decimal] in existing:
+    for entry in existing:
         party: Party = entry[0]
         existing_amount: Decimal = entry[1]
         if party == investor:
@@ -139,18 +140,18 @@ def campaign_observers(
     investments: list[tuple[Party, Decimal]], excess_investments: list[tuple[Party, Decimal]]
 ) -> list[Party]:
     observers: list[Party] = []
-    for entry: tuple[Party, Decimal] in investments:
+    for entry in investments:
         party: Party = entry[0]
         already_seen = False
-        for seen: Party in observers:
+        for seen in observers:
             if seen == party:
                 already_seen = True
         if not already_seen:
             observers.append(party)
-    for entry: tuple[Party, Decimal] in excess_investments:
+    for entry in excess_investments:
         party: Party = entry[0]
         already_seen = False
-        for seen: Party in observers:
+        for seen in observers:
             if seen == party:
                 already_seen = True
         if not already_seen:
@@ -168,15 +169,15 @@ def split_at_sizes(
     holdings: list[ContractId[Holding]], sizes: list[int]
 ) -> list[list[ContractId[Holding]]]:
     remaining: list[ContractId[Holding]] = []
-    for holding_cid: ContractId[Holding] in holdings:
+    for holding_cid in holdings:
         remaining.append(holding_cid)
 
     chunks: list[list[ContractId[Holding]]] = []
-    for chunk_size: int in sizes:
+    for chunk_size in sizes:
         chunk: list[ContractId[Holding]] = []
         taken = 0
         rest: list[ContractId[Holding]] = []
-        for holding_cid: ContractId[Holding] in remaining:
+        for holding_cid in remaining:
             if taken < chunk_size:
                 chunk.append(holding_cid)
                 taken = taken + 1
@@ -196,9 +197,9 @@ def split_holdings_into_tranches(
     remainder = holdings_count % num_tranches
 
     sizes: list[int] = []
-    for _index: int in range(0, remainder):
+    for _index in range(0, remainder):
         sizes.append(base_size + 1)
-    for _index: int in range(0, num_tranches - remainder):
+    for _index in range(0, num_tranches - remainder):
         sizes.append(base_size)
 
     return split_at_sizes(holdings, sizes)
@@ -208,19 +209,19 @@ def group_holdings_by_investor(
     holdings: list[tuple[Party, ContractId[Holding]]]
 ) -> list[tuple[Party, list[ContractId[Holding]]]]:
     investors: list[Party] = []
-    for entry: tuple[Party, ContractId[Holding]] in holdings:
+    for entry in holdings:
         party: Party = entry[0]
         already_seen = False
-        for seen: Party in investors:
+        for seen in investors:
             if seen == party:
                 already_seen = True
         if not already_seen:
             investors.append(party)
 
     grouped: list[tuple[Party, list[ContractId[Holding]]]] = []
-    for investor: Party in investors:
+    for investor in investors:
         investor_holdings: list[ContractId[Holding]] = []
-        for entry: tuple[Party, ContractId[Holding]] in holdings:
+        for entry in holdings:
             if entry[0] == investor:
                 investor_holdings.append(entry[1])
         grouped.append((investor, investor_holdings))
@@ -241,7 +242,7 @@ def calculate_num_holdings_needed(
 @ledger_effect
 def verify_amulets(dso_party: Party, amulets: list[ContractId[Amulet]]) -> Decimal:
     total = Decimal(0)
-    for amulet_cid: ContractId[Amulet] in amulets:
+    for amulet_cid in amulets:
         amulet = fetch(amulet_cid)
         assert amulet.dso == dso_party, "Amulet DSO must match"
         total = total + amulet.amount.initial_amount
@@ -277,25 +278,10 @@ class FundingCampaign:
 
     def __init__(
         self,
-        platform: Party,
-        developer: Party,
-        dso: Party,
-        external_id: str,
         target: Decimal,
-        deadline: datetime,
         raised: Decimal,
         balance: Decimal,
-        status: CampaignStatus,
-        accepted_instrument_id: InstrumentId,
         terms: Terms,
-        investments: Optional[list[tuple[Party, Decimal]]],
-        excess_investments: Optional[list[tuple[Party, Decimal]]],
-        excess_holdings: Optional[list[tuple[Party, ContractId[LockedAmulet]]]],
-        locked_holdings: Optional[list[tuple[Party, ContractId[LockedAmulet]]]],
-        unlocked_holdings: Optional[list[tuple[Party, ContractId[Holding]]]],
-        refunded_investors: Optional[list[Party]],
-        loan_terms: Optional[LoanTerms],
-        finalized_at: Optional[datetime],
     ):
         assert target > Decimal(0), "target must be positive"
         assert raised >= Decimal(0), "raised must be non-negative"
@@ -305,26 +291,6 @@ class FundingCampaign:
         assert terms.flexible_funding_minimum >= Decimal(0), "flexible_funding_minimum must be non-negative"
         assert terms.flexible_funding_minimum <= target, "flexible_funding_minimum must not exceed target"
         assert terms.cooldown_period_days >= 0, "cooldown_period_days must be non-negative"
-
-        self.platform = platform
-        self.developer = developer
-        self.dso = dso
-        self.external_id = external_id
-        self.target = target
-        self.deadline = deadline
-        self.raised = raised
-        self.balance = balance
-        self.status = status
-        self.accepted_instrument_id = accepted_instrument_id
-        self.terms = terms
-        self.investments = investments
-        self.excess_investments = excess_investments
-        self.excess_holdings = excess_holdings
-        self.locked_holdings = locked_holdings
-        self.unlocked_holdings = unlocked_holdings
-        self.refunded_investors = refunded_investors
-        self.loan_terms = loan_terms
-        self.finalized_at = finalized_at
 
     @choice(controller=[investor, platform], consuming=True)
     def FundingCampaign_Invest(
@@ -386,13 +352,13 @@ class FundingCampaign:
             )
 
         combined_outputs: list[TransferOutput] = []
-        for output: TransferOutput in accepted_outputs:
+        for output in accepted_outputs:
             combined_outputs.append(output)
-        for output: TransferOutput in excess_outputs:
+        for output in excess_outputs:
             combined_outputs.append(output)
 
         transfer_inputs: list[TransferInput] = []
-        for input_cid: ContractId[Amulet] in inputs:
+        for input_cid in inputs:
             transfer_inputs.append(InputAmulet(input_cid))
 
         transfer = Transfer(
@@ -406,7 +372,7 @@ class FundingCampaign:
         transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         locked_cids: list[ContractId[LockedAmulet]] = []
-        for created_amulet: CreatedAmulet in transfer_result.created_amulets:
+        for created_amulet in transfer_result.created_amulets:
             locked_cid = created_amulet_locked_cid(created_amulet)
             if locked_cid != None:
                 locked_cids.append(locked_cid)
@@ -415,17 +381,17 @@ class FundingCampaign:
         excess_cids: list[ContractId[LockedAmulet]] = []
         if accepted_amount > Decimal(0) and excess_amount > Decimal(0):
             index = 0
-            for locked_cid: ContractId[LockedAmulet] in locked_cids:
+            for locked_cid in locked_cids:
                 if index < 1:
                     accepted_cids.append(locked_cid)
                 else:
                     excess_cids.append(locked_cid)
                 index = index + 1
         elif accepted_amount > Decimal(0):
-            for locked_cid: ContractId[LockedAmulet] in locked_cids:
+            for locked_cid in locked_cids:
                 accepted_cids.append(locked_cid)
         else:
-            for locked_cid: ContractId[LockedAmulet] in locked_cids:
+            for locked_cid in locked_cids:
                 excess_cids.append(locked_cid)
 
         current_investments = or_empty_party_amounts(self.investments)
@@ -444,15 +410,15 @@ class FundingCampaign:
             new_excess_investments = current_excess_investments
 
         new_locked_holdings: list[tuple[Party, ContractId[LockedAmulet]]] = []
-        for accepted_cid: ContractId[LockedAmulet] in accepted_cids:
+        for accepted_cid in accepted_cids:
             new_locked_holdings.append((investor, accepted_cid))
-        for entry: tuple[Party, ContractId[LockedAmulet]] in current_locked_holdings:
+        for entry in current_locked_holdings:
             new_locked_holdings.append(entry)
 
         new_excess_holdings: list[tuple[Party, ContractId[LockedAmulet]]] = []
-        for excess_cid: ContractId[LockedAmulet] in excess_cids:
+        for excess_cid in excess_cids:
             new_excess_holdings.append((investor, excess_cid))
-        for entry: tuple[Party, ContractId[LockedAmulet]] in current_excess_holdings:
+        for entry in current_excess_holdings:
             new_excess_holdings.append(entry)
 
         new_raised = self.raised + accepted_amount
@@ -482,6 +448,7 @@ class FundingCampaign:
             )
         )
 
+    @DamlName("FundingCampaign_Finalize")
     @choice(controller=platform, consuming=True)
     def finalize(self, current_time: datetime) -> ContractId["FundingCampaign"]:
         assert self.status == CampaignStatus.ACTIVE, "Must be Active"
@@ -559,6 +526,7 @@ class FundingCampaign:
             )
         )
 
+    @DamlName("FundingCampaign_CreateInstallments")
     @choice(controller=[platform, developer], consuming=True)
     def create_installments(
         self, app_transfer_context: AppTransferContext
@@ -570,7 +538,7 @@ class FundingCampaign:
         current_investments = or_empty_party_amounts(self.investments)
 
         new_unlocked_holdings: list[tuple[Party, ContractId[Holding]]] = []
-        for entry: tuple[Party, ContractId[LockedAmulet]] in current_locked_holdings:
+        for entry in current_locked_holdings:
             investor: Party = entry[0]
             locked_cid: ContractId[LockedAmulet] = entry[1]
             unlock_result = exercise(locked_cid, LockedAmulet_UnlockV2)
@@ -600,7 +568,7 @@ class FundingCampaign:
         installment_amounts = calculate_installments(self.raised)
 
         just_holdings: list[ContractId[Holding]] = []
-        for entry: tuple[Party, ContractId[Holding]] in new_unlocked_holdings:
+        for entry in new_unlocked_holdings:
             just_holdings.append(entry[1])
         holdings_per_installment = split_holdings_into_tranches(just_holdings, 3)
 
@@ -608,9 +576,9 @@ class FundingCampaign:
 
         remaining_holdings_for_installments: list[ContractId[Holding]] = []
         tranche_index = 0
-        for tranche: list[ContractId[Holding]] in holdings_per_installment:
+        for tranche in holdings_per_installment:
             if tranche_index > 0:
-                for holding_cid: ContractId[Holding] in tranche:
+                for holding_cid in tranche:
                     remaining_holdings_for_installments.append(holding_cid)
             tranche_index = tranche_index + 1
 
@@ -670,10 +638,10 @@ class FundingCampaign:
             other_month = other_month + 1
 
         remaining_unlocked_holdings_list: list[tuple[Party, ContractId[Holding]]] = []
-        for entry: tuple[Party, ContractId[Holding]] in new_unlocked_holdings:
+        for entry in new_unlocked_holdings:
             holding_cid: ContractId[Holding] = entry[1]
             still_remaining = False
-            for remaining_cid: ContractId[Holding] in remaining_holdings_for_installments:
+            for remaining_cid in remaining_holdings_for_installments:
                 if remaining_cid == holding_cid:
                     still_remaining = True
             if still_remaining:
@@ -705,6 +673,7 @@ class FundingCampaign:
 
         return (installments, updated_campaign)
 
+    @DamlName("FundingCampaign_ClaimRefund")
     @choice(controller=[investor, platform], consuming=True)
     def claim_refund(
         self, investor: Party, receiver: Party, app_transfer_context: AppTransferContext
@@ -719,20 +688,20 @@ class FundingCampaign:
         current_investments = or_empty_party_amounts(self.investments)
 
         already_refunded = False
-        for refunded: Party in current_refunded_investors:
+        for refunded in current_refunded_investors:
             if refunded == investor:
                 already_refunded = True
         assert not already_refunded, "Investor has already been refunded"
         assert len(current_locked_holdings) > 0, "Must have holdings to refund"
 
         investor_amount = Decimal(0)
-        for entry: tuple[Party, Decimal] in current_investments:
+        for entry in current_investments:
             if entry[0] == investor:
                 investor_amount = entry[1]
         assert investor_amount > Decimal(0), "Investor has no recorded investment"
 
         total_investments = Decimal(0)
-        for entry: tuple[Party, Decimal] in current_investments:
+        for entry in current_investments:
             total_investments = total_investments + entry[1]
         proportion = investor_amount / total_investments
         total_holdings = len(current_locked_holdings)
@@ -751,13 +720,13 @@ class FundingCampaign:
             capped_num = total_holdings
 
         all_locked_cids: list[ContractId[LockedAmulet]] = []
-        for entry: tuple[Party, ContractId[LockedAmulet]] in current_locked_holdings:
+        for entry in current_locked_holdings:
             all_locked_cids.append(entry[1])
 
         refund_locked_cids: list[ContractId[LockedAmulet]] = []
         remaining_locked_cids: list[ContractId[LockedAmulet]] = []
         index = 0
-        for locked_cid: ContractId[LockedAmulet] in all_locked_cids:
+        for locked_cid in all_locked_cids:
             if index < capped_num:
                 refund_locked_cids.append(locked_cid)
             else:
@@ -766,7 +735,7 @@ class FundingCampaign:
 
         unlocked_amulet_cids: list[ContractId[Amulet]] = []
         refunded_amount = Decimal(0)
-        for locked_cid: ContractId[LockedAmulet] in refund_locked_cids:
+        for locked_cid in refund_locked_cids:
             unlock_result = exercise(locked_cid, LockedAmulet_UnlockV2)
             amulet = fetch(unlock_result.amulet_cid)
             unlocked_amulet_cids.append(unlock_result.amulet_cid)
@@ -780,7 +749,7 @@ class FundingCampaign:
         )
 
         transfer_inputs: list[TransferInput] = []
-        for amulet_cid: ContractId[Amulet] in unlocked_amulet_cids:
+        for amulet_cid in unlocked_amulet_cids:
             transfer_inputs.append(InputAmulet(amulet_cid))
 
         transfer = Transfer(
@@ -794,13 +763,13 @@ class FundingCampaign:
         transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         refunded_holdings: list[ContractId[Holding]] = []
-        for created_amulet: CreatedAmulet in transfer_result.created_amulets:
+        for created_amulet in transfer_result.created_amulets:
             refunded_holdings.append(created_amulet_to_holding(created_amulet))
 
         new_locked_holdings: list[tuple[Party, ContractId[LockedAmulet]]] = []
-        for entry: tuple[Party, ContractId[LockedAmulet]] in current_locked_holdings:
+        for entry in current_locked_holdings:
             still_remaining = False
-            for remaining_cid: ContractId[LockedAmulet] in remaining_locked_cids:
+            for remaining_cid in remaining_locked_cids:
                 if remaining_cid == entry[1]:
                     still_remaining = True
             if still_remaining:
@@ -808,7 +777,7 @@ class FundingCampaign:
 
         new_refunded_investors: list[Party] = []
         new_refunded_investors.append(investor)
-        for existing: Party in current_refunded_investors:
+        for existing in current_refunded_investors:
             new_refunded_investors.append(existing)
 
         new_campaign = create(
@@ -845,20 +814,20 @@ class FundingCampaign:
         current_excess_holdings = or_empty_locked_holdings(self.excess_holdings)
 
         investor_excess = Decimal(0)
-        for entry: tuple[Party, Decimal] in current_excess_investments:
+        for entry in current_excess_investments:
             if entry[0] == investor:
                 investor_excess = entry[1]
         assert investor_excess > Decimal(0), "Investor has no excess to claim"
 
         investor_locked_cids: list[ContractId[LockedAmulet]] = []
-        for entry: tuple[Party, ContractId[LockedAmulet]] in current_excess_holdings:
+        for entry in current_excess_holdings:
             if entry[0] == investor:
                 investor_locked_cids.append(entry[1])
         assert len(investor_locked_cids) > 0, "Investor has no excess holdings"
 
         unlocked_amulet_cids: list[ContractId[Amulet]] = []
         returned_amount = Decimal(0)
-        for locked_cid: ContractId[LockedAmulet] in investor_locked_cids:
+        for locked_cid in investor_locked_cids:
             unlock_result = exercise(locked_cid, LockedAmulet_UnlockV2)
             amulet = fetch(unlock_result.amulet_cid)
             unlocked_amulet_cids.append(unlock_result.amulet_cid)
@@ -872,7 +841,7 @@ class FundingCampaign:
         )
 
         transfer_inputs: list[TransferInput] = []
-        for amulet_cid: ContractId[Amulet] in unlocked_amulet_cids:
+        for amulet_cid in unlocked_amulet_cids:
             transfer_inputs.append(InputAmulet(amulet_cid))
 
         transfer = Transfer(
@@ -886,16 +855,16 @@ class FundingCampaign:
         transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         returned_holdings: list[ContractId[Holding]] = []
-        for created_amulet: CreatedAmulet in transfer_result.created_amulets:
+        for created_amulet in transfer_result.created_amulets:
             returned_holdings.append(created_amulet_to_holding(created_amulet))
 
         new_excess_holdings: list[tuple[Party, ContractId[LockedAmulet]]] = []
-        for entry: tuple[Party, ContractId[LockedAmulet]] in current_excess_holdings:
+        for entry in current_excess_holdings:
             if entry[0] != investor:
                 new_excess_holdings.append(entry)
 
         new_excess_investments: list[tuple[Party, Decimal]] = []
-        for entry: tuple[Party, Decimal] in current_excess_investments:
+        for entry in current_excess_investments:
             if entry[0] != investor:
                 new_excess_investments.append(entry)
 
@@ -932,7 +901,7 @@ class FundingCampaign:
         assert self.status == CampaignStatus.SUCCESSFUL, "Can only pause Successful campaigns"
 
         paused_installments: list[ContractId[InstallmentRelease]] = []
-        for installment_cid: ContractId[InstallmentRelease] in installment_cids:
+        for installment_cid in installment_cids:
             installment_data = fetch(installment_cid)
             if installment_data.released or installment_data.paused:
                 paused_installments.append(installment_cid)
@@ -991,7 +960,7 @@ class FundingCampaign:
         assert self.status == CampaignStatus.PAUSED, "Campaign not paused"
 
         resumed_installments: list[ContractId[InstallmentRelease]] = []
-        for installment_cid: ContractId[InstallmentRelease] in installment_cids:
+        for installment_cid in installment_cids:
             installment_data = fetch(installment_cid)
             if not installment_data.paused:
                 resumed_installments.append(installment_cid)
@@ -1088,20 +1057,7 @@ class InstallmentRelease:
         assert platform_fees <= Decimal(1), "platform_fees must not exceed 1"
         assert escrowed == (len(holding_cids) > 0), "escrowed must match whether holding_cids is non-empty"
 
-        self.platform = platform
-        self.developer = developer
-        self.dso = dso
-        self.external_id = external_id
-        self.installment_number = installment_number
-        self.amount = amount
-        self.release_date = release_date
-        self.released = released
-        self.escrowed = escrowed
-        self.platform_fees = platform_fees
-        self.holding_cids = holding_cids
-        self.paused = paused
-        self.loan_tracker_cid = loan_tracker_cid
-
+    @DamlName("InstallmentRelease_Escrow")
     @choice(controller=platform, consuming=True)
     def escrow(
         self, campaign_cid: ContractId[FundingCampaign]
@@ -1117,14 +1073,14 @@ class InstallmentRelease:
 
         current_unlocked_holdings = or_empty_holdings(campaign_data.unlocked_holdings)
         just_holdings: list[ContractId[Holding]] = []
-        for entry: tuple[Party, ContractId[Holding]] in current_unlocked_holdings:
+        for entry in current_unlocked_holdings:
             just_holdings.append(entry[1])
         num_holdings_needed = calculate_num_holdings_needed(current_unlocked_holdings, self.amount)
 
         escrowed_holdings: list[tuple[Party, ContractId[Holding]]] = []
         remaining_holdings: list[tuple[Party, ContractId[Holding]]] = []
         index = 0
-        for entry: tuple[Party, ContractId[Holding]] in current_unlocked_holdings:
+        for entry in current_unlocked_holdings:
             if index < num_holdings_needed:
                 escrowed_holdings.append(entry)
             else:
@@ -1157,7 +1113,7 @@ class InstallmentRelease:
         )
 
         escrowed_holding_cids: list[ContractId[Holding]] = []
-        for entry: tuple[Party, ContractId[Holding]] in escrowed_holdings:
+        for entry in escrowed_holdings:
             escrowed_holding_cids.append(entry[1])
 
         updated_installment = create(
@@ -1203,11 +1159,11 @@ class InstallmentRelease:
                     rewards: LoanRewards = tracker_data.loan_terms.loan_rewards
                     required_period = self.installment_number - 1
                     paid_period_numbers: list[int] = []
-                    for payment: PeriodPayment in rewards.period_payments:
+                    for payment in rewards.period_payments:
                         if payment.status == PeriodPaymentStatus.PERIOD_PAID:
                             paid_period_numbers.append(payment.period_number)
                     required_period_paid = False
-                    for paid_period: int in paid_period_numbers:
+                    for paid_period in paid_period_numbers:
                         if paid_period == required_period:
                             required_period_paid = True
                     assert required_period_paid, "required period must be paid before releasing this installment"
@@ -1220,7 +1176,7 @@ class InstallmentRelease:
         platform_holding_cids: list[ContractId[Holding]] = []
         developer_holding_cids: list[ContractId[Holding]] = []
         index = 0
-        for holding_cid: ContractId[Holding] in self.holding_cids:
+        for holding_cid in self.holding_cids:
             if index < num_for_platform:
                 platform_holding_cids.append(holding_cid)
             else:
@@ -1347,6 +1303,7 @@ class InstallmentTransfer:
         self.accept_before = accept_before
         self.holding_cids = holding_cids
 
+    @DamlName("InstallmentTransfer_Accept")
     @choice(controller=[developer, platform], consuming=True)
     def accept(
         self, current_time: datetime, app_transfer_context: AppTransferContext
@@ -1355,7 +1312,7 @@ class InstallmentTransfer:
         assert current_time < self.accept_before, "Accept deadline has passed"
 
         total_amount = Decimal(0)
-        for holding_cid: ContractId[Holding] in self.holding_cids:
+        for holding_cid in self.holding_cids:
             amulet_cid: ContractId[Amulet] = from_interface_contract_id(holding_cid)
             amulet = fetch(amulet_cid)
             total_amount = total_amount + amulet.amount.initial_amount
@@ -1368,7 +1325,7 @@ class InstallmentTransfer:
         )
 
         transfer_inputs: list[TransferInput] = []
-        for holding_cid: ContractId[Holding] in self.holding_cids:
+        for holding_cid in self.holding_cids:
             transfer_inputs.append(InputAmulet(from_interface_contract_id(holding_cid)))
 
         transfer = Transfer(
@@ -1382,7 +1339,7 @@ class InstallmentTransfer:
         transfer_result = exercise_app_transfer(self.dso, app_transfer_context, transfer)
 
         new_holdings: list[ContractId[Holding]] = []
-        for created_amulet: CreatedAmulet in transfer_result.created_amulets:
+        for created_amulet in transfer_result.created_amulets:
             new_holdings.append(created_amulet_to_holding(created_amulet))
         return new_holdings
 
