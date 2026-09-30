@@ -106,7 +106,7 @@ def test_render_expr_nested_generic_type_parenthesized():
         (IRAssign(IRName("x"), IRName("y")), ["let x = y", "pure ()"]),
         (IRReturn(IRName("x")), ["pure (x)"]),
         (IRReturn(None), ["pure ()"]),
-        (IRPass(), ['error "damlforge: not implemented"']),
+        (IRPass(), ["pure ()"]),
     ],
 )
 def test_render_stmt_simple(stmt, expected_lines):

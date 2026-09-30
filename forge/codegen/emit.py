@@ -401,7 +401,7 @@ class BodyTranslator:
             return [f"{pad}pure {wrapped}"] if monadic else [f"{pad}{value_expr}"]
 
         if isinstance(first, IRPass):
-            return [f'{pad}error "damlforge: not implemented"']
+            return [f"{pad}pure ()"]
 
         if isinstance(first, IRIf):
             cont_lines = []
