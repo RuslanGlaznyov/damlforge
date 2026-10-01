@@ -38,6 +38,22 @@ def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) 
     known_decorators = builtins_module.known_decorator_names()
     imported_names = ImportsBuilder.imported_names(container.module_node)
 
+    marker = (
+        "template"
+        if isinstance(container, vy_ast.TemplateDef)
+        else "variant"
+        if isinstance(container, vy_ast.VariantDef)
+        else None
+    )
+    if marker is not None and marker not in imported_names:
+        errors.append(
+            DamlForgeException(
+                f"`{marker}` is not defined - import the decorator before using it",
+                container,
+                code=ErrorCodes.DF1219.value,
+            )
+        )
+
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
             continue
@@ -424,6 +440,7 @@ def check_container(
     if isinstance(node, vy_ast.EnumDef):
         check_enum_member_names(node, errors)
     elif isinstance(node, vy_ast.VariantDef):
+        check_unknown_decorators(node, errors)
         for constructor in node.body:
             if not isinstance(constructor, vy_ast.FunctionDef):
                 errors.append(

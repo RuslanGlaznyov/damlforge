@@ -153,7 +153,7 @@ def _compile_to_daml(source: str) -> str:
 
 def test_template_decorator_on_class_compiles_identically_to_template_keyword():
     keyword_source = (
-        "from forge.models import Party, choice\n\n"
+        "from forge.models import Party, choice, template\n\n"
         "@template\nclass Asset:\n"
         "    owner: Party\n\n"
         "    signatory: list[Party] = [owner]\n\n"

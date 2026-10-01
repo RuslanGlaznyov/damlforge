@@ -60,6 +60,26 @@ def test_valid(source_path):
 
 
 @pytest.mark.parametrize(
+    "source",
+    [
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n"
+        "    signatory: list[Party] = [owner]\n",
+        "@variant\n"
+        "class Result:\n"
+        "    def Accepted(value: Party): pass\n",
+    ],
+    ids=["template", "variant"],
+)
+def test_class_markers_require_import(source):
+    with pytest.raises(Exception) as exc_info:
+        _analyze(source)
+
+    assert ErrorCodes.DF1219.value in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
     "source_path,expected_code",
     [
         (_fixture_path("invalid/template_missing_signatory.vy"), ErrorCodes.DF1201.value),
@@ -180,12 +200,17 @@ def test_invalid(source_path, expected_code):
 def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
     sibling_path = tmp_path / "loan_terms.vy"
     sibling_path.write_text(
-        "@template\n" "class LoanTerms:\n" "    rate: int\n\n" "    signatory: list[Party] = []\n"
+        "from forge.models import template\n\n"
+        "@template\n"
+        "class LoanTerms:\n"
+        "    rate: int\n\n"
+        "    signatory: list[Party] = []\n"
     )
 
     main_path = tmp_path / "main.vy"
     main_path.write_text(
         "from loan_terms import LoanTerms\n\n"
+        "from forge.models import template\n\n"
         "@template\n"
         "class Asset:\n"
         "    owner: Party\n\n"
@@ -201,6 +226,7 @@ def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):
 def test_sibling_module_does_not_inherit_importing_module_types(tmp_path):
     sibling_path = tmp_path / "sibling.vy"
     sibling_path.write_text(
+        "from forge.models import template\n\n"
         "@template\n"
         "class Sibling:\n"
         "    value: SharedType\n\n"
@@ -212,6 +238,7 @@ def test_sibling_module_does_not_inherit_importing_module_types(tmp_path):
         "struct SharedType:\n"
         "    value: int\n\n"
         "from sibling import Sibling\n\n"
+        "from forge.models import template\n\n"
         "@template\n"
         "class Asset:\n"
         "    owner: Party\n\n"

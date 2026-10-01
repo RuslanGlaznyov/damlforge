@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from forge.models import ContractId, Decimal, Optional, Party, TextMap, choice, view
+from forge.models import ContractId, Decimal, Optional, Party, TextMap, choice, view, template
 from forge.builtins.daml_lang import create, to_interface_contract_id
 
 struct InstrumentId:
