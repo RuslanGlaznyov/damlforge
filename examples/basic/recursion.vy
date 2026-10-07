@@ -1,4 +1,4 @@
-from forge.models import Party, choice
+from forge.models import Party, choice, template
 
 @template
 class RecursionTemplate:
@@ -19,4 +19,3 @@ class RecursionTemplate:
     @choice(controller=[developer, platform], consuming=True)
     def recursion(self) -> bool:
         return self.recursion()
-            

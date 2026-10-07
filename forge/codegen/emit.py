@@ -854,7 +854,7 @@ class Emitter:
     ) -> None:
         start = len(self.lines) + 1
         arg_names = [a.name for a in c.args]
-        header = f"{c.name}_impl _self" + "".join(f" {n}" for n in arg_names)
+        header = f"{c.name}Impl _self" + "".join(f" {n}" for n in arg_names)
         self.lines_block([f"{'  ' * indent}{header} = do"])
 
         body = SelfFieldRewriter.rewrite_stmts(list(c.body), field_types)
@@ -863,7 +863,7 @@ class Emitter:
         translator = self._translator(self_type=container_name)
         body_lines.extend(translator.render_body(body, indent + 2, known=known))
         self.lines_block(body_lines)
-        self.record(c.src, "interface_choice_impl", f"{container_name}.{c.name}_impl", start)
+        self.record(c.src, "interface_choice_impl", f"{container_name}.{c.name}Impl", start)
 
     def emit_function(self, fn: IRFunction) -> None:
         start = len(self.lines) + 1
@@ -956,7 +956,7 @@ class Emitter:
 
         for c in i.choices:
             self.line("")
-            impl_name = f"{c.name}_impl"
+            impl_name = f"{c.name}Impl"
             arg_types = [
                 render_type(a.type, as_arg=True) if a.type is not None else "()" for a in c.args
             ]
@@ -966,11 +966,16 @@ class Emitter:
             sig_types = " -> ".join(
                 [f"ContractId {i.name}", *arg_types, f"Update {return_type_str}"]
             )
+            impl_name = self.private_name(impl_name)
+            
             self.lines_block([f"  {impl_name} : {sig_types}"])
             self.line("")
             self.emit_choice(c, i.name, indent=1, delegate_to=impl_name)
         self.record(i.src, "interface", i.name, start)
 
+    def private_name(self, name: str) -> str:
+        return name[0].lower() + name[1:] if name else name
+    
     def emit_interface_instance(
         self, ii: IRInterfaceInstance, template_name: str, field_types
     ) -> None:

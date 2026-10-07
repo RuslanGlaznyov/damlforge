@@ -1,4 +1,4 @@
-from forge.models import Party, choice
+from forge.models import Party, choice, template
 from forge.builtins import DamlName
 
 @template

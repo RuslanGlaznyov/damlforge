@@ -1,4 +1,4 @@
-from forge.models import Party, choice, GenMap, view
+from forge.models import Party, choice, GenMap, view, template
 from forge.builtins import DamlName
 from typing import Optional
 from Splice.AmuletRules import AppTransferContext
