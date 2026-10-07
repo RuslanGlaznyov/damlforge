@@ -1,6 +1,6 @@
-VERSION ?= 0.0.6
+VERSION ?= 0.0.7
 
-.PHONY: test dev dev-deps lint clean clean-pyc clean-build clean-test build release
+.PHONY: test daml-test-legacy daml-test-example daml-test-all dev dev-deps lint clean clean-pyc clean-build clean-test build release
 
 init:
 	python setup.py install
@@ -10,6 +10,14 @@ dev-init:
 
 test:
 	pytest
+
+daml-test-legacy:
+	cd examples/legacy/splice-util-batched-markers-test && daml test
+
+daml-test-example:
+	cd examples/splice-util-batched-markers-test && daml test
+
+daml-test-all: daml-test-legacy daml-test-example
 
 lint: mypy black flake8 isort
 

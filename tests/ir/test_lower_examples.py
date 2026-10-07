@@ -11,7 +11,7 @@ EXAMPLES_ROOT = Path(__file__).resolve().parents[2] / "examples"
 EXAMPLE_FILES = [
     EXAMPLES_ROOT / "token_standard" / "token_standard.vy",
     EXAMPLES_ROOT / "crowd_loans" / "loan_terms.vy",
-    EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.vy",
+    EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.py",
 ]
 
 
@@ -25,7 +25,7 @@ def test_real_example_lowers_to_ir_without_error(path):
 
 
 def test_funding_campaign_invest_choice_lowers_correctly():
-    path = EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.vy"
+    path = EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.py"
     module = parse_to_ast(path.read_text(), module_path=path.name, resolved_path=str(path))
     analyze_module(module)
     ir = lower_module(module)

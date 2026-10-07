@@ -1,4 +1,4 @@
-from forge.models import choice
+from forge.models import choice, template
 
 @template
 class Asset:

@@ -1,3 +1,4 @@
+from forge.models import template
 
 @template
 class Asset:

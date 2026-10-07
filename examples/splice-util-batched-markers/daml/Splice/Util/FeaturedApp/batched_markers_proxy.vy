@@ -1,4 +1,4 @@
-from forge.models import ContractId, Decimal, Party, choice
+from forge.models import ContractId, Decimal, Party, choice, template
 from forge.builtins import DamlName
 from forge.builtins.daml_lang import exercise, fetch, view
 import Splice.Api.FeaturedAppRightV1 as FeaturedAppRightV1
@@ -104,6 +104,18 @@ class BatchedMarkersProxy:
             assert entry.weight >= Decimal(10.0), "weight >= 10.0"
 
         return val1 == val2
+
+    @choice(
+        controller=provider,
+        consuming=True,
+        observer=[dso],
+    )
+    @DamlName("BatchedMarkersProxy_TestSumWeights")
+    def test_sum_weights(self, parties: list[PartyWithWeight]) -> Decimal:
+        total_weight = Decimal(0)
+        for entry: PartyWithWeight in parties:
+            total_weight = total_weight + entry.weight
+        return total_weight
 
     @DamlName("BatchedMarkersProxy_CreateMarkersV2")
     @choice(

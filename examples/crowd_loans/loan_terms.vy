@@ -234,6 +234,10 @@ class LoanTracker:
             )
         )
 
+    #@choice(controller=platform, consuming=True)
+    #def Cancel(self) -> None:
+    #    return None
+
     @choice(controller=platform, consuming=True)
     @DamlName("LoanTracker_Repay")
     def repay(

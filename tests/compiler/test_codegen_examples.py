@@ -21,7 +21,7 @@ BATCHED_MARKERS_PROXY = (
 EXAMPLE_FILES = [
     EXAMPLES_ROOT / "token_standard" / "token_standard.vy",
     EXAMPLES_ROOT / "crowd_loans" / "loan_terms.vy",
-    EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.vy",
+    EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.py",
     EXAMPLES_ROOT / "basic" / "simple.vy",
 ]
 
@@ -44,7 +44,7 @@ def test_real_example_generates_daml_without_error(path):
 
 
 def test_funding_campaign_example_import_exposure_matches_real_damlc_requirements():
-    path = EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.vy"
+    path = EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.py"
     daml_source, _ = _full_pipeline(path)
 
     assert (
@@ -87,7 +87,7 @@ def test_loan_terms_example_translates_every_loop_for_real():
 
 
 def test_funding_campaign_example_translates_every_loop_for_real():
-    path = EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.vy"
+    path = EXAMPLES_ROOT / "crowd_loans" / "funding_campaign.py"
     daml_source, _ = _full_pipeline(path)
 
     assert "TODO(damlforge)" not in daml_source
