@@ -62,15 +62,17 @@ class LoopAnalysis:
                 )
             elif cls._is_append_call(s):
                 target_name = s.value.func.value.id
+                target_type = s.value.func.value.type
                 item = s.value.args[0]
                 if namer is not None and cls.is_effect_call(item, known_effect_fns):
                     temp = namer.next_rebind(f"{target_name}_item")
-                    rewritten.append(IRAssign(IRName(temp), item, src=s.src))
-                    item = IRName(temp)
+                    item_type = item.type if isinstance(item, IRName) else None
+                    rewritten.append(IRAssign(IRName(temp, item_type), item, src=s.src))
+                    item = IRName(temp, item_type)
                 rewritten.append(
                     IRAssign(
-                        IRName(target_name),
-                        IRBinOp("<>", IRName(target_name), IRList((item,))),
+                        IRName(target_name, target_type),
+                        IRBinOp("<>", IRName(target_name, target_type), IRList((item,))),
                         src=s.src,
                     )
                 )
@@ -243,7 +245,7 @@ class LoopAnalysis:
         if not renames:
             return e
         if isinstance(e, IRName):
-            return IRName(renames.get(e.id, e.id))
+            return IRName(renames.get(e.id, e.id), e.type)
         if isinstance(e, IRAttribute):
             return IRAttribute(cls.apply_renames(e.value, renames), e.attr)
         if isinstance(e, IRSubscript):

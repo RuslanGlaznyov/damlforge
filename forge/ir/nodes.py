@@ -32,6 +32,7 @@ class Field:
 @dataclass(frozen=True)
 class IRName:
     id: str
+    type: Optional[TypeRef] = None
 
 
 @dataclass(frozen=True)

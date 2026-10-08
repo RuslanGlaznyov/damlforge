@@ -55,6 +55,22 @@ def _display_term(term: TypeTerm) -> str:
     return f"{term.name}[{', '.join(_display_term(arg) for arg in term.args)}]"
 
 
+def _type_ref_from_term(term: TypeTerm | None) -> TypeRef | None:
+    """Convert a solved inference term to the typed IR representation."""
+
+    if isinstance(term, TypeVariable):
+        return None
+    if term is None:
+        return None
+    args = []
+    for arg in term.args:
+        arg_ref = _type_ref_from_term(arg)
+        if arg_ref is None:
+            return None
+        args.append(arg_ref)
+    return TypeRef(term.name, tuple(args))
+
+
 class InferenceContext:
     """Creates and solves equality constraints between type terms."""
 
@@ -242,6 +258,8 @@ class BidirectionalTypeChecker:
         actual = self._resolved(actual)
         if actual is not None:
             expr._metadata["inferred_type"] = _display_term(actual)
+            if type_ref := _type_ref_from_term(actual):
+                expr._metadata["inferred_type_ref"] = type_ref
         return actual
 
     @staticmethod

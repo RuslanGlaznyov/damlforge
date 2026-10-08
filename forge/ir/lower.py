@@ -101,6 +101,11 @@ def lower_expr(node: vy_ast.VyperNode):
     return result
 
 
+def _inferred_type(node: vy_ast.VyperNode) -> TypeRef | None:
+    type_ref = node._metadata.get("inferred_type_ref")
+    return type_ref if isinstance(type_ref, TypeRef) else None
+
+
 def _lower_expr_inner(node: vy_ast.VyperNode):
     handler = globals().get(f"_lower_expr_{type(node).__name__}")
     if handler is None:
@@ -113,12 +118,12 @@ def _lower_expr_Ellipsis(node):
 
 
 def _lower_expr_Name(node):
-    return IRName(node.id)
+    return IRName(node.id, _inferred_type(node))
 
 
 def _lower_expr_Attribute(node):
     if node._metadata.get("is_enum_value"):
-        return IRName(node.attr)
+        return IRName(node.attr, _inferred_type(node))
     return IRAttribute(lower_expr(node.value), node.attr)
 
 
@@ -236,7 +241,11 @@ def _lower_stmt_Assert(node):
 
 def _lower_stmt_AnnAssign(node):
     value = lower_expr(node.value) if node.value is not None else None
-    return IRAssign(lower_expr(node.target), value, lower_type(node.annotation), src=_src(node))
+    target_type = lower_type(node.annotation)
+    target = lower_expr(node.target)
+    if isinstance(target, IRName) and target.type is None:
+        target = IRName(target.id, target_type)
+    return IRAssign(target, value, target_type, src=_src(node))
 
 
 def _lower_stmt_Assign(node):

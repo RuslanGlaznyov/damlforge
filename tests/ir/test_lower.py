@@ -100,7 +100,11 @@ def test_bare_value_assigned_to_optional_field_auto_wraps_in_some():
 
     (fn,) = ir.functions
     assert fn.body[0] == IRReturn(
-        IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),))
+        IRCall(
+            IRName("Terms"),
+            (),
+            (("label", IRCall(IRName("Some"), (IRName("label", TypeRef("Text")),))),),
+        )
     )
 
 
@@ -118,7 +122,10 @@ def test_optional_field_read_with_non_optional_annotation_auto_unwraps():
     (fn,) = ir.functions
     assign = fn.body[0]
     assert isinstance(assign, IRAssign)
-    assert assign.value == IRCall(IRName("from_some"), (IRAttribute(IRName("holder"), "terms"),))
+    assert assign.value == IRCall(
+        IRName("from_some"),
+        (IRAttribute(IRName("holder", TypeRef("Holder")), "terms"),),
+    )
 
 
 def test_optional_typed_return_value_auto_unwraps_to_match_bare_return_type():
@@ -131,7 +138,12 @@ def test_optional_typed_return_value_auto_unwraps_to_match_bare_return_type():
 
     (fn,) = ir.functions
     final_return = fn.body[-1]
-    assert final_return == IRReturn(IRCall(IRName("from_some"), (IRName("value"),)))
+    assert final_return == IRReturn(
+        IRCall(
+            IRName("from_some"),
+            (IRName("value", TypeRef("Optional", (TypeRef("list", (TypeRef("Int"),)),))),),
+        )
+    )
 
 
 def test_none_assigned_to_optional_field_is_not_wrapped():
@@ -200,7 +212,11 @@ def test_for_loop_target_type_does_not_leak_into_outer_scope():
     (fn,) = ir.functions
     final_return = fn.body[-1]
     assert final_return == IRReturn(
-        IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),))
+        IRCall(
+            IRName("Terms"),
+            (),
+            (("label", IRCall(IRName("Some"), (IRName("label", TypeRef("Text")),))),),
+        )
     )
 
 
@@ -219,7 +235,11 @@ def test_variable_with_same_type_in_both_if_branches_is_known_after_the_if():
     (fn,) = ir.functions
     final_return = fn.body[-1]
     assert final_return == IRReturn(
-        IRCall(IRName("Terms"), (), (("label", IRCall(IRName("Some"), (IRName("label"),))),))
+        IRCall(
+            IRName("Terms"),
+            (),
+            (("label", IRCall(IRName("Some"), (IRName("label", TypeRef("Text")),))),),
+        )
     )
 
 
@@ -238,7 +258,13 @@ def test_list_append_of_optional_value_auto_unwraps():
     append_stmt = fn.body[2]
     assert append_stmt == IRExprStmt(
         IRCall(
-            IRAttribute(IRName("out"), "append"), (IRCall(IRName("from_some"), (IRName("value"),)),)
+            IRAttribute(IRName("out", TypeRef("list", (TypeRef("Text"),))), "append"),
+            (
+                IRCall(
+                    IRName("from_some"),
+                    (IRName("value", TypeRef("Optional", (TypeRef("Text"),))),),
+                ),
+            ),
         )
     )
 
@@ -255,7 +281,9 @@ def test_reassignment_of_optional_local_auto_wraps():
     (fn,) = ir.functions
     if_stmt = fn.body[1]
     assert isinstance(if_stmt, IRIf)
-    assert if_stmt.body[0] == IRAssign(IRName("result"), IRCall(IRName("Some"), (IRName("a"),)))
+    assert if_stmt.body[0] == IRAssign(
+        IRName("result"), IRCall(IRName("Some"), (IRName("a", TypeRef("Text")),))
+    )
 
 
 def test_fetch_infers_contract_payload_type_from_contract_id_argument():
@@ -278,7 +306,7 @@ def test_fetch_infers_contract_payload_type_from_contract_id_argument():
     terms_assign = choice.body[1]
     assert isinstance(terms_assign, IRAssign)
     assert terms_assign.value == IRCall(
-        IRName("from_some"), (IRAttribute(IRName("data"), "terms"),)
+        IRName("from_some"), (IRAttribute(IRName("data", TypeRef("Tracker")), "terms"),)
     )
 
 
@@ -298,7 +326,22 @@ def test_create_infers_bare_contract_id_result_type():
     final_return = fn.body[-1]
     assert final_return == IRReturn(
         IRCall(
-            IRName("Holder"), (), (("tracker_cid", IRCall(IRName("Some"), (IRName("new_cid"),))),)
+            IRName("Holder"),
+            (),
+            (
+                (
+                    "tracker_cid",
+                    IRCall(
+                        IRName("Some"),
+                        (
+                            IRName(
+                                "new_cid",
+                                TypeRef("ContractId", (TypeRef("Tracker"),)),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
         )
     )
 
@@ -489,7 +532,10 @@ def test_module_level_function_lowers_with_decorators():
         ("assert x, 'msg'", IRAssert(IRName("x"), IRConstant("msg"))),
         ("assert x", IRAssert(IRName("x"), None)),
         ("y = x", IRAssign(IRName("y"), IRName("x"))),
-        ("y: int128 = x", IRAssign(IRName("y"), IRName("x"), TypeRef("int128"))),
+        (
+            "y: int128 = x",
+            IRAssign(IRName("y", TypeRef("int128")), IRName("x"), TypeRef("int128")),
+        ),
         ("pass", IRPass()),
         ("return x", IRReturn(IRName("x"))),
         ("return", IRReturn(None)),
