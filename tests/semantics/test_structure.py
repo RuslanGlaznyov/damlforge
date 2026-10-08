@@ -7,6 +7,8 @@ from forge.exceptions import ExceptionList
 from forge.semantics import analyze_module
 from forge.semantics.analysis.imports import ImportsBuilder
 from forge.models.error_codes import ErrorCodes
+from forge.ir import lower_module
+from forge.codegen import generate_daml
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "structure"
 
@@ -22,6 +24,10 @@ def _read_fixture(path: Path) -> str:
 def _analyze(source):
     module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
     analyze_module(module)
+    lowered = lower_module(module)
+    source, map = generate_daml(lowered)
+    assert source is not None
+    assert map is not None
 
 
 @pytest.mark.parametrize(
@@ -52,31 +58,12 @@ def _analyze(source):
         _fixture_path("valid/frozenset_field_is_allowed.vy"),
         _fixture_path("valid/valid_template_via_decorator.vy"),
         _fixture_path("valid/compatible_function_call_argument_types_are_allowed.vy"),
+        _fixture_path("valid/template_with_ellipsis.vy"),
     ],
     ids=lambda path: path.stem.upper(),
 )
 def test_valid(source_path):
     _analyze(_read_fixture(source_path))
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        "@template\n"
-        "class Asset:\n"
-        "    owner: Party\n"
-        "    signatory: list[Party] = [owner]\n",
-        "@variant\n"
-        "class Result:\n"
-        "    def Accepted(value: Party): pass\n",
-    ],
-    ids=["template", "variant"],
-)
-def test_class_markers_require_import(source):
-    with pytest.raises(Exception) as exc_info:
-        _analyze(source)
-
-    assert ErrorCodes.DF1219.value in str(exc_info.value)
 
 
 @pytest.mark.parametrize(

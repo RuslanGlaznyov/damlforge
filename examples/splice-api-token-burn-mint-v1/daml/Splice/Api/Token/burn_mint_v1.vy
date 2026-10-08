@@ -37,4 +37,4 @@ interface BurnMintFactory(view=BurnMintFactoryView):
     @choice(controller=actor, consuming="nonconsuming")
     @DamlName("BurnMintFactory_PublicFetch")
     def burn_mint_factory_public_fetch(self, expected_admin: Party, actor: Party) -> BurnMintFactoryView:
-        pass
+        ...

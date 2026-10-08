@@ -108,6 +108,10 @@ def _lower_expr_inner(node: vy_ast.VyperNode):
     return handler(node)
 
 
+def _lower_expr_Ellipsis(node):
+    return IRConstant("...")
+
+
 def _lower_expr_Name(node):
     return IRName(node.id)
 
