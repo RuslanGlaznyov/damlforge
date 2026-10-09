@@ -109,6 +109,40 @@ def dar_cmd(input_dir: Path, output_dar: "Path | None", dpm_path: str, traceback
     logger.info(f"Built .dar: {dar_path}")
 
 
+@cli.command("stubs")
+@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "-o",
+    "output_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("."),
+    help="Directory to write the generated .vy stubs to. Defaults to the current directory.",
+)
+@click.option(
+    "--dpm",
+    "dpm_path",
+    default=None,
+    help="Path to the dpm executable, used when INPUT_PATH is a Daml project directory.",
+)
+@_TRACEBACK_OPTION
+def stubs_cmd(input_path: Path, output_dir: Path, dpm_path: str, traceback: bool) -> None:
+    """Generate .vy stubs from a .dar file or a Daml project directory at INPUT_PATH."""
+    try:
+        from forge.stubgen import generate_stubs
+
+        written, skipped = generate_stubs(input_path, output_dir.resolve(), dpm_path)
+    except Exception as e:
+        if traceback:
+            raise
+        logger.error(f"Error generating stubs: {e}")
+        sys.exit(1)
+
+    for path in written:
+        logger.info(f"Wrote stub: {path}")
+    for reason in skipped:
+        logger.warning(f"Skipped {reason}")
+
+
 @cli.command("json")
 @click.argument(
     "input_file", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=False

@@ -93,6 +93,9 @@ omit = ["forge/version.py"]
 # (mainly important for consolidating coverage reports in the CI).
 relative_files = true
 
+[project.optional-dependencies]
+stubgen = ["dazl>=8.9"]
+
 [dependency-groups]
 test = [
     "pytest>=8.0,<9.0",
