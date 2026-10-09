@@ -57,6 +57,11 @@ class BatchedMarkersProxy:
 
     signatory: Party = provider
 
+    tested_string: str
+
+    def __init__(self, tested_string: str):
+        assert len(tested_string) <= 10
+
     @DamlName("BatchedMarkersProxy_CreateMarkers")
     @choice(
         controller=provider,
@@ -68,6 +73,10 @@ class BatchedMarkersProxy:
         featured_app_right_cid: ContractId[FeaturedAppRightV1.FeaturedAppRight],
         batches: list[RewardBatch],
     ) -> BatchedMarkersProxy_CreateMarkersResult:
+        #if len(batches) >= 128:
+        #    return None
+        assert len(batches) >= 128, "batches should be less then 128"
+            
         for batch: RewardBatch in batches:
             assert batch.num_markers > 0, "numMarkers > 0"
 

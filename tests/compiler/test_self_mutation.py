@@ -8,6 +8,7 @@ from forge.ir.nodes import (
     IRCompare,
     IRConstant,
     IRIf,
+    IRImport,
     IRModule,
     IRName,
     IRRecordUpdate,
@@ -38,7 +39,10 @@ def _template_with_choice(field_type, body, return_type=None):
         init=None,
         choices=(choice,),
     )
-    return IRModule(templates=(template,))
+    imports = (
+        (IRImport("DA.Map", alias="Map", qualified=False),) if field_type.name == "GenMap" else ()
+    )
+    return IRModule(templates=(template,), imports=imports)
 
 
 def test_render_expr_record_update():

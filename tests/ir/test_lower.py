@@ -16,6 +16,7 @@ from forge.ir.nodes import (
     IRExprStmt,
     IRFor,
     IRIf,
+    IRImport,
     IRList,
     IRName,
     IRPass,
@@ -54,6 +55,12 @@ def test_struct_lowers_to_fields_with_type_refs():
     (point,) = ir.structs
     assert point.name == "Point"
     assert point.fields == (Field("x", TypeRef("int128")), Field("y", TypeRef("Party")))
+
+
+def test_lower_module_prepares_structured_support_imports():
+    ir = _analyze_and_lower("struct Ledger:\n" "    balances: GenMap[Party, Decimal]\n")
+
+    assert IRImport("DA.Map", alias="Map", qualified=False) in ir.imports
 
 
 def test_enum_lowers_to_values():
@@ -123,8 +130,7 @@ def test_optional_field_read_with_non_optional_annotation_auto_unwraps():
     assign = fn.body[0]
     assert isinstance(assign, IRAssign)
     assert assign.value == IRCall(
-        IRName("from_some"),
-        (IRAttribute(IRName("holder", TypeRef("Holder")), "terms"),),
+        IRName("from_some"), (IRAttribute(IRName("holder", TypeRef("Holder")), "terms"),)
     )
 
 
@@ -261,8 +267,7 @@ def test_list_append_of_optional_value_auto_unwraps():
             IRAttribute(IRName("out", TypeRef("list", (TypeRef("Text"),))), "append"),
             (
                 IRCall(
-                    IRName("from_some"),
-                    (IRName("value", TypeRef("Optional", (TypeRef("Text"),))),),
+                    IRName("from_some"), (IRName("value", TypeRef("Optional", (TypeRef("Text"),))),)
                 ),
             ),
         )
@@ -333,12 +338,7 @@ def test_create_infers_bare_contract_id_result_type():
                     "tracker_cid",
                     IRCall(
                         IRName("Some"),
-                        (
-                            IRName(
-                                "new_cid",
-                                TypeRef("ContractId", (TypeRef("Tracker"),)),
-                            ),
-                        ),
+                        (IRName("new_cid", TypeRef("ContractId", (TypeRef("Tracker"),))),),
                     ),
                 ),
             ),
@@ -516,6 +516,23 @@ def test_init_lowers_as_dedicated_function():
     assert isinstance(asset.init.body[0], IRAssert)
 
 
+def test_len_import_is_collected_from_template_init():
+    ir = _analyze_and_lower(
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n"
+        "    label: Text\n"
+        "    signatory: Party = owner\n"
+        "    def __init__(self, label: Text):\n"
+        "        assert len(label) > 0\n"
+    )
+
+    (asset,) = ir.templates
+    assert asset.init is not None
+    assert asset.init.body[0].test.left.func == IRName("Text.length")
+    assert IRImport("DA.Text", alias="Text") in ir.imports
+
+
 def test_module_level_function_lowers_with_decorators():
     ir = _lower("@ledger_effect\n" "def helper(x: int128) -> int128:\n" "    return x\n")
 
@@ -532,10 +549,7 @@ def test_module_level_function_lowers_with_decorators():
         ("assert x, 'msg'", IRAssert(IRName("x"), IRConstant("msg"))),
         ("assert x", IRAssert(IRName("x"), None)),
         ("y = x", IRAssign(IRName("y"), IRName("x"))),
-        (
-            "y: int128 = x",
-            IRAssign(IRName("y", TypeRef("int128")), IRName("x"), TypeRef("int128")),
-        ),
+        ("y: int128 = x", IRAssign(IRName("y", TypeRef("int128")), IRName("x"), TypeRef("int128"))),
         ("pass", IRPass()),
         ("return x", IRReturn(IRName("x"))),
         ("return", IRReturn(None)),
@@ -546,6 +560,51 @@ def test_statement_lowering(stmt_source, expected):
     ir = _lower(source)
     (fn,) = ir.functions
     assert fn.body[0] == expected
+
+
+def test_len_uses_text_length_only_for_text_arguments_in_every_expression_context():
+    ir = _analyze_and_lower(
+        "def f(text: Text, xs: list[int]) -> int:\n"
+        "    value: int = len(text)\n"
+        "    assert len(text) > 0\n"
+        "    for item: int in xs:\n"
+        "        assert len(text) > item\n"
+        "    return len(xs)\n"
+    )
+
+    (fn,) = ir.functions
+    text_length = IRCall(IRName("Text.length"), (IRName("text", TypeRef("Text")),))
+    builtin_length = IRCall(IRName("len"), (IRName("xs", TypeRef("list", (TypeRef("Int"),))),))
+    assert fn.body[0] == IRAssign(IRName("value", TypeRef("int")), text_length, TypeRef("int"))
+    assert fn.body[1] == IRAssert(IRCompare(text_length, ">", IRConstant(0)))
+    assert fn.body[2].body == (
+        IRAssert(IRCompare(text_length, ">", IRName("item", TypeRef("Int")))),
+    )
+    assert fn.body[3] == IRReturn(builtin_length)
+    assert IRImport("DA.Text", alias="Text") in ir.imports
+
+
+def test_len_uses_map_size_for_map_arguments():
+    ir = _analyze_and_lower(
+        "def f(balances: GenMap[Party, int], names: TextMap[int]) -> int:\n"
+        "    return len(balances) + len(names)\n"
+    )
+
+    (fn,) = ir.functions
+    assert fn.body[0] == IRReturn(
+        IRBinOp(
+            "+",
+            IRCall(
+                IRName("Map.size"),
+                (IRName("balances", TypeRef("GenMap", (TypeRef("Party"), TypeRef("Int")))),),
+            ),
+            IRCall(
+                IRName("TextMap.size"), (IRName("names", TypeRef("TextMap", (TypeRef("Int"),))),)
+            ),
+        )
+    )
+    assert IRImport("DA.Map", alias="Map", qualified=False) in ir.imports
+    assert IRImport("DA.TextMap", alias="TextMap", qualified=False) in ir.imports
 
 
 def test_if_statement_lowers_body_and_orelse():

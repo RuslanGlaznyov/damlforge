@@ -35,6 +35,8 @@ class SimpleTemplate(SimpleTemplateInterface):
         assert total_target > Decimal(0), "total_target must be greater than 0"
         assert total_balance >= Decimal(0), "total_balance must be a non-negative value"
         assert test_balance > 0, "test_balance must be greater than 0"
+        
+        assert len(comment) <= 128
 
         self.platform = platform
         self.developer = developer

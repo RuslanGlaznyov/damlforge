@@ -6,11 +6,8 @@ from forge.builtins import collect_daml_builtins
 from forge.daml_versions import DamlCodegenSettings
 from forge.codegen.doc import concat, line, nest, render, text
 from forge.codegen.maps import is_map_type, render_map_literal, render_map_type
-from forge.codegen.maps import required_imports as required_map_imports
 from forge.codegen.optional import is_optional_type, render_optional_type
-from forge.codegen.optional import required_imports as required_optional_imports
 from forge.codegen.sets import is_set_type, render_set_type
-from forge.codegen.sets import required_imports as required_set_imports
 from forge.exceptions import CompilerPanic
 from forge.utils import daml_choice_name
 from forge.ir.nodes import (
@@ -967,7 +964,7 @@ class Emitter:
                 [f"ContractId {i.name}", *arg_types, f"Update {return_type_str}"]
             )
             impl_name = self.private_name(impl_name)
-            
+
             self.lines_block([f"  {impl_name} : {sig_types}"])
             self.line("")
             self.emit_choice(c, i.name, indent=1, delegate_to=impl_name)
@@ -975,7 +972,7 @@ class Emitter:
 
     def private_name(self, name: str) -> str:
         return name[0].lower() + name[1:] if name else name
-    
+
     def emit_interface_instance(
         self, ii: IRInterfaceInstance, template_name: str, field_types
     ) -> None:
@@ -1005,14 +1002,13 @@ class Emitter:
             self.emit_interface_choice_impl(c, template_name, indent=3, field_types=field_types)
         self.record(ii.src, "interface_instance", f"{ii.interface}_for_{template_name}", start)
 
-    def _render_header(
-        self, imports, body_source: str, module_name: Optional[str], required_modules=()
-    ) -> str:
+    def _render_header(self, imports, module_name: Optional[str]) -> str:
         header = f"module {module_name} where\n\n" if module_name is not None else ""
         builtins = collect_daml_builtins()
         for imp in imports:
             if imp.alias is not None:
-                header += f"import qualified {imp.module} as {imp.alias}\n\n"
+                qualified = "qualified " if imp.qualified else ""
+                header += f"import {qualified}{imp.module} as {imp.alias}\n\n"
                 continue
             if imp.names is None:
                 header += f"import {imp.module}\n\n"
@@ -1028,27 +1024,12 @@ class Emitter:
                     renamed = f"{renamed}(..)"
                 rendered_names.append(renamed)
             header += f"import {imp.module} ({', '.join(rendered_names)})\n\n"
-        for import_line in required_map_imports(body_source):
-            header += import_line
-        for import_line in required_set_imports(body_source):
-            header += import_line
-        if "foldlA" in body_source:
-            header += "import DA.Action (foldlA)\n\n"
-        if "instance HasCheckedFetch" in body_source:
-            header += "import Splice.Util (HasCheckedFetch(..))\n\n"
-        if " !! " in body_source:
-            header += "import DA.List ((!!))\n\n"
-        for import_line in required_optional_imports(body_source):
-            header += import_line
-        required_modules = (
-            set(required_modules)
-            | {m for name, m in _builtin_import_modules().items() if name in body_source}
-        ) - {imp.module for imp in imports if imp.alias is None and imp.names is None}
-        for module in sorted(required_modules):
-            header += f"import {module}\n\n"
         return header
 
     def generate(self, module: IRModule, module_name: Optional[str] = None):
+        return self._generate(module, module_name)
+
+    def _generate(self, module: IRModule, module_name: Optional[str] = None):
         for s in module.structs:
             self.emit_struct(s)
             self.line("")
@@ -1072,9 +1053,7 @@ class Emitter:
 
         body_source = "\n".join(self.lines).rstrip("\n") + "\n"
         mappings = self.mappings
-        header = self._render_header(
-            module.imports, body_source, module_name, module.required_modules
-        )
+        header = self._render_header(module.imports, module_name)
         if header:
             offset = header.count("\n")
             mappings = [

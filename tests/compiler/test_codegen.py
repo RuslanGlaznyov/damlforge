@@ -18,6 +18,7 @@ from forge.ir.nodes import (
     IRFor,
     IRIf,
     IRInterface,
+    IRImport,
     IRList,
     IRModule,
     IRName,
@@ -96,6 +97,12 @@ def test_render_expr(expr, expected):
 def test_render_expr_nested_generic_type_parenthesized():
     t = TypeRef("list", (TypeRef("tuple", (TypeRef("Party"), TypeRef("int"))),))
     assert render_type(t) == "[(Party, Int)]"
+
+
+def test_render_qualified_import_with_alias():
+    source, _ = generate_daml(IRModule(imports=(IRImport("DA.Text", alias="Text"),)))
+
+    assert "import qualified DA.Text as Text\n" in source
 
 
 @pytest.mark.parametrize(

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from forge.builtins import DamlName
-from forge.builtins.daml_lang import create, exercise, stakeholder, text_length
+from forge.builtins.daml_lang import create, exercise, stakeholder
 from forge.models import ContractId, Party, choice, template
 from Splice.Amulet import Amulet
 from Splice.AmuletRules import (
@@ -74,7 +74,7 @@ class TransferOffer:
 
     signatory: list[Party] = [sender]
     observer: list[Party] = [receiver]
-    ensure: bool = text_length(description) < 280 and text_length(trackingId) < 280
+    ensure: bool = len(description) < 280 and len(trackingId) < 280
 
     @DamlName("TransferOffer_Accept")
     @choice(controller=receiver, consuming=True)

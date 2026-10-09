@@ -276,6 +276,7 @@ class IRImport:
     names: Optional[tuple[str, ...]] = None
     constructor_names: frozenset = frozenset()
     alias: Optional[str] = None
+    qualified: bool = True
 
 
 @dataclass(frozen=True)

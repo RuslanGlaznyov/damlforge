@@ -101,11 +101,6 @@ def reverse(values: list[_T1]) -> list[_T1]:
     raise NotImplementedError
 
 
-@DamlName("DA.Text.length", module="DA.Text")
-def text_length(value: Text) -> int:
-    raise NotImplementedError
-
-
 @DamlName("error")
 def error(message: Text) -> _T1:
     raise NotImplementedError

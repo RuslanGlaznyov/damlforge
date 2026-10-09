@@ -38,6 +38,7 @@ from forge.ir.nodes import (
     SourceSpan,
     TypeRef,
 )
+from forge.ir.imports import prepare_ir_module
 from forge.builtins import DamlName, choice
 from forge.models.decorators import Consuming
 
@@ -174,6 +175,17 @@ def _lower_expr_Call(node):
         return result
     if "timedelta_arguments" in node._metadata:
         return IRCall(IRName("microseconds"), (IRConstant(0),))
+    if isinstance(node.func, vy_ast.Name) and node.func.id == "len" and len(node.args) == 1:
+        argument = node.args[0]
+        argument_type = _inferred_type(argument)
+        function_name = "len"
+        if argument_type is not None:
+            function_name = {
+                "Text": "Text.length",
+                "GenMap": "Map.size",
+                "TextMap": "TextMap.size",
+            }.get(argument_type.name, function_name)
+        return IRCall(IRName(function_name), (lower_expr(argument),))
     args = tuple(lower_expr(a) for a in node.args)
     keywords = tuple((kw.arg, lower_expr(kw.value)) for kw in node.keywords)
     return IRCall(lower_expr(node.func), args, keywords)
@@ -653,7 +665,7 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
         elif isinstance(node, vy_ast.FunctionDef):
             functions.append(lower_function(node))
 
-    return IRModule(
+    ir_module = IRModule(
         structs=tuple(structs),
         enums=tuple(enums),
         variants=tuple(variants),
@@ -664,3 +676,4 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
         required_modules=tuple(module._metadata.get("required_daml_modules", ())),
         effect_functions=tuple(module._metadata.get("intrinsic_effect_fns", ())),
     )
+    return prepare_ir_module(ir_module)
