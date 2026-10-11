@@ -723,7 +723,7 @@ class Emitter:
 
     def emit_struct(self, s: IRStruct) -> None:
         start = len(self.lines) + 1
-        parts = [text(f"data {s.name} = {s.name}")]
+        parts = [text(f"data {s.name} = {s.name}" + ("" if s.fields else " {}"))]
         if s.fields:
             field_lines = concat(
                 concat([line(), text(f"{f.name} : {render_type(_required_field_type(f))}")])

@@ -1,3 +1,4 @@
+import dataclasses
 from pathlib import Path
 
 from forge.ast import nodes as vy_ast
@@ -458,9 +459,35 @@ def lower_interface(node: vy_ast.InterfaceDef) -> IRInterface:
 
     requires = tuple(base.id for base in node.bases)
     choices = tuple(
-        lower_choice(stmt) for stmt in node.body if isinstance(stmt, vy_ast.FunctionDef)
+        _bind_interface_view_in_choice(lower_choice(stmt))
+        for stmt in node.body
+        if isinstance(stmt, vy_ast.FunctionDef)
     )
     return IRInterface(node.name, view, requires, tuple(keywords), choices, src=_src(node))
+
+
+def _bind_interface_view(expr):
+    if isinstance(expr, tuple):
+        return tuple(_bind_interface_view(item) for item in expr)
+    if isinstance(expr, IRAttribute) and isinstance(expr.value, IRName):
+        if expr.value.id == "view":
+            return IRAttribute(IRCall(IRName("view"), (IRName("this"),)), expr.attr)
+    if not dataclasses.is_dataclass(expr) or isinstance(expr, (type, TypeRef)):
+        return expr
+    changes = {
+        f.name: _bind_interface_view(getattr(expr, f.name))
+        for f in dataclasses.fields(expr)
+        if f.compare
+    }
+    return dataclasses.replace(expr, **changes)
+
+
+def _bind_interface_view_in_choice(choice: IRChoice) -> IRChoice:
+    return dataclasses.replace(
+        choice,
+        controller=_bind_interface_view(choice.controller),
+        observer=_bind_interface_view(choice.observer),
+    )
 
 
 def _has_decorator(fn: vy_ast.FunctionDef, name: str) -> bool:

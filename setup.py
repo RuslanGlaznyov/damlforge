@@ -71,6 +71,6 @@ setup(
         "Programming Language :: Python :: 3.13",
         "Programming Language :: Python :: 3.14",
     ],
-    package_data={"forge.ast": ["grammar.lark"]},
+    package_data={"forge.ast": ["grammar.lark"], "forge.builtins": ["**/*.vy"]},
     data_files=[("", [hash_file_rel_path])],
 )

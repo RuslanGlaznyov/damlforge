@@ -10,6 +10,8 @@ from forge.models.error_codes import ErrorCodes
 from forge.utils import sha256sum
 
 BUILTIN_MODULE_ROOTS = {"DA": "forge.builtins.DA", "Splice": "forge.builtins.Splice"}
+STUB_MODULE_ROOTS = frozenset({"Splice"})
+BUILTINS_DIR = Path(__file__).resolve().parents[2] / "builtins"
 
 
 class ImportInfo:
@@ -50,6 +52,17 @@ class ImportsBuilder:
     def __init__(self) -> None:
         self.graph = ImportGraph()
         self._integrity_cache: dict = {}
+
+    @classmethod
+    def builtin_stub(cls, module_str: str) -> Optional[Path]:
+        if cls._root_of(module_str) not in STUB_MODULE_ROOTS:
+            return None
+        path = (BUILTINS_DIR / cls._module_str_to_relpath(module_str)).with_suffix(".vy")
+        return path if path.is_file() else None
+
+    def _uses_stubs(self, node) -> bool:
+        module_strs = self._module_strs_for(node)
+        return bool(module_strs) and all(self.builtin_stub(m) for m in module_strs)
 
     @staticmethod
     def _root_of(module_path: str) -> str:
@@ -216,11 +229,16 @@ class ImportsBuilder:
                 continue
 
             self.check_no_aliased_from_import(node, errors)
-            self.check_import_names_resolve(node, errors)
+            stubbed = self._uses_stubs(node)
+            if not stubbed:
+                self.check_import_names_resolve(node, errors)
 
             infos = []
             for module_str in self._module_strs_for(node):
-                path = self._load_import(module_str, search_base, node)
+                if stubbed:
+                    path = self.builtin_stub(module_str)
+                else:
+                    path = self._load_import(module_str, search_base, node)
                 if path is None:
                     continue
 
@@ -240,13 +258,16 @@ class ImportsBuilder:
                     )
                 seen_in_module[key] = node
 
-                self.graph.sibling_module_strs.add(module_str)
+                if not stubbed:
+                    self.graph.sibling_module_strs.add(module_str)
                 self.graph.add_edge(this_key, key)
 
                 if key not in self.graph:
                     current_module_path = Path(getattr(module, "path", "") or "")
                     sibling_module_path = (
-                        current_module_path.parent / self._module_str_to_relpath(module_str)
+                        self._module_str_to_relpath(module_str)
+                        if stubbed
+                        else current_module_path.parent / self._module_str_to_relpath(module_str)
                     ).with_suffix(".vy")
                     sibling_ast = parse_to_ast(
                         path.read_text(),

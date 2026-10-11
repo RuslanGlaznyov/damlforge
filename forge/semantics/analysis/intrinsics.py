@@ -439,6 +439,7 @@ class DatetimeIntrinsicAnalyzer:
         for node in self.module.get_descendants((vy_ast.Name, vy_ast.Attribute)):
             if self._is_timedelta(node, set()):
                 node._metadata["daml_type_name"] = "RelTime"
+                timedelta_used = True
             elif self._is_date(node, set()):
                 node._metadata["daml_type_name"] = "Date"
             elif self._is_datetime(node, set()):

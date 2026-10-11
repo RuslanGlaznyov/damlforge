@@ -81,7 +81,7 @@ def _tpl_party(ref) -> str:
 
 def _iface_party(ref) -> str:
     path = ".".join(ref[1])
-    return f"view(self).{path}" if ref[0] == VIEW else path
+    return f"view.{path}" if ref[0] == VIEW else path
 
 
 class ModuleStub:
@@ -229,7 +229,7 @@ class ModuleStub:
             f"interface {iface.name}({', '.join(bases)}):" if bases else f"interface {iface.name}:"
         )
         first = next((f for (_, f), t in roots.items() if _party_kind(t) == "one"), None)
-        fallback = f"view(self).{first}" if first else "[]"
+        fallback = f"view.{first}" if first else "[]"
         lines = [head]
         for ch in iface.choices:
             if ch.name == "Archive":

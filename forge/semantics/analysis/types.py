@@ -229,8 +229,17 @@ def _qualified_import_type_names(modules) -> set:
         for stmt in module.body:
             if not isinstance(stmt, vy_ast.Import):
                 continue
+            infos = stmt._metadata.get("import_infos", ())
             for alias in stmt.names:
                 if alias.asname is None:
+                    continue
+                stub = next((i for i in infos if i.alias == alias.name), None)
+                if stub is not None:
+                    names.update(
+                        f"{alias.asname}.{node.name}"
+                        for node in stub.ast.body
+                        if isinstance(node, _DECLARATION_TYPES)
+                    )
                     continue
                 mod = ImportsBuilder._import_real_module(alias.name)
                 if mod is None:
