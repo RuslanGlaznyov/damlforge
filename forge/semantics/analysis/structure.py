@@ -442,6 +442,8 @@ def check_container(
     elif isinstance(node, vy_ast.VariantDef):
         check_unknown_decorators(node, errors)
         for constructor in node.body:
+            if isinstance(constructor, vy_ast.Pass) and len(node.body) == 1:
+                continue
             if not isinstance(constructor, vy_ast.FunctionDef):
                 errors.append(
                     DamlForgeException(

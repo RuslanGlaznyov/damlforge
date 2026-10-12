@@ -103,4 +103,8 @@ class PartyRefs:
         if value is None or (key, tuple(refs)) in self.seen or not any(refs):
             return
         self.seen.add((key, tuple(refs)))
-        self._walk(value.expr, {}, refs)
+        try:
+            body = value.expr
+        except Exception:
+            return
+        self._walk(body, {}, refs)

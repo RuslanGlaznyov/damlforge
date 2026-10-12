@@ -124,13 +124,21 @@ def dar_cmd(input_dir: Path, output_dar: "Path | None", dpm_path: str, traceback
     default=None,
     help="Path to the dpm executable, used when INPUT_PATH is a Daml project directory.",
 )
+@click.option(
+    "--module",
+    "modules",
+    multiple=True,
+    help="Generate only this module, from any package in the DAR (repeatable).",
+)
 @_TRACEBACK_OPTION
-def stubs_cmd(input_path: Path, output_dir: Path, dpm_path: str, traceback: bool) -> None:
+def stubs_cmd(
+    input_path: Path, output_dir: Path, dpm_path: str, modules: tuple, traceback: bool
+) -> None:
     """Generate .vy stubs from a .dar file or a Daml project directory at INPUT_PATH."""
     try:
         from forge.stubgen import generate_stubs
 
-        written, skipped = generate_stubs(input_path, output_dir.resolve(), dpm_path)
+        written, skipped = generate_stubs(input_path, output_dir.resolve(), dpm_path, modules)
     except Exception as e:
         if traceback:
             raise

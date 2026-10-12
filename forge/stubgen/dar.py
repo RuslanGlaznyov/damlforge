@@ -17,15 +17,6 @@ def _dar_file():
     return DarFile
 
 
-def _main_package_id(dar: Path) -> str:
-    with zipfile.ZipFile(dar) as zf:
-        raw = zf.read("META-INF/MANIFEST.MF").decode()
-    for line in re.sub(r"\r?\n ", "", raw).splitlines():
-        if line.startswith("Main-Dalf:"):
-            return Path(line.split(":", 1)[1].strip()).stem.rsplit("-", 1)[-1]
-    raise ValueError(f"{dar} has no Main-Dalf entry in its manifest")
-
-
 def _build_dar(project: Path, out_dir: Path, dpm_path) -> Path:
     if not (project / "daml.yaml").is_file():
         raise ValueError(f"{project} is neither a .dar file nor a Daml project (no daml.yaml)")
@@ -42,13 +33,32 @@ def _build_dar(project: Path, out_dir: Path, dpm_path) -> Path:
 
 
 def _read_dar(dar: Path):
-    main_id = _main_package_id(dar)
+    main_dalf = ""
+    with zipfile.ZipFile(dar) as zf:
+        raw = zf.read("META-INF/MANIFEST.MF").decode()
+    for line in re.sub(r"\r?\n ", "", raw).splitlines():
+        if line.startswith("Main-Dalf:"):
+            main_dalf = line.split(":", 1)[1].strip()
+            break
+    if not main_dalf:
+        raise ValueError(f"{dar} has no Main-Dalf entry in its manifest")
+    
+    main_id = Path(main_dalf).stem.rsplit("-", 1)[-1]
     with _dar_file()(dar) as df:
         archives = df.archives()
     main = next((a for a in archives if a.hash == main_id), None)
     if main is None:
         raise ValueError(f"{dar} does not contain its main package {main_id}")
-    return main, archives
+    
+    sources = {}
+    root = main_dalf.split("/", 1)[0]
+    with zipfile.ZipFile(dar) as zf:
+        for name in zf.namelist():
+            if name.startswith(f"{root}/") and name.endswith(".daml"):
+                module = name[len(root) + 1 : -len(".daml")].replace("/", ".")
+                sources[module] = zf.read(name).decode()
+                    
+    return main, archives, sources
 
 
 def load_archives(path: Path, dpm_path=None):

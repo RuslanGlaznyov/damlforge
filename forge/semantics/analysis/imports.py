@@ -5,13 +5,10 @@ from typing import Optional
 
 from forge.ast import nodes as vy_ast
 from forge.ast.parse import parse_to_ast
+from forge.builtin_stubs import BUILTINS_DIR, is_stub_root, vendor_roots
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 from forge.utils import sha256sum
-
-BUILTIN_MODULE_ROOTS = {"DA": "forge.builtins.DA", "Splice": "forge.builtins.Splice"}
-STUB_MODULE_ROOTS = frozenset({"Splice"})
-BUILTINS_DIR = Path(__file__).resolve().parents[2] / "builtins"
 
 
 class ImportInfo:
@@ -55,13 +52,26 @@ class ImportsBuilder:
 
     @classmethod
     def builtin_stub(cls, module_str: str) -> Optional[Path]:
-        if cls._root_of(module_str) not in STUB_MODULE_ROOTS:
+        if not is_stub_root(cls._root_of(module_str)):
             return None
         path = (BUILTINS_DIR / cls._module_str_to_relpath(module_str)).with_suffix(".vy")
         return path if path.is_file() else None
 
+    @staticmethod
+    def is_builtin_stub_path(path) -> bool:
+        return BUILTINS_DIR in Path(path).resolve().parents
+
     def _uses_stubs(self, node) -> bool:
         module_strs = self._module_strs_for(node)
+        for module_str in module_strs:
+            if self._root_of(module_str) in vendor_roots() and not self.builtin_stub(module_str):
+                raise DamlForgeException(
+                    f"No module named `{module_str}` - no generated stub "
+                    f"`{self._module_str_to_relpath(module_str)}.vy` in `{BUILTINS_DIR}`; "
+                    f"generate it with `forge stubs <dar> -o {BUILTINS_DIR}`",
+                    node,
+                    code=ErrorCodes.DF1213.value,
+                )
         return bool(module_strs) and all(self.builtin_stub(m) for m in module_strs)
 
     @staticmethod
@@ -80,25 +90,13 @@ class ImportsBuilder:
 
     @staticmethod
     def is_builtin_root(root: str) -> bool:
-        return root in BUILTIN_MODULE_ROOTS
-
-    @classmethod
-    def _remap_builtin(cls, module_path: str) -> str:
-        root = cls._root_of(module_path)
-        target_root = BUILTIN_MODULE_ROOTS[root]
-        return target_root + module_path[len(root) :]
+        return is_stub_root(root)
 
     @classmethod
     def _import_real_module(cls, module_path: str):
-        root = cls._root_of(module_path)
-        if cls.is_annotation_only_root(root):
+        if cls.is_annotation_only_root(cls._root_of(module_path)):
             return importlib.import_module(module_path)
-        if not cls.is_builtin_root(root):
-            return None
-        try:
-            return importlib.import_module(cls._remap_builtin(module_path))
-        except ImportError:
-            return None
+        return None
 
     @classmethod
     def check_import_names_resolve(cls, node, errors: ExceptionList) -> None:
@@ -327,6 +325,7 @@ class ImportsBuilder:
                 (
                     vy_ast.StructDef,
                     vy_ast.EnumDef,
+                    vy_ast.VariantDef,
                     vy_ast.InterfaceDef,
                     vy_ast.TemplateDef,
                     vy_ast.FunctionDef,
@@ -339,6 +338,28 @@ class ImportsBuilder:
             for container in info.ast.body
             for child in getattr(container, "body", ())
             if (export_name := cls._choice_export_name(child)) is not None
+        )
+        declared.update(
+            ctor.name
+            for info in infos
+            for container in info.ast.body
+            if isinstance(container, vy_ast.VariantDef)
+            for ctor in container.body
+            if isinstance(ctor, vy_ast.FunctionDef)
+        )
+        declared.update(
+            stmt.target.id
+            for info in infos
+            for stmt in info.ast.body
+            if isinstance(stmt, vy_ast.Assign) and isinstance(stmt.target, vy_ast.Name)
+        )
+        declared.update(
+            alias.name
+            for info in infos
+            if cls.is_builtin_stub_path(info.resolved_path)
+            for stmt in info.ast.body
+            if isinstance(stmt, vy_ast.ImportFrom)
+            for alias in stmt.names
         )
 
         for alias in node.names:
