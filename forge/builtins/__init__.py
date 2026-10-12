@@ -365,7 +365,7 @@ def interface(*, view, requires=()):
 
 
 @dataclasses.dataclass(frozen=True)
-class DamlCaseAccessor:
+class DamlCaseAccessor(VyDecorator):
     constructor: str
     arity: int = 1
     result_constructor: Optional[str] = None
@@ -377,6 +377,10 @@ class DamlCaseAccessor:
         fn.__daml_case_accessor_result_constructor__ = self.result_constructor
         fn.__daml_case_accessor_field_names__ = self.field_names
         return fn
+
+    @classmethod
+    def __post_vy_check__(cls, container, fn, dec, errors):
+        return None
 
 
 class variant_record(VyDecorator):
@@ -405,15 +409,20 @@ class checked_fetch(VyDecorator):
         return None
 
 
-def no_derive(cls):
-    cls.__daml_no_derive__ = True
-    return cls
+class no_derive(VyDecorator):
+    def __new__(cls, obj):
+        obj.__vy_decorator__ = True
+        obj.__daml_no_derive__ = True
+        return obj
+
+    @classmethod
+    def __post_vy_check__(cls, container, fn, dec, errors):
+        return None
 
 
 @dataclasses.dataclass(frozen=True)
 class BuiltinMetadata:
     function_renames: dict
-    field_renames: dict
     function_import_modules: dict
     ledger_effect_fns: frozenset
     constructor_types: frozenset
@@ -422,6 +431,8 @@ class BuiltinMetadata:
     field_types: dict
     function_return_types: dict
     no_derive_types: frozenset
+    type_field_renames: dict
+    type_aliases: dict
 
 
 def _walk_submodules(package_name: str):
@@ -475,10 +486,15 @@ def _python_type_to_type_ref(py_type) -> "Optional[TypeRef]":
     return TypeRef(name, arg_refs)
 
 
-@lru_cache(maxsize=1)
 def collect_daml_builtins() -> BuiltinMetadata:
+    from forge.builtin_stubs import current_scope
+
+    return _collect_daml_builtins(current_scope())
+
+
+@lru_cache(maxsize=256)
+def _collect_daml_builtins(scope) -> BuiltinMetadata:
     function_renames: dict = {}
-    field_renames: dict = {}
     function_import_modules: dict = {}
     ledger_effect_fns: set = set()
     marked_constructor_types: set = set()
@@ -487,6 +503,7 @@ def collect_daml_builtins() -> BuiltinMetadata:
     field_types: dict = {}
     function_return_types: dict = {}
     no_derive_types: set = set()
+    type_field_renames: dict = {}
 
     for module in _walk_submodules("forge.builtins"):
         for name, obj in vars(module).items():
@@ -532,7 +549,7 @@ def collect_daml_builtins() -> BuiltinMetadata:
                     for field in dataclasses.fields(obj):
                         for meta in getattr(hints.get(field.name), "__metadata__", ()):
                             if isinstance(meta, DamlName):
-                                field_renames[field.name] = meta.name
+                                type_field_renames.setdefault(name, {})[field.name] = meta.name
                         type_ref = _python_type_to_type_ref(stripped_hints.get(field.name))
                         if type_ref is not None:
                             fields[field.name] = type_ref
@@ -547,9 +564,22 @@ def collect_daml_builtins() -> BuiltinMetadata:
                 if type_ref is not None:
                     function_return_types[name] = type_ref
 
+    from forge.builtin_stubs import collect_vy_stubs
+
+    stubs = collect_vy_stubs(scope)
+    function_renames.update(stubs.function_renames)
+    ledger_effect_fns |= stubs.ledger_effect_fns
+    marked_constructor_types |= stubs.constructor_types
+    constructor_of.update(stubs.constructor_of)
+    case_accessors.update(stubs.case_accessors)
+    field_types.update(stubs.field_types)
+    function_return_types.update(stubs.function_return_types)
+    no_derive_types |= stubs.no_derive_types
+    for owner, renames in stubs.type_field_renames.items():
+        type_field_renames.setdefault(owner, {}).update(renames)
+
     return BuiltinMetadata(
         function_renames=function_renames,
-        field_renames=field_renames,
         function_import_modules=function_import_modules,
         ledger_effect_fns=frozenset(ledger_effect_fns),
         constructor_types=frozenset(marked_constructor_types | set(constructor_of.values())),
@@ -558,4 +588,6 @@ def collect_daml_builtins() -> BuiltinMetadata:
         field_types=field_types,
         function_return_types=function_return_types,
         no_derive_types=frozenset(no_derive_types),
+        type_field_renames=type_field_renames,
+        type_aliases=dict(stubs.type_aliases),
     )
