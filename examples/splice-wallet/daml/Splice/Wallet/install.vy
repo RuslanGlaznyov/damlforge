@@ -58,6 +58,7 @@ from Splice.DecentralizedSynchronizer import ForMemberTraffic, MemberTraffic
 from Splice.Api.Token.MetadataV1 import (
     AnyContractId,
     AnyValue,
+    av_contract_id,
     ChoiceContext,
     ExtraArgs,
     Metadata,
@@ -74,8 +75,7 @@ from Splice.Util import (
     fetch_public_reference_data,
     fetch_unchecked_but_archive_later,
 )
-from Splice.Wallet.InstallCases import (
-    av_contract_id,
+from Splice.Wallet.Install import (
     co_accept_transfer_preapproval_proposal,
     co_app_payment,
     co_buy_member_traffic,
@@ -218,15 +218,6 @@ class AmuletOperationOutcome:
     def COO_AcceptTransferPreapprovalProposal(value: ContractId[TransferPreapproval]): pass
     def COO_RenewTransferPreapproval(value: ContractId[TransferPreapproval]): pass
     def COO_TransferPreapprovalSend(value: Optional[ContractId[Amulet]]): pass
-
-
-struct BuyMemberTrafficArgs:
-    trafficAmount: int
-    memberId: str
-    synchronizerId: str
-    migrationId: int
-    minTopupInterval: timedelta
-    topupStateCid: Optional[ContractId[ValidatorTopUpState]]
 
 
 def optional_amulet_inputs(
@@ -435,16 +426,16 @@ def executeAmuletOperationRec(
                         else:
                             buy = co_buy_member_traffic(operation)
                             if buy is not None:
-                                args: BuyMemberTrafficArgs = buy
+                                args = buy
                                 result = buy_member_traffic(
                                     executionContext,
                                     current_inputs,
-                                    args.trafficAmount,
-                                    args.memberId,
-                                    args.synchronizerId,
-                                    args.migrationId,
-                                    args.minTopupInterval,
-                                    args.topupStateCid,
+                                    args[0],
+                                    args[1],
+                                    args[2],
+                                    args[3],
+                                    args[4],
+                                    args[5],
                                 )
                                 current_inputs = optional_amulet_inputs(result[1])
                                 outcomes = [COO_BuyMemberTraffic(result[0])] + outcomes

@@ -14,7 +14,7 @@ from Splice.AmuletRules import (
     Transfer,
     TransferInput,
     TransferOutput,
-    created_amulet_locked_cid,
+    transfer_result_locked_amulet,
     created_amulet_to_holding,
     exercise_app_transfer,
 )
@@ -373,7 +373,7 @@ class FundingCampaign:
 
         locked_cids: list[ContractId[LockedAmulet]] = []
         for created_amulet in transfer_result.created_amulets:
-            locked_cid = created_amulet_locked_cid(created_amulet)
+            locked_cid = transfer_result_locked_amulet(created_amulet)
             if locked_cid != None:
                 locked_cids.append(locked_cid)
 
