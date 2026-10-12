@@ -215,6 +215,7 @@ class IRStruct:
     name: str
     fields: tuple[Field, ...]
     src: Optional[SourceSpan] = field(default=None, compare=False)
+    params: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -236,6 +237,14 @@ class IRVariant:
     name: str
     constructors: tuple[IRVariantConstructor, ...]
     src: Optional[SourceSpan] = field(default=None, compare=False)
+    params: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class IRTypeAlias:
+    name: str
+    type: TypeRef
+    params: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -290,3 +299,5 @@ class IRModule:
     imports: tuple[IRImport, ...] = ()
     required_modules: tuple[str, ...] = ()
     effect_functions: tuple[str, ...] = ()
+    aliases: tuple[IRTypeAlias, ...] = ()
+    stub_scope: Optional[frozenset] = None

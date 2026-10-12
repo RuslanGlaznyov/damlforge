@@ -1,7 +1,7 @@
 from decimal import Decimal
-from functools import lru_cache
 from typing import Optional
 
+from forge.builtin_stubs import stub_scope
 from forge.builtins import collect_daml_builtins
 from forge.daml_versions import DamlCodegenSettings
 from forge.codegen.doc import concat, line, nest, render, text
@@ -125,7 +125,10 @@ def _render_type_inner(t: TypeRef) -> str:
         return render_set_type(t, render_type)
     if t.name in _PRIMITIVE_TYPE_MAP:
         return _PRIMITIVE_TYPE_MAP[t.name]
-    return _external_builtin_renames().get(t.name, t.name)
+    name = _external_builtin_renames().get(t.name, t.name)
+    if not t.args:
+        return name
+    return " ".join([name, *(render_type(a, as_arg=True) for a in t.args)])
 
 
 def _type_ref_references_non_derivable_type(t: TypeRef) -> bool:
@@ -171,22 +174,14 @@ def _render_call_arg(e) -> str:
 _LANGUAGE_BUILTIN_RENAMES = {"len": "length", "ceil": "ceiling", "from_some": "fromSome"}
 
 
-@lru_cache(maxsize=1)
 def _external_builtin_renames() -> dict:
     return {**_LANGUAGE_BUILTIN_RENAMES, **collect_daml_builtins().function_renames}
 
 
-@lru_cache(maxsize=1)
-def _external_field_renames() -> dict:
-    return collect_daml_builtins().field_renames
-
-
-@lru_cache(maxsize=1)
 def _builtin_import_modules() -> dict:
     return collect_daml_builtins().function_import_modules
 
 
-@lru_cache(maxsize=1)
 def _case_accessors() -> dict:
     return collect_daml_builtins().case_accessors
 
@@ -195,7 +190,7 @@ def render_expr(e) -> str:
     if isinstance(e, IRName):
         return _external_builtin_renames().get(e.id, e.id)
     if isinstance(e, IRAttribute):
-        return f"{_render_atom_for_attr(e.value)}.{_external_field_renames().get(e.attr, e.attr)}"
+        return f"{_render_atom_for_attr(e.value)}.{e.attr}"
     if isinstance(e, IRSubscript):
         return _render_subscript(e)
     if isinstance(e, IRCall):
@@ -306,10 +301,7 @@ def _render_call(e: IRCall) -> str:
 
     func_name = render_expr(e.func)
     if e.keywords:
-        renames = _external_field_renames()
-        kw_str = ", ".join(
-            f"{renames.get(k, k)} = {_render_record_field_value(v)}" for k, v in e.keywords
-        )
+        kw_str = ", ".join(f"{k} = {_render_record_field_value(v)}" for k, v in e.keywords)
         return f"{func_name} with {kw_str}"
     if not e.args:
         return func_name
@@ -723,7 +715,8 @@ class Emitter:
 
     def emit_struct(self, s: IRStruct) -> None:
         start = len(self.lines) + 1
-        parts = [text(f"data {s.name} = {s.name}" + ("" if s.fields else " {}"))]
+        head = " ".join([s.name, *s.params])
+        parts = [text(f"data {head} = {s.name}" + ("" if s.fields else " {}"))]
         if s.fields:
             field_lines = concat(
                 concat([line(), text(f"{f.name} : {render_type(_required_field_type(f))}")])
@@ -756,7 +749,10 @@ class Emitter:
 
     def emit_variant(self, variant: IRVariant) -> None:
         start = len(self.lines) + 1
-        self.line(f"data {variant.name}")
+        self.line(f"data {' '.join([variant.name, *variant.params])}")
+        if not variant.constructors:
+            self.record(variant.src, "variant", variant.name, start)
+            return
         for index, constructor in enumerate(variant.constructors):
             prefix = "=" if index == 0 else "|"
             suffix = " with" if constructor.record and constructor.fields else ""
@@ -1017,7 +1013,12 @@ class Emitter:
             rendered_names = []
             for n in imp.names:
                 constructor_of = builtins.constructor_of.get(n)
+                if constructor_of == n:
+                    constructor_of = None
                 if constructor_of is not None and constructor_of in present:
+                    continue
+                if constructor_of is not None and n not in builtins.constructor_types:
+                    rendered_names.append(f"{constructor_of}({n})")
                     continue
                 renamed = _external_builtin_renames().get(n, n)
                 if renamed in builtins.constructor_types or n in imp.constructor_names:
@@ -1030,6 +1031,10 @@ class Emitter:
         return self._generate(module, module_name)
 
     def _generate(self, module: IRModule, module_name: Optional[str] = None):
+        for alias in module.aliases:
+            head = " ".join([alias.name, *alias.params])
+            self.line(f"type {head} = {render_type(alias.type)}")
+            self.line("")
         for s in module.structs:
             self.emit_struct(s)
             self.line("")
@@ -1075,9 +1080,10 @@ def generate_daml(
     module_name: Optional[str] = None,
     settings: DamlCodegenSettings = DamlCodegenSettings(),
 ):
-    known_effect_fns = (
-        frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
-        | collect_daml_builtins().ledger_effect_fns
-        | frozenset(module.effect_functions)
-    )
-    return Emitter(known_effect_fns, settings).generate(module, module_name)
+    with stub_scope(module.stub_scope):
+        known_effect_fns = (
+            frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
+            | collect_daml_builtins().ledger_effect_fns
+            | frozenset(module.effect_functions)
+        )
+        return Emitter(known_effect_fns, settings).generate(module, module_name)

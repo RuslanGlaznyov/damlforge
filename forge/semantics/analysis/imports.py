@@ -5,10 +5,20 @@ from typing import Optional
 
 from forge.ast import nodes as vy_ast
 from forge.ast.parse import parse_to_ast
+from forge.ast.utils import module_assigns
 from forge.builtin_stubs import BUILTINS_DIR, is_stub_root, vendor_roots
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 from forge.utils import sha256sum
+
+_EXPORTED_DECLARATIONS = (
+    vy_ast.StructDef,
+    vy_ast.EnumDef,
+    vy_ast.VariantDef,
+    vy_ast.InterfaceDef,
+    vy_ast.TemplateDef,
+    vy_ast.FunctionDef,
+)
 
 
 class ImportInfo:
@@ -308,6 +318,22 @@ class ImportsBuilder:
         return override or node.name[:1].upper() + node.name[1:]
 
     @classmethod
+    def _exported_names(cls, info: ImportInfo) -> set:
+        body = info.ast.body
+        names = {n.name for n in body if isinstance(n, _EXPORTED_DECLARATIONS)}
+        names |= module_assigns(info.ast).keys()
+        for container in body:
+            variant = isinstance(container, vy_ast.VariantDef)
+            for child in getattr(container, "body", ()):
+                if (export_name := cls._choice_export_name(child)) is not None:
+                    names.add(export_name)
+                elif variant and isinstance(child, vy_ast.FunctionDef):
+                    names.add(child.name)
+        if cls.is_builtin_stub_path(info.resolved_path):
+            names |= {a.name for s in body if isinstance(s, vy_ast.ImportFrom) for a in s.names}
+        return names
+
+    @classmethod
     def check_sibling_import_names_resolve(cls, node, errors: ExceptionList) -> None:
         if not isinstance(node, vy_ast.ImportFrom):
             return
@@ -316,51 +342,7 @@ class ImportsBuilder:
         if not infos:
             return
 
-        declared = {
-            n.name
-            for info in infos
-            for n in info.ast.body
-            if isinstance(
-                n,
-                (
-                    vy_ast.StructDef,
-                    vy_ast.EnumDef,
-                    vy_ast.VariantDef,
-                    vy_ast.InterfaceDef,
-                    vy_ast.TemplateDef,
-                    vy_ast.FunctionDef,
-                ),
-            )
-        }
-        declared.update(
-            export_name
-            for info in infos
-            for container in info.ast.body
-            for child in getattr(container, "body", ())
-            if (export_name := cls._choice_export_name(child)) is not None
-        )
-        declared.update(
-            ctor.name
-            for info in infos
-            for container in info.ast.body
-            if isinstance(container, vy_ast.VariantDef)
-            for ctor in container.body
-            if isinstance(ctor, vy_ast.FunctionDef)
-        )
-        declared.update(
-            stmt.target.id
-            for info in infos
-            for stmt in info.ast.body
-            if isinstance(stmt, vy_ast.Assign) and isinstance(stmt.target, vy_ast.Name)
-        )
-        declared.update(
-            alias.name
-            for info in infos
-            if cls.is_builtin_stub_path(info.resolved_path)
-            for stmt in info.ast.body
-            if isinstance(stmt, vy_ast.ImportFrom)
-            for alias in stmt.names
-        )
+        declared = set().union(*(cls._exported_names(info) for info in infos))
 
         for alias in node.names:
             if alias.name == "*" or alias.name in declared:

@@ -1,8 +1,11 @@
 import dataclasses
+from dataclasses import replace
 from pathlib import Path
 
 from forge.ast import nodes as vy_ast
+from forge.ast.utils import type_aliases, type_var_names
 from forge.exceptions import CompilerPanic
+from forge.ir import fields
 from forge.ir.nodes import (
     Field,
     IRAssert,
@@ -33,6 +36,7 @@ from forge.ir.nodes import (
     IRSubscript,
     IRTemplate,
     IRTuple,
+    IRTypeAlias,
     IRUnaryOp,
     IRVariant,
     IRVariantConstructor,
@@ -85,6 +89,9 @@ def lower_type(node: vy_ast.VyperNode) -> TypeRef:
     if isinstance(node, vy_ast.Attribute) and isinstance(node.value, vy_ast.Name):
         return TypeRef(f"{node.value.id}.{node.attr}")
     if isinstance(node, vy_ast.Subscript):
+        if isinstance(node.value, vy_ast.Name) and node.value.id == "Annotated":
+            inner = node.slice.elements[0] if isinstance(node.slice, vy_ast.Tuple) else node.slice
+            return lower_type(inner)
         base = lower_type(node.value)
         if isinstance(node.slice, vy_ast.Tuple):
             args = tuple(lower_type(e) for e in node.slice.elements)
@@ -123,10 +130,20 @@ def _lower_expr_Name(node):
     return IRName(node.id, _inferred_type(node))
 
 
+def _receiver_type(node) -> "str | None":
+    receiver = node.value
+    if isinstance(receiver, vy_ast.Name) and receiver.id == "self":
+        template = node.get_ancestor(vy_ast.TemplateDef)
+        return template.name if template is not None else None
+    inferred = _inferred_type(receiver)
+    return inferred.name if inferred is not None else None
+
+
 def _lower_expr_Attribute(node):
     if node._metadata.get("is_enum_value"):
         return IRName(node.attr, _inferred_type(node))
-    return IRAttribute(lower_expr(node.value), node.attr)
+    attr = fields.current().attribute(_receiver_type(node), node.attr)
+    return IRAttribute(lower_expr(node.value), attr)
 
 
 def _lower_expr_Subscript(node):
@@ -188,7 +205,10 @@ def _lower_expr_Call(node):
             }.get(argument_type.name, function_name)
         return IRCall(IRName(function_name), (lower_expr(argument),))
     args = tuple(lower_expr(a) for a in node.args)
-    keywords = tuple((kw.arg, lower_expr(kw.value)) for kw in node.keywords)
+    owner = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+    keywords = tuple(
+        (fields.current().keyword(owner, kw.arg), lower_expr(kw.value)) for kw in node.keywords
+    )
     return IRCall(lower_expr(node.func), args, keywords)
 
 
@@ -416,13 +436,47 @@ def _find_ensure(body):
     return None
 
 
+def _type_params(node) -> tuple:
+    generic = next(
+        (
+            base
+            for base in getattr(node, "bases", None) or ()
+            if getattr(getattr(base, "value", None), "id", None) == "Generic"
+        ),
+        None,
+    )
+    if generic is None:
+        return ()
+    items = getattr(generic.slice, "elements", None) or [generic.slice]
+    return tuple(lower_type(item).name for item in items)
+
+
+def _bind_type_vars(module: vy_ast.Module) -> set:
+    names = type_var_names(module)
+    for node in module.get_descendants(vy_ast.Name):
+        if node.id in names:
+            node._metadata["daml_type_name"] = node.id.lower()
+    return {name.lower() for name in names}
+
+
+def _lower_aliases(module: vy_ast.Module, type_vars: set) -> tuple:
+    def params(value) -> tuple:
+        used = {n._metadata.get("daml_type_name") for n in value.get_descendants(vy_ast.Name)}
+        return tuple(sorted(used & type_vars))
+
+    return tuple(
+        IRTypeAlias(name, lower_type(value), params(value))
+        for name, value in type_aliases(module).items()
+    )
+
+
 def lower_struct(node: vy_ast.StructDef) -> IRStruct:
     fields = tuple(
         Field(stmt.target.id, lower_type(stmt.annotation))
         for stmt in node.body
         if isinstance(stmt, vy_ast.AnnAssign)
     )
-    return IRStruct(node.name, fields, src=_src(node))
+    return IRStruct(node.name, fields, src=_src(node), params=_type_params(node))
 
 
 def lower_enum(node: vy_ast.EnumDef) -> IREnum:
@@ -445,7 +499,7 @@ def lower_variant(node: vy_ast.VariantDef) -> IRVariant:
         constructors.append(
             IRVariantConstructor(fn.name, fields, record=_has_decorator(fn, "variant_record"))
         )
-    return IRVariant(node.name, tuple(constructors), src=_src(node))
+    return IRVariant(node.name, tuple(constructors), src=_src(node), params=_type_params(node))
 
 
 def lower_interface(node: vy_ast.InterfaceDef) -> IRInterface:
@@ -671,6 +725,15 @@ def _lower_imports(body, import_graph=None) -> tuple:
 
 
 def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
+    from forge.builtin_stubs import scope_of, stub_scope
+
+    scope = module._metadata.get("stub_scope") or scope_of(module)
+    with stub_scope(scope), fields.field_scope(module):
+        return replace(_lower_module(module, import_graph), stub_scope=scope)
+
+
+def _lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
+    type_vars = _bind_type_vars(module)
     structs = []
     enums = []
     variants = []
@@ -702,5 +765,6 @@ def lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
         imports=_lower_imports(module.body, import_graph),
         required_modules=tuple(module._metadata.get("required_daml_modules", ())),
         effect_functions=tuple(module._metadata.get("intrinsic_effect_fns", ())),
+        aliases=_lower_aliases(module, type_vars),
     )
     return prepare_ir_module(ir_module)

@@ -155,6 +155,7 @@ class BidirectionalTypeChecker:
         self.known_names = known_names or set()
         self.inference = InferenceContext()
         self._reported: set[tuple[int, str]] = set()
+        self.aliases = _type_aliases(node)
 
     def _error(self, node, message: str, *, call: bool = False) -> None:
         key = (id(node), message)
@@ -185,6 +186,15 @@ class BidirectionalTypeChecker:
             or generic_spec(name) is not None
         )
 
+    def _expand(self, term: TypeTerm) -> TypeTerm:
+        seen: set = set()
+        while isinstance(term, AppliedType) and not term.args and term.name in self.aliases:
+            if term.name in seen:
+                break
+            seen.add(term.name)
+            term = _term_from_ref(self.aliases[term.name])
+        return term
+
     def _is_unknown(self, term: TypeTerm) -> bool:
         return isinstance(term, AppliedType) and not self._known_type_name(term.name)
 
@@ -197,6 +207,8 @@ class BidirectionalTypeChecker:
         expected = self._resolved(expected)
         if actual is None or expected is None:
             return True
+        actual = self._expand(actual)
+        expected = self._expand(expected)
         if self._is_unknown(actual) or self._is_unknown(expected):
             return True
 
@@ -361,6 +373,11 @@ class BidirectionalTypeChecker:
                 return AppliedType(type_name)
 
         if isinstance(call.func, vy_ast.Attribute):
+            if isinstance(call.func.value, vy_ast.Name):
+                qualified = f"{call.func.value.id}.{call.func.attr}"
+                if qualified in self.field_types:
+                    self._check_call_arguments(call, env, qualified)
+                    return None
             receiver = self.check_expr(call.func.value, None, env)
             if call.func.attr == "append":
                 element = self._element_type(receiver)
@@ -457,8 +474,7 @@ class BidirectionalTypeChecker:
         for index, element in enumerate(expr.elements):
             item_expected = expected_args[index] if index < len(expected_args) else None
             item_type = self.check_expr(element, item_expected, env, call=call)
-            if item_type is not None:
-                actual_args.append(item_type)
+            actual_args.append(item_type if item_type is not None else self.inference.fresh())
         return AppliedType("tuple", tuple(actual_args))
 
     def _dict_type(self, expr, expected, env, call: bool) -> TypeTerm | None:
@@ -500,6 +516,17 @@ class BidirectionalTypeChecker:
 
     def _subscript_type(self, expr, env: TypeEnvironment) -> TypeTerm | None:
         value = self.check_expr(expr.value, None, env)
+        tuple_value = self._resolved(value)
+        if self._name(tuple_value) == "Optional" and isinstance(tuple_value, AppliedType):
+            tuple_value = self._resolved(tuple_value.args[0]) if tuple_value.args else None
+        if (
+            isinstance(tuple_value, AppliedType)
+            and tuple_value.name == "tuple"
+            and isinstance(expr.slice, vy_ast.Int)
+            and 0 <= expr.slice.value < len(tuple_value.args)
+        ):
+            self.check_expr(expr.slice, AppliedType("Int"), env)
+            return tuple_value.args[expr.slice.value]
         if self._name(value) in _MAP_TYPES and isinstance(value, AppliedType):
             key_type = value.args[0] if value.args else None
         else:
@@ -685,6 +712,19 @@ class BidirectionalTypeChecker:
                     self._check_function(
                         child, self.node.name if isinstance(self.node, vy_ast.TemplateDef) else None
                     )
+
+
+def _type_aliases(node) -> dict:
+    from forge.ast.utils import type_aliases
+    from forge.builtins import collect_daml_builtins
+    from forge.ir.lower import lower_type
+
+    module = node if isinstance(node, vy_ast.Module) else node.module_node
+    local = type_aliases(module) if module is not None else {}
+    return {
+        **collect_daml_builtins().type_aliases,
+        **{name: lower_type(value) for name, value in local.items()},
+    }
 
 
 def check_bidirectional_types(

@@ -755,11 +755,11 @@ class InterfaceDef(TopLevel):
 
 
 class StructDef(TopLevel):
-    __slots__ = ("name", "body")
+    __slots__ = ("name", "body", "bases", "decorator_list")
 
 
 class VariantDef(TopLevel):
-    __slots__ = ("name", "body")
+    __slots__ = ("name", "body", "bases", "decorator_list")
 
 
 class TemplateDef(TopLevel):

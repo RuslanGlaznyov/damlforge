@@ -51,3 +51,22 @@ def dict_to_ast(ast_struct: Union[Dict, List]) -> Union[vy_ast.VyperNode, List]:
     if isinstance(ast_struct, list):
         return [vy_ast.get_node(i) for i in ast_struct]
     raise CompilerPanic(f'Unknown ast_struct provided: "{type(ast_struct)}".')
+
+
+def module_assigns(module: vy_ast.Module) -> dict:
+    return {
+        stmt.target.id: stmt.value
+        for stmt in module.body
+        if isinstance(stmt, vy_ast.Assign) and isinstance(stmt.target, vy_ast.Name)
+    }
+
+
+def type_var_names(module: vy_ast.Module) -> set:
+    return {name for name, value in module_assigns(module).items() if isinstance(value, vy_ast.Call) and getattr(value.func, "id", None) == "TypeVar"}
+
+
+def type_aliases(module: vy_ast.Module) -> dict:
+    kinds = (vy_ast.Subscript, vy_ast.Name, vy_ast.Attribute)
+    return {
+        name: value for name, value in module_assigns(module).items() if isinstance(value, kinds)
+    }

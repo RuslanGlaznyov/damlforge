@@ -1,6 +1,7 @@
 from functools import cached_property
 
 from forge.ast import nodes as vy_ast
+from forge.ast.utils import module_assigns
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.ir.lower import lower_type
 from forge.ir.nodes import TypeRef
@@ -167,24 +168,36 @@ class ModuleScope:
         return known_list_returning_functions(self)
 
 
+def _choice_exports(ast: vy_ast.Module) -> dict:
+    return {
+        name: child
+        for container in ast.body
+        for child in getattr(container, "body", ())
+        if (name := ImportsBuilder._choice_export_name(child)) is not None
+    }
+
+
+def _exported_declarations(ast: vy_ast.Module, reexport: bool) -> dict:
+    kinds = (*_DECLARATION_TYPES, vy_ast.FunctionDef)
+    exported = {node.name: node for node in ast.body if isinstance(node, kinds)}
+    exported.update(_choice_exports(ast))
+    for stmt in (s for s in ast.body if reexport and isinstance(s, vy_ast.ImportFrom)):
+        for info in stmt._metadata.get("import_infos", ()):
+            nested = _exported_declarations(info.ast, True)
+            for alias in (a for a in stmt.names if a.name in nested):
+                exported.setdefault(alias.name, nested[alias.name])
+    return exported
+
+
 def _direct_imported_declarations(module: vy_ast.Module) -> dict:
     declarations = {}
-    importable_types = (*_DECLARATION_TYPES, vy_ast.FunctionDef)
     for stmt in module.body:
         if not isinstance(stmt, vy_ast.ImportFrom):
             continue
-        imported = {
-            node.name: node
-            for info in stmt._metadata.get("import_infos", ())
-            for node in info.ast.body
-            if isinstance(node, importable_types)
-        }
+        imported = {}
         for info in stmt._metadata.get("import_infos", ()):
-            for container in info.ast.body:
-                for child in getattr(container, "body", ()):
-                    export_name = ImportsBuilder._choice_export_name(child)
-                    if export_name is not None:
-                        imported[export_name] = child
+            reexport = ImportsBuilder.is_builtin_stub_path(info.resolved_path)
+            imported.update(_exported_declarations(info.ast, reexport))
         for alias in stmt.names:
             if alias.name == "*":
                 declarations.update(imported)
@@ -233,13 +246,11 @@ def _qualified_import_type_names(modules) -> set:
             for alias in stmt.names:
                 if alias.asname is None:
                     continue
-                stub = next((i for i in infos if i.alias == alias.name), None)
+                stub = next((i.ast for i in infos if i.alias == alias.name), None)
                 if stub is not None:
-                    names.update(
-                        f"{alias.asname}.{node.name}"
-                        for node in stub.ast.body
-                        if isinstance(node, _DECLARATION_TYPES)
-                    )
+                    types = {n.name for n in stub.body if isinstance(n, _DECLARATION_TYPES)}
+                    types |= _choice_exports(stub).keys() | module_assigns(stub).keys()
+                    names.update(f"{alias.asname}.{name}" for name in types)
                     continue
                 mod = ImportsBuilder._import_real_module(alias.name)
                 if mod is None:
@@ -256,6 +267,8 @@ def known_type_names(modules) -> set:
     names = daml_builtin_type_names()
     for module in _scope_modules(modules):
         names |= ImportsBuilder.imported_names(module)
+        names |= module_assigns(module).keys()
+        names |= _choice_exports(module).keys()
     names |= known_declarations(modules).keys()
     names |= _qualified_import_type_names(modules)
     return names
@@ -640,10 +653,27 @@ def check_interface_view_type_annotation(
             check_type_annotation(kw.value, known_names, f"`view=` of `{node.name}`", errors)
 
 
+def _stub_field_types(module: vy_ast.Module, registry: dict) -> None:
+    from forge.builtin_stubs import owner_module, stub_modules
+
+    stubs = stub_modules()
+    for stmt in module.body:
+        for alias in getattr(stmt, "names", None) or ():
+            if isinstance(stmt, vy_ast.Import) and alias.asname and alias.name in stubs:
+                types = stubs[alias.name].field_types.items()
+                registry.update({f"{alias.asname}.{name}": fields for name, fields in types})
+            elif isinstance(stmt, vy_ast.ImportFrom):
+                owner = owner_module(stmt.module, alias.name)
+                if owner is not None and alias.name in stubs[owner].field_types:
+                    registry[alias.name] = stubs[owner].field_types[alias.name]
+
+
 def known_field_types(modules) -> dict:
     from forge.builtins import collect_daml_builtins
 
     registry = dict(collect_daml_builtins().field_types)
+    for module in _scope_modules(modules):
+        _stub_field_types(module, registry)
     for node in _scope_nodes(modules):
         if isinstance(node, vy_ast.VariantDef):
             for constructor in node.body:
@@ -761,10 +791,14 @@ def _mark_dict_kind(value, target_type) -> None:
         value._metadata["map_kind"] = target_type.name
 
 
-def _call_constructor_name(func) -> "str | None":
+def _call_constructor_name(func, registry: "dict | None" = None) -> "str | None":
     if isinstance(func, vy_ast.Name):
         return func.id
     if isinstance(func, vy_ast.Attribute):
+        if isinstance(func.value, vy_ast.Name) and registry is not None:
+            qualified = f"{func.value.id}.{func.attr}"
+            if qualified in registry:
+                return qualified
         return func.attr
     return None
 
@@ -772,7 +806,7 @@ def _call_constructor_name(func) -> "str | None":
 def _mark_call_optional_conversions(
     call, enclosing_type, local_types: dict, field_types: dict, return_types: dict
 ) -> None:
-    constructor_name = _call_constructor_name(call.func)
+    constructor_name = _call_constructor_name(call.func, field_types)
     if constructor_name is not None and constructor_name in field_types:
         fields = field_types[constructor_name]
         for kw in call.keywords:
