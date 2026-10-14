@@ -12,10 +12,10 @@ test:
 	pytest
 
 daml-test-legacy:
-	cd examples/legacy/splice-util-batched-markers-test && daml test
+	cd examples/legacy/splice-util-batched-markers-test && daml test --all
 
 daml-test-example:
-	cd examples/splice-util-batched-markers-test && daml test
+	cd examples/splice-util-batched-markers-test && daml test --all
 
 daml-test-all: daml-test-legacy daml-test-example
 
