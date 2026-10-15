@@ -125,6 +125,20 @@ def test_render_qualified_import_with_alias():
 
 
 @pytest.mark.parametrize(
+    "names,expected",
+    [
+        (("!!",), "import DA.List ((!!))\n"),
+        (("sort", "!!"), "import DA.List (sort, (!!))\n"),
+        (("sortOn", "_helper"), "import DA.List (sortOn, _helper)\n"),
+    ],
+)
+def test_render_import_wraps_operators(names, expected):
+    source, _ = generate_daml(IRModule(imports=(IRImport("DA.List", names),)))
+
+    assert expected in source
+
+
+@pytest.mark.parametrize(
     "stmt,expected_lines",
     [
         (IRAssert(IRName("cond"), None), ["assert (cond)", "pure ()"]),

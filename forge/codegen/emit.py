@@ -1046,6 +1046,8 @@ class Emitter:
                     rendered_names.append(f"{constructor_of}({n})")
                     continue
                 renamed = _external_builtin_renames().get(n, n)
+                if not (renamed[0].isalpha() or renamed[0] == "_"):
+                    renamed = f"({renamed})"
                 if renamed in builtins.constructor_types or n in imp.constructor_names:
                     renamed = f"{renamed}(..)"
                 rendered_names.append(renamed)
