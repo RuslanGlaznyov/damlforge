@@ -153,7 +153,7 @@ def render_constant(value) -> str:
 
 
 _NEEDS_PARENS_AS_INFIX_OPERAND = (IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
-_NEEDS_PARENS_AS_CALL_ARG = (IRCall, IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
+_NEEDS_PARENS_AS_CALL_ARG = (IRCall, IRDict, IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
 
 
 def _render_infix_operand(e) -> str:

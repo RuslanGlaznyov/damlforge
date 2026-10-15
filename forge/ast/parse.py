@@ -404,7 +404,12 @@ class AnnotatingVisitor(python_ast.NodeTransformer):
 
     def visit_Call(self, node):
         # Convert structs declared as `Dict` node for vyper < 0.4.0 to kwargs
-        if len(node.args) == 1 and isinstance(node.args[0], python_ast.Dict):
+        if (
+            len(node.args) == 1
+            and isinstance(node.args[0], python_ast.Dict)
+            and node.args[0].keys
+            and all(isinstance(k, python_ast.Name) for k in node.args[0].keys)
+        ):
             msg = "Instantiating a struct using a dictionary is deprecated "
             msg += "as of v0.4.0 and will be disallowed in a future release. "
             msg += "Use kwargs instead e.g. Foo(a=1, b=2)"
