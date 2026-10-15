@@ -172,7 +172,10 @@ def _lower_expr_Call(node):
                 if isinstance(argument, vy_ast.Int)
                 else IRBinOp("*", microseconds, IRConstant(1_000_000))
             )
-        return IRCall(IRName("fromUnixMicroseconds"), (microseconds,))
+        epoch_date = IRCall(IRName("date"), (IRConstant(1970), IRName("Jan"), IRConstant(1)))
+        epoch = IRCall(IRName("time"), (epoch_date, IRConstant(0), IRConstant(0), IRConstant(0)))
+        offset = IRCall(IRName("microseconds"), (microseconds,))
+        return IRCall(IRName("addRelTime"), (epoch, offset))
     if combine_arguments := node._metadata.get("datetime_combine_arguments"):
         value, hour, minute, second = combine_arguments
         clock = tuple(

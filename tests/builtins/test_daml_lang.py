@@ -272,7 +272,7 @@ def test_python_time_rejects_standalone_use():
         )
 
 
-def test_python_fromtimestamp_lowers_seconds_to_unix_microseconds():
+def test_python_fromtimestamp_lowers_seconds_to_epoch_offset():
     daml = _compile(
         "from datetime import datetime, timezone\n\n"
         "def from_seconds(seconds: int) -> datetime:\n"
@@ -280,8 +280,21 @@ def test_python_fromtimestamp_lowers_seconds_to_unix_microseconds():
     )
 
     assert "from_seconds : Int -> Time" in daml
-    assert "fromUnixMicroseconds (seconds * 1000000)" in daml
+    assert (
+        "addRelTime (time (date 1970 Jan 1) 0 0 0) (microseconds (seconds * 1000000))" in daml
+    )
     assert daml.count("import DA.Time") == 1
+    assert daml.count("import DA.Date") == 1
+
+
+def test_python_fromtimestamp_folds_literal_seconds():
+    daml = _compile(
+        "from datetime import datetime, timezone\n\n"
+        "def epoch_plus() -> datetime:\n"
+        "    return datetime.fromtimestamp(2, timezone.utc)\n"
+    )
+
+    assert "addRelTime (time (date 1970 Jan 1) 0 0 0) (microseconds 2000000)" in daml
 
 
 def test_qualified_python_fromtimestamp_preserves_microseconds():
@@ -294,8 +307,9 @@ def test_qualified_python_fromtimestamp_preserves_microseconds():
     )
 
     assert "from_microseconds : Int -> Time" in daml
-    assert "fromUnixMicroseconds microseconds" in daml
+    assert "addRelTime (time (date 1970 Jan 1) 0 0 0) (microseconds microseconds)" in daml
     assert daml.count("import DA.Time") == 1
+    assert daml.count("import DA.Date") == 1
 
 
 def test_python_fromtimestamp_requires_utc():

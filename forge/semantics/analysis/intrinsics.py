@@ -447,7 +447,7 @@ class DatetimeIntrinsicAnalyzer:
 
         if date_used or datetime_combine_used or datetime_fromtimestamp_used or timedelta_used:
             required = set(self.module._metadata.get("required_daml_modules", ()))
-            if date_used:
+            if date_used or datetime_fromtimestamp_used:
                 required.add("DA.Date")
             if datetime_combine_used or datetime_fromtimestamp_used or timedelta_used:
                 required.add("DA.Time")
