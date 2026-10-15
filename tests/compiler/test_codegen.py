@@ -149,6 +149,30 @@ def test_render_stmt_simple(stmt, expected_lines):
     assert render_stmt(stmt, indent=0) == expected_lines
 
 
+@pytest.mark.parametrize(
+    "stmts,expected_lines",
+    [
+        (
+            [IRAssert(IRName("cond"), IRConstant("neg")), IRReturn(IRName("x"))],
+            ["if cond", "  then", "    x", '  else error "neg"'],
+        ),
+        (
+            [IRAssert(IRName("cond"), None), IRReturn(IRName("x"))],
+            ["if cond", "  then", "    x", '  else error "Assertion failed"'],
+        ),
+        (
+            [
+                IRFor("i", TypeRef("Int"), IRName("xs"), (IRAssert(IRName("i"), IRConstant("e")),)),
+                IRReturn(IRName("x")),
+            ],
+            ["if all (\\i -> i) xs", "  then", "    x", '  else error "e"'],
+        ),
+    ],
+)
+def test_render_body_pure_assert_guards_rest(stmts, expected_lines):
+    assert render_body(stmts, indent=0, monadic=False) == expected_lines
+
+
 def test_render_stmt_if_else():
     stmt = IRIf(IRName("cond"), (IRReturn(IRConstant(True)),), (IRReturn(IRConstant(False)),))
     lines = render_stmt(stmt, indent=0)

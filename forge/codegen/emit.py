@@ -359,14 +359,21 @@ class BodyTranslator:
             return rendered
         return f"({rendered} : {render_type(s.type)})"
 
+    @staticmethod
+    def _render_assert(indent, test: str, msg, monadic: bool, render_rest) -> list:
+        pad = "  " * indent
+        if monadic:
+            head = f"{pad}assert ({test})" if msg is None else f"{pad}assertMsg {msg} ({test})"
+            return [head] + render_rest(indent)
+        failure = 'error "Assertion failed"' if msg is None else f"error {msg}"
+        return (
+            [f"{pad}if {test}", f"{pad}  then"]
+            + render_rest(indent + 2)
+            + [f"{pad}  else {failure}"]
+        )
+
     def _render_leaf(self, s, indent: int, monadic: bool, renames: dict) -> list:
         pad = "  " * indent
-        if isinstance(s, IRAssert):
-            test = LoopAnalysis.apply_renames(s.test, renames)
-            if s.msg is not None:
-                msg = LoopAnalysis.apply_renames(s.msg, renames)
-                return [f"{pad}assertMsg {render_expr(msg)} ({render_expr(test)})"]
-            return [f"{pad}assert ({render_expr(test)})"]
         if isinstance(s, IRAssign):
             value = LoopAnalysis.apply_renames(s.value, renames)
             target = self._render_assign_target(s)
@@ -471,6 +478,19 @@ class BodyTranslator:
 
             return self._translate_for(first, indent, monadic, rest_tail, known, renames)
 
+        if isinstance(first, IRAssert):
+            test = render_expr(LoopAnalysis.apply_renames(first.test, renames))
+            msg = None
+            if first.msg is not None:
+                msg = _render_call_arg(LoopAnalysis.apply_renames(first.msg, renames))
+            return self._render_assert(
+                indent,
+                test,
+                msg,
+                monadic,
+                lambda i: self._translate(rest, i, monadic, make_tail, known, renames),
+            )
+
         if isinstance(first, IRAssign) and isinstance(first.target, IRName):
             if first.target.id in known:
                 value = LoopAnalysis.apply_renames(first.value, renames)
@@ -520,7 +540,7 @@ class BodyTranslator:
                 "mutation and an early `return` inside its body is not supported"
             )
         if plan.assertion is not None:
-            return self._translate_assertion_loop(node, plan, indent, make_tail, renames)
+            return self._translate_assertion_loop(node, plan, indent, monadic, make_tail, renames)
         if plan.accumulators or plan.monadic:
             return self._translate_fold(node, plan, indent, monadic, make_tail, known, renames)
         if plan.has_return:
@@ -538,21 +558,17 @@ class BodyTranslator:
             return resolved[0]
         return f"({', '.join(resolved)})"
 
-    def _translate_assertion_loop(self, node, plan, indent, make_tail, renames) -> list:
+    def _translate_assertion_loop(self, node, plan, indent, monadic, make_tail, renames) -> list:
         assertion = plan.assertion
         assert assertion is not None
-        pad = "  " * indent
         body_renames = {name: value for name, value in renames.items() if name != node.target}
         test = render_expr(LoopAnalysis.apply_renames(assertion.test, body_renames))
         iterable = _render_call_arg(LoopAnalysis.apply_renames(node.iter, renames))
         condition = f"all (\\{node.target} -> {test}) {iterable}"
-        if assertion.msg is None:
-            lines = [f"{pad}assert ({condition})"]
-        else:
-            message = render_expr(assertion.msg)
-            lines = [f"{pad}assertMsg {message} ({condition})"]
-        lines.extend(make_tail(indent, frozenset(), renames))
-        return lines
+        msg = None if assertion.msg is None else _render_call_arg(assertion.msg)
+        return self._render_assert(
+            indent, condition, msg, monadic, lambda i: make_tail(i, frozenset(), renames)
+        )
 
     def _translate_fold(
         self, node: IRFor, plan: LoopPlan, indent, monadic, make_tail, known, renames

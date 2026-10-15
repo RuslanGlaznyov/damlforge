@@ -313,7 +313,7 @@ class LoopAnalyzer:
     def plan(self, node: IRFor, known: frozenset, monadic: bool) -> LoopPlan:
         body = tuple(node.body)
         accumulators = tuple(LoopAnalysis.collect_accumulators(body, known))
-        assertion = body[0] if self._is_assertion_only_loop(body, monadic) else None
+        assertion = body[0] if self._is_assertion_only_loop(body) else None
         captured = tuple(
             sorted(
                 (LoopAnalysis.collect_free_names(body) & known)
@@ -333,10 +333,9 @@ class LoopAnalyzer:
         )
 
     @staticmethod
-    def _is_assertion_only_loop(body: tuple[IRStmt, ...], monadic: bool) -> bool:
+    def _is_assertion_only_loop(body: tuple[IRStmt, ...]) -> bool:
         return (
-            monadic
-            and len(body) == 1
+            len(body) == 1
             and isinstance(body[0], IRAssert)
             and (body[0].msg is None or isinstance(body[0].msg, IRConstant))
         )
