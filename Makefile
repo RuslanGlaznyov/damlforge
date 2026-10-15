@@ -1,12 +1,13 @@
 VERSION ?= 0.0.7
+PYTHON ?= python3
 
 .PHONY: test daml-test-legacy daml-test-example daml-test-all dev dev-deps lint clean clean-pyc clean-build clean-test build release
 
 init:
-	python setup.py install
+	$(PYTHON) setup.py install
 
 dev-init:
-	pip install . --group dev
+	$(PYTHON) -m pip install . --group dev
 
 test:
 	pytest
@@ -34,7 +35,7 @@ isort: black
 	isort forge/ tests/ setup.py
 
 build: clean
-	python -m build
+	$(PYTHON) -m build
 	ls -la dist/
 
 dev:
@@ -42,7 +43,7 @@ dev:
 
 dev-release:
 	SETUPTOOLS_SCM_PRETEND_VERSION=$(VERSION) \
-	python -m pip install --no-deps --force-reinstall -e .
+	$(PYTHON) -m pip install --no-deps --force-reinstall -e .
 
 release: build
 	twine check dist/*

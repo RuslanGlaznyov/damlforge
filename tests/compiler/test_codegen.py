@@ -17,6 +17,7 @@ from forge.ir.nodes import (
     IREnum,
     IRFor,
     IRIf,
+    IRIfExp,
     IRInterface,
     IRImport,
     IRList,
@@ -88,6 +89,23 @@ def test_render_type(type_ref, expected):
         (IRTuple((IRName("a"), IRName("b"))), "(a, b)"),
         (IRCall(IRName("Decimal"), (IRConstant(0),)), "(0.0 : Decimal)"),
         (IRCall(IRName("Decimal"), (IRConstant(5),)), "(5.0 : Decimal)"),
+        (IRIfExp(IRName("c"), IRName("a"), IRName("b")), "if c then a else b"),
+        (
+            IRBinOp("+", IRName("x"), IRIfExp(IRName("c"), IRName("a"), IRName("b"))),
+            "x + (if c then a else b)",
+        ),
+        (
+            IRCall(IRName("foo"), (IRIfExp(IRName("c"), IRName("a"), IRName("b")),)),
+            "foo (if c then a else b)",
+        ),
+        (
+            IRIfExp(IRIfExp(IRName("c1"), IRName("c2"), IRName("c3")), IRName("a"), IRName("b")),
+            "if (if c1 then c2 else c3) then a else b",
+        ),
+        (
+            IRIfExp(IRName("c1"), IRIfExp(IRName("c2"), IRName("a"), IRName("b")), IRName("d")),
+            "if c1 then (if c2 then a else b) else d",
+        ),
     ],
 )
 def test_render_expr(expr, expected):

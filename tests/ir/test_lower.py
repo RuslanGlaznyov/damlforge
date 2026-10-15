@@ -16,6 +16,7 @@ from forge.ir.nodes import (
     IRExprStmt,
     IRFor,
     IRIf,
+    IRIfExp,
     IRImport,
     IRList,
     IRName,
@@ -673,6 +674,7 @@ def test_for_statement_without_target_type_lowers_with_inferred_type_placeholder
         ("x == y", IRCompare(IRName("x"), "==", IRName("y"))),
         ("x != y", IRCompare(IRName("x"), "!=", IRName("y"))),
         ("x in y", IRCompare(IRName("x"), "in", IRName("y"))),
+        ("x if cond else y", IRIfExp(IRName("cond"), IRName("x"), IRName("y"))),
     ],
 )
 def test_expression_lowering(expr_source, expected):
@@ -680,3 +682,12 @@ def test_expression_lowering(expr_source, expected):
     ir = _lower(source)
     (fn,) = ir.functions
     assert fn.body[0] == IRReturn(expected)
+
+
+def test_conditional_expression_lowering_fuzzer_case():
+    source = "def func_0() -> int:\n    return (-2147483648 if False else -2147483648)\n"
+    ir = _analyze_and_lower(source)
+    (fn,) = ir.functions
+    assert fn.body[0] == IRReturn(
+        IRIfExp(IRConstant(False), IRConstant(-2147483648), IRConstant(-2147483648))
+    )

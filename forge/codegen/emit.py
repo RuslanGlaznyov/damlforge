@@ -27,6 +27,7 @@ from forge.ir.nodes import (
     IRFor,
     IRFunction,
     IRIf,
+    IRIfExp,
     IRInterface,
     IRInterfaceInstance,
     IRList,
@@ -151,8 +152,8 @@ def render_constant(value) -> str:
     return str(value)
 
 
-_NEEDS_PARENS_AS_INFIX_OPERAND = (IRBinOp, IRBoolOp, IRUnaryOp, IRCompare)
-_NEEDS_PARENS_AS_CALL_ARG = (IRCall, IRBinOp, IRBoolOp, IRUnaryOp, IRCompare)
+_NEEDS_PARENS_AS_INFIX_OPERAND = (IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
+_NEEDS_PARENS_AS_CALL_ARG = (IRCall, IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
 
 
 def _render_infix_operand(e) -> str:
@@ -221,6 +222,14 @@ def render_expr(e) -> str:
     if isinstance(e, IRRecordUpdate):
         updates_str = ", ".join(f"{name} = {render_expr(v)}" for name, v in e.updates)
         return f"{_render_atom_for_attr(e.base)} {{ {updates_str} }}"
+    if isinstance(e, IRIfExp):
+        test_str = (
+            f"({render_expr(e.test)})" if isinstance(e.test, IRIfExp) else render_expr(e.test)
+        )
+        body_str = (
+            f"({render_expr(e.body)})" if isinstance(e.body, IRIfExp) else render_expr(e.body)
+        )
+        return f"if {test_str} then {body_str} else {render_expr(e.orelse)}"
     raise CompilerPanic(f"render_expr: unsupported IR expression {type(e).__name__}")
 
 

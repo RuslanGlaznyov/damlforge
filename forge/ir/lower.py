@@ -24,6 +24,7 @@ from forge.ir.nodes import (
     IRFor,
     IRFunction,
     IRIf,
+    IRIfExp,
     IRInterface,
     IRInterfaceInstance,
     IRList,
@@ -258,6 +259,10 @@ def _lower_expr_UnaryOp(node):
 def _lower_expr_Compare(node):
     op = _COMPARE_OPS[type(node.op).__name__]
     return IRCompare(lower_expr(node.left), op, lower_expr(node.right))
+
+
+def _lower_expr_IfExp(node):
+    return IRIfExp(lower_expr(node.test), lower_expr(node.body), lower_expr(node.orelse))
 
 
 def lower_stmt(node: vy_ast.VyperNode):

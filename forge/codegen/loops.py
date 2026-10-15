@@ -14,6 +14,7 @@ from forge.ir.nodes import (
     IRExprStmt,
     IRFor,
     IRIf,
+    IRIfExp,
     IRList,
     IRName,
     IRPass,
@@ -193,6 +194,10 @@ class LoopAnalysis:
             cls._expr_free_names(e.base, acc)
             for _, v in e.updates:
                 cls._expr_free_names(v, acc)
+        elif isinstance(e, IRIfExp):
+            cls._expr_free_names(e.test, acc)
+            cls._expr_free_names(e.body, acc)
+            cls._expr_free_names(e.orelse, acc)
         else:
             raise CompilerPanic(f"_expr_free_names: unsupported IR expression {type(e).__name__}")
 
@@ -287,6 +292,12 @@ class LoopAnalysis:
             return IRRecordUpdate(
                 cls.apply_renames(e.base, renames),
                 tuple((n, cls.apply_renames(v, renames)) for n, v in e.updates),
+            )
+        if isinstance(e, IRIfExp):
+            return IRIfExp(
+                cls.apply_renames(e.test, renames),
+                cls.apply_renames(e.body, renames),
+                cls.apply_renames(e.orelse, renames),
             )
         raise CompilerPanic(f"apply_renames: unsupported IR expression {type(e).__name__}")
 

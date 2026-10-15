@@ -8,6 +8,7 @@ from forge.ir.nodes import (
     IRCompare,
     IRConstant,
     IRIf,
+    IRIfExp,
     IRImport,
     IRModule,
     IRName,
@@ -136,3 +137,21 @@ def test_choice_without_self_mutation_is_unaffected():
     assert "create self" not in source
     assert "choice Mint : Bool" in source
     assert "import DA.Map" not in source
+
+
+def test_conditional_expression_in_choice_rewrites_self_field():
+    field_type = TypeRef("Decimal")
+    body = [
+        IRAssign(
+            IRAttribute(IRName("self"), "balance"),
+            IRIfExp(
+                IRCompare(IRName("flag"), "==", IRConstant(True)),
+                IRBinOp("+", IRAttribute(IRName("self"), "balance"), IRConstant(1)),
+                IRAttribute(IRName("self"), "balance"),
+            ),
+        ),
+        IRReturn(None),
+    ]
+    module = _template_with_choice(field_type, body)
+    source, _ = generate_daml(module)
+    assert "if flag == True then self.balance + 1 else self.balance" in source

@@ -113,6 +113,13 @@ class IRRecordUpdate:
     updates: tuple[tuple[str, "IRExpr"], ...]
 
 
+@dataclass(frozen=True)
+class IRIfExp:
+    test: "IRExpr"
+    body: "IRExpr"
+    orelse: "IRExpr"
+
+
 IRExpr = Union[
     IRName,
     IRAttribute,
@@ -127,6 +134,7 @@ IRExpr = Union[
     IRUnaryOp,
     IRCompare,
     IRRecordUpdate,
+    IRIfExp,
 ]
 
 

@@ -58,7 +58,11 @@ setup(
     url="https://github.com/nodersteam/damlforge",
     license="Apache License 2.0",
     keywords="daml canton smart contract language",
-    include_package_data=True,
+    # The builtins tree contains .vy source files in directories that are
+    # intentionally data directories, not Python packages. Keep package data
+    # explicit so setuptools does not try to discover those directories as
+    # namespace packages.
+    include_package_data=False,
     packages=find_packages(include=["forge", "forge.*"]),
     python_requires=">=3.11,<4",
     setup_requires=["setuptools_scm>=7.1.0,<8.0.0"],
@@ -71,6 +75,9 @@ setup(
         "Programming Language :: Python :: 3.13",
         "Programming Language :: Python :: 3.14",
     ],
-    package_data={"forge.ast": ["grammar.lark"], "forge.builtins": ["**/*.vy"]},
+    package_data={
+        "forge.ast": ["grammar.lark", "*.pyi", "README.md"],
+        "forge.builtins": ["**/*.vy"],
+    },
     data_files=[("", [hash_file_rel_path])],
 )

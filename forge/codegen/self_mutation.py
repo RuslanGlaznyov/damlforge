@@ -16,6 +16,7 @@ from forge.ir.nodes import (
     IRExprStmt,
     IRFor,
     IRIf,
+    IRIfExp,
     IRList,
     IRName,
     IRPass,
@@ -212,6 +213,12 @@ class SelfFieldRewriter:
                 tuple(
                     (name, cls.rewrite_expr(v, field_types, local_types)) for name, v in e.updates
                 ),
+            )
+        if isinstance(e, IRIfExp):
+            return IRIfExp(
+                cls.rewrite_expr(e.test, field_types, local_types),
+                cls.rewrite_expr(e.body, field_types, local_types),
+                cls.rewrite_expr(e.orelse, field_types, local_types),
             )
         raise CompilerPanic(f"rewrite_expr: unsupported IR expression {type(e).__name__}")
 

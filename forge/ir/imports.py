@@ -12,6 +12,7 @@ from forge.ir.nodes import (
     IRExprStmt,
     IRFor,
     IRIf,
+    IRIfExp,
     IRImport,
     IRModule,
     IRName,
@@ -65,6 +66,11 @@ def _expr_type(expr: IRExpr, context_fields: dict[str, TypeRef], fields: dict) -
         if base is None or not base.args:
             return None
         return base.args[-1] if base.name in ("GenMap", "TextMap") else base.args[0]
+    if isinstance(expr, IRIfExp):
+        return (
+            _expr_type(expr.body, context_fields, fields)
+            or _expr_type(expr.orelse, context_fields, fields)
+        )
     return None
 
 
