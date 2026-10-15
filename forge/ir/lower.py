@@ -290,6 +290,12 @@ def _lower_stmt_Assign(node):
     return IRAssign(lower_expr(node.target), lower_expr(node.value), src=_src(node))
 
 
+def _lower_stmt_AugAssign(node):
+    target = lower_expr(node.target)
+    op = _BIN_OPS[type(node.op).__name__]
+    return IRAssign(target, IRBinOp(op, target, lower_expr(node.value)), src=_src(node))
+
+
 def _lower_stmt_If(node):
     body = tuple(lower_stmt(s) for s in node.body)
     orelse = tuple(lower_stmt(s) for s in node.orelse)

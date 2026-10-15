@@ -129,6 +129,10 @@ def test_render_qualified_import_with_alias():
         (IRAssert(IRName("cond"), None), ["assert (cond)", "pure ()"]),
         (IRAssert(IRName("cond"), IRConstant("bad")), ['assertMsg "bad" (cond)', "pure ()"]),
         (IRAssign(IRName("x"), IRName("y")), ["let x = y", "pure ()"]),
+        (
+            IRAssign(IRName("p_INT_1"), IRBinOp("*", IRName("p_INT_1"), IRConstant(-2147483648))),
+            ["let p_INT_1 = p_INT_1 * -2147483648", "pure ()"],
+        ),
         (IRReturn(IRName("x")), ["pure (x)"]),
         (IRReturn(None), ["pure ()"]),
         (IRPass(), ["pure ()"]),
