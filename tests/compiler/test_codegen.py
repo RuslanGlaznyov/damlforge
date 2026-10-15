@@ -75,6 +75,7 @@ def test_render_type(type_ref, expected):
         (IRBoolOp("or", (IRName("a"), IRName("b"))), "a || b"),
         (IRUnaryOp("not", IRName("a")), "not a"),
         (IRBinOp("+", IRName("a"), IRName("b")), "a + b"),
+        (IRBinOp("//", IRName("a"), IRName("b")), "a // b"),
         (IRBinOp("+", IRConstant("a"), IRName("b")), '"a" <> b'),
         (IRBinOp("+", IRName("a"), IRConstant("b")), 'a <> "b"'),
         (IRBinOp("+", IRList((IRName("a"),)), IRName("b")), "[a] ++ b"),

@@ -58,7 +58,15 @@ def _src(node: vy_ast.VyperNode) -> SourceSpan:
     )
 
 
-_BIN_OPS = {"Add": "+", "Sub": "-", "Mult": "*", "Div": "/", "Mod": "%", "Pow": "**"}
+_BIN_OPS = {
+    "Add": "+",
+    "Sub": "-",
+    "Mult": "*",
+    "Div": "/",
+    "FloorDiv": "//",
+    "Mod": "%",
+    "Pow": "**",
+}
 
 _BOOL_OPS = {"And": "and", "Or": "or"}
 
