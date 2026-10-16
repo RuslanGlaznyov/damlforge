@@ -462,6 +462,8 @@ class BidirectionalTypeChecker:
             self._compatible(right, left, expr)
             return left
 
+        if op_type is vy_ast.Pow and isinstance(expr.right, vy_ast.Int) and expr.right.value < 0:
+            self._error(expr.right, "`**` exponent must be non-negative; Daml `^` rejects it")
         operand_type = AppliedType("Int") if op_type in (vy_ast.Mod, vy_ast.Pow) else None
         left = self.check_expr(expr.left, operand_type, env)
         right = self.check_expr(expr.right, operand_type, env)

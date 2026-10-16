@@ -77,7 +77,7 @@ _COMPARE_OP_MAP = {
 }
 _BOOL_OP_MAP = {"and": "&&", "or": "||"}
 _UNARY_OP_MAP = {"not": "not ", "-": "-"}
-_BIN_OP_MAP = {"+": "+", "-": "-", "*": "*", "/": "/", "%": "%", "**": "**"}
+_BIN_OP_MAP = {"+": "+", "-": "-", "*": "*", "/": "/", "%": "%", "**": "^"}
 
 
 def _is_text_literal(e) -> bool:

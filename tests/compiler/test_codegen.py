@@ -118,6 +118,21 @@ def test_render_expr_nested_generic_type_parenthesized():
     assert render_type(t) == "[(Party, Int)]"
 
 
+@pytest.mark.parametrize(
+    "expr, expected",
+    [
+        (IRBinOp("**", IRName("x"), IRName("y")), "x ^ y"),
+        (IRUnaryOp("-", IRBinOp("**", IRName("x"), IRConstant(2))), "-(x ^ 2)"),
+        (
+            IRBinOp("*", IRBinOp("**", IRName("x"), IRName("y")), IRConstant(3)),
+            "(x ^ y) * 3",
+        ),
+    ],
+)
+def test_render_power_uses_caret(expr, expected):
+    assert render_expr(expr) == expected
+
+
 def test_render_qualified_import_with_alias():
     source, _ = generate_daml(IRModule(imports=(IRImport("DA.Text", alias="Text"),)))
 

@@ -52,3 +52,15 @@ def test_optional_parameter_uses_explicit_inference_conversion():
         "def valid() -> Int:\n"
         "    return accepts(1)\n"
     )
+
+
+@pytest.mark.parametrize(
+    "exponent, valid",
+    [("2", True), ("0", True), ("y", True), ("-1", False), ("-2147483648", False)],
+)
+def test_power_rejects_negative_literal_exponent(exponent, valid):
+    source = f"def f(x: Int, y: Int) -> Int:\n    return x ** {exponent}\n"
+    if valid:
+        _analyze(source)
+    else:
+        _assert_type_error(source)
