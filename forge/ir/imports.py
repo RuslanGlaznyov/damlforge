@@ -2,12 +2,14 @@ from dataclasses import fields as dataclass_fields
 from dataclasses import is_dataclass, replace
 
 from forge.builtins import collect_daml_builtins
+from forge.builtins.maps import TextMap, known_map_types
 from forge.ir.nodes import (
     IRAssert,
     IRAssign,
     IRAttribute,
     IRCall,
     IRConstant,
+    IRDict,
     IRExpr,
     IRExprStmt,
     IRFor,
@@ -186,6 +188,9 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
                 add(IRImport("DA.TextMap", alias="TextMap", qualified=False))
             elif value.name in ("set", "frozenset"):
                 add(IRImport("DA.Set", alias="Set", qualified=False))
+        elif isinstance(value, IRDict):
+            module_name = known_map_types().get(value.kind, TextMap).module
+            add(IRImport(f"DA.{module_name}", alias=module_name, qualified=False))
         elif isinstance(value, IRName):
             if value.id == "foldlA":
                 add(IRImport("DA.Action", ("foldlA",)))

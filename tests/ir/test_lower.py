@@ -699,3 +699,24 @@ def test_conditional_expression_lowering_fuzzer_case():
     assert fn.body[0] == IRReturn(
         IRIfExp(IRConstant(False), IRConstant(-2147483648), IRConstant(-2147483648))
     )
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        (
+            "def f() -> int:\n    return len([{}])\n",
+            IRImport("DA.TextMap", alias="TextMap", qualified=False),
+        ),
+        (
+            "def f() -> int:\n    return len([{'a': 1}])\n",
+            IRImport("DA.TextMap", alias="TextMap", qualified=False),
+        ),
+        (
+            "def f(p: Party) -> int:\n    m: GenMap[Party, int] = {p: 1}\n    return 0\n",
+            IRImport("DA.Map", alias="Map", qualified=False),
+        ),
+    ],
+)
+def test_map_literal_requires_its_map_module(source, expected):
+    assert expected in _lower(source).imports
