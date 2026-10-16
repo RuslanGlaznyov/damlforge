@@ -387,6 +387,17 @@ class BidirectionalTypeChecker:
             self._check_call_arguments(call, env, None)
             return None
 
+        if function_name in ("int", "Int") and len(call.args) == 1 and not call.keywords:
+            source = self._name(self.check_expr(call.args[0], None, env, call=True))
+            if source == "Decimal":
+                call._metadata["int_conversion"] = "truncate"
+            elif source == "Int":
+                call._metadata["int_conversion"] = "identity"
+            elif source is not None:
+                message = f"`int(...)` cannot convert `{source}`; expected Int or Decimal"
+                self._error(call, message, call=True)
+            return AppliedType("Int")
+
         self._check_call_arguments(call, env, function_name)
         builtin_types = {
             "int": "Int",

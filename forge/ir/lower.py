@@ -161,6 +161,9 @@ def _lower_expr_Subscript(node):
 
 
 def _lower_expr_Call(node):
+    if conversion := node._metadata.get("int_conversion"):
+        value = lower_expr(node.args[0])
+        return value if conversion == "identity" else IRCall(IRName("truncate"), (value,))
     if node._metadata.get("datetime_now"):
         return IRCall(IRName("getTime"))
     if "fromtimestamp_argument" in node._metadata:

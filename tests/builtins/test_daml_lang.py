@@ -398,3 +398,23 @@ def test_builtin_splice_struct_optional_field_auto_wraps_without_manual_some():
     )
 
     assert 'optContext = Some "reason"' in daml
+
+
+@pytest.mark.parametrize(
+    "signature, body, expected",
+    [
+        ("() -> int", "int(Decimal(-2147483648))", "truncate ((-2147483648.0 : Decimal))"),
+        ("(x: Decimal) -> int", "int(x * 2.5) + 1", "truncate (x * 2.5) + 1"),
+        ("(n: int) -> int", "int(n)", "f n =\n  n\n"),
+    ],
+)
+def test_python_int_conversion(signature, body, expected):
+    daml = _compile(f"def f{signature}:\n    return {body}\n")
+
+    assert expected in daml
+    assert "int (" not in daml
+
+
+def test_python_int_rejects_unsupported_source_type():
+    with pytest.raises(DamlForgeException, match="cannot convert `Text`"):
+        _compile("def f(s: str) -> int:\n    return int(s)\n")
