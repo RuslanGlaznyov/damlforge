@@ -444,6 +444,8 @@ class BidirectionalTypeChecker:
         op_type = type(expr.op)
         if op_type in (vy_ast.Add, vy_ast.Sub, vy_ast.Mult, vy_ast.Div):
             operand_expected = expected if self._is_numeric(self._name(expected)) else None
+            if op_type is vy_ast.Sub and self._name(expected) == "RelTime":
+                operand_expected = None
             left = self.check_expr(expr.left, operand_expected, env)
             right = self.check_expr(expr.right, operand_expected, env)
             left_name = self._name(left)

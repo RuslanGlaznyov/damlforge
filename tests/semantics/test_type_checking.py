@@ -64,3 +64,25 @@ def test_power_rejects_negative_literal_exponent(exponent, valid):
         _analyze(source)
     else:
         _assert_type_error(source)
+
+
+@pytest.mark.parametrize(
+    "signature, body, valid",
+    [
+        ("(a: datetime, b: datetime) -> timedelta", "a - b", True),
+        ("(a: datetime, b: datetime, d: timedelta) -> timedelta", "(a - b) + d", True),
+        ("(d: timedelta, e: timedelta) -> timedelta", "d - e", True),
+        ("(a: datetime, b: datetime, c: datetime) -> datetime", "c + (a - b)", True),
+        ("(a: datetime, b: datetime) -> datetime", "a - b", False),
+        ("(d: timedelta, n: Int) -> timedelta", "d - n", False),
+    ],
+)
+def test_datetime_subtraction_yields_timedelta(signature, body, valid):
+    source = (
+        "from datetime import datetime, timedelta\n\n"
+        f"def f{signature}:\n    return {body}\n"
+    )
+    if valid:
+        _analyze(source)
+    else:
+        _assert_type_error(source)
