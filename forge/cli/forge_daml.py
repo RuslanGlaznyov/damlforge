@@ -7,6 +7,7 @@ from loguru import logger
 from forge.ast.parse import parse_to_ast
 from forge.codegen import daml_module_name, generate_daml
 from forge.daml_versions import DamlCodegenSettings
+from forge.exceptions import tag_exceptions
 from forge.ir import lower_module
 from forge.semantics import analyze_module
 
@@ -19,10 +20,11 @@ def _compile_one(
     path = file.resolve()
     source = file.read_text()
     module = parse_to_ast(source, module_path=path.name, resolved_path=str(path))
-    import_graph = analyze_module(module)
-    ir = lower_module(module, import_graph=import_graph)
-    module_name = daml_module_name(path.stem)
-    daml_source, source_map = generate_daml(ir, module_name=module_name, settings=settings)
+    with tag_exceptions(module):
+        import_graph = analyze_module(module)
+        ir = lower_module(module, import_graph=import_graph)
+        module_name = daml_module_name(path.stem)
+        daml_source, source_map = generate_daml(ir, module_name=module_name, settings=settings)
 
     output_file = output_dir / (module_name + ".daml")
     with output_file.open("w") as fh:

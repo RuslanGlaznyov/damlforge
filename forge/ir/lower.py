@@ -112,7 +112,9 @@ def lower_type(node: vy_ast.VyperNode) -> TypeRef:
         else:
             args = (lower_type(node.slice),)
         return TypeRef(base.name, args)
-    raise CompilerPanic(f"lower_type: unsupported type expression {type(node).__name__}")
+    raise CompilerPanic(
+        f"lower_type: unsupported type expression {type(node).__name__}", node
+    )
 
 
 def lower_expr(node: vy_ast.VyperNode):
@@ -132,7 +134,9 @@ def _inferred_type(node: vy_ast.VyperNode) -> TypeRef | None:
 def _lower_expr_inner(node: vy_ast.VyperNode):
     handler = globals().get(f"_lower_expr_{type(node).__name__}")
     if handler is None:
-        raise CompilerPanic(f"lower_expr: unsupported expression node {type(node).__name__}")
+        raise CompilerPanic(
+            f"lower_expr: unsupported expression node {type(node).__name__}", node
+        )
     return handler(node)
 
 
@@ -311,7 +315,9 @@ def _lower_expr_IfExp(node):
 def lower_stmt(node: vy_ast.VyperNode):
     handler = globals().get(f"_lower_stmt_{type(node).__name__}")
     if handler is None:
-        raise CompilerPanic(f"lower_stmt: unsupported statement node {type(node).__name__}")
+        raise CompilerPanic(
+            f"lower_stmt: unsupported statement node {type(node).__name__}", node
+        )
     return handler(node)
 
 
@@ -426,7 +432,9 @@ def _lower_consuming(node) -> Consuming:
         return Consuming.CONSUMING if node.value else Consuming.NON_CONSUMING
     if isinstance(node, vy_ast.Str):
         return Consuming(node.value)
-    raise CompilerPanic(f"lower_consuming: unsupported consuming literal {type(node).__name__}")
+    raise CompilerPanic(
+        f"lower_consuming: unsupported consuming literal {type(node).__name__}", node
+    )
 
 
 def lower_function(fn: vy_ast.FunctionDef) -> IRFunction:

@@ -395,7 +395,7 @@ class VyperInternalException(_BaseVyperException):
             f"{super().__str__()}\n\n"
             "This is an unhandled internal compiler error. "
             "Please create an issue on Github to notify the developers!\n"
-            "https://github.com/vyperlang/vyper/issues/new?template=bug.md"
+            "https://github.com/noders-team/damlforge"
         )
 
 

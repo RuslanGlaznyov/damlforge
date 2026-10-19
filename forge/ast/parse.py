@@ -526,7 +526,9 @@ class AnnotatingVisitor(python_ast.NodeTransformer):
             node.ast_type = "Int"
 
         else:  # pragma: nocover
-            raise CompilerPanic(f"Unexpected type for Constant value: {type(node.value).__name__}")
+            raise CompilerPanic(
+                f"Unexpected type for Constant value: {type(node.value).__name__}", node
+            )
 
         return node
 
