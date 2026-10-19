@@ -1,19 +1,15 @@
-# 🐍 `vyper.ast` 🐍
+# `forge.ast`
 
 ## Purpose
 
-The `vyper.ast` module handles the conversion of Vyper source code into an abstract
-syntax tree (AST). It also contains functionality for traversing and modifying the AST,
-and parsing NatSpec docstrings.
+The `forge.ast` module handles the conversion of DamlForge `.vy` source code into an
+abstract syntax tree (AST). It also contains functionality for traversing and modifying
+the AST.
 
 ## Organization
 
-`vyper.ast` has the following structure:
+`forge.ast` has the following structure:
 
-* [`annotation.py`](annotation.py): Contains the `AnnotatingVisitor` class, used to
-annotate and modify the Python AST prior to converting it to a Vyper AST.
-* [`natspec.py`](natspec.py): Functions for parsing NatSpec docstrings within the
-source.
 * [`nodes.py`](nodes.py): Contains the Vyper node classes, and the `get_node`
 function which generates a Vyper node from a Python node.
 * [`pre_parser.py`](pre_parser.py): Functions for converting Vyper source into
@@ -25,16 +21,14 @@ nodes.
 
 ### Node Generation
 
-`vyper.ast.utils.parse_to_ast` is the main function used to generate a Vyper AST
+`forge.ast.parse.parse_to_ast` is the main function used to generate a Vyper AST
 from a source string. The process is as follows:
 
 1. In [`pre_parser.py`](pre_parser.py), Vyper source is modified into parseable
 Python. This primarily involves substituting out `contract` and `struct` statements
 for `class`.
 2. A Python AST is generated from the modified source.
-3. In [`annotation.py`](annotation.py), additional information is added to the
-Python AST, and some nodes are modified to aid conversion to the Vyper AST.
-4. In [`nodes.py`](nodes.py), the modified Python AST nodes are converted to Vyper
+3. In [`nodes.py`](nodes.py), the modified Python AST nodes are converted to Vyper
 AST nodes.
 
 Conversion between a Python Node and a Vyper Node uses the following rules:
@@ -114,17 +108,16 @@ All node classes are imported from `ast/nodes.py` into `ast/__init__.py`. If you
 are importing an AST node from another module, you should do so from the root `ast`
 package.
 
-For readability, `ast` should always be aliased as `vy_ast`.
+For readability, the local AST module should be aliased as `vy_ast`.
 
 ```python
 # Good
-from vyper import ast as vy_ast
-from vyper.ast import VyperNode
+from forge.ast import nodes as vy_ast
+from forge.ast import VyperNode
 
 # Bad - could be mistaken for the builtin ast library
-from vyper import ast
+from forge import ast
 
-# Bad - only the functionality within vyper.ast is considered "public"
-from vyper.ast import nodes
-from vyper.ast.nodes import VyperNode
+# Bad - import from the implementation module when the package re-exports it
+from forge.ast.nodes import VyperNode
 ```

@@ -366,7 +366,9 @@ class LoopAnalyzer:
     def plan(self, node: IRFor, known: frozenset, in_update_block: bool) -> LoopPlan:
         body = tuple(node.body)
         accumulators = tuple(LoopAnalysis.collect_accumulators(body, known))
-        assertion = body[0] if self._is_assertion_only_loop(body) else None
+        assertion: IRAssert | None = None
+        if self._is_assertion_only_loop(body) and isinstance(body[0], IRAssert):
+            assertion = body[0]
         captured = tuple(
             sorted(
                 (LoopAnalysis.collect_free_names(body) & known) - set(accumulators) - {node.target}

@@ -412,9 +412,9 @@ class BidirectionalTypeChecker:
             self._check_call_arguments(call, env, None)
             return None
 
-        conversion = _CONVERSIONS.get(function_name)
+        conversion = _CONVERSIONS.get(function_name) if function_name is not None else None
         if conversion is not None and len(call.args) == 1 and not call.keywords:
-            result, converters = conversion
+            conversion_result, converters = conversion
             source = self._name(self.check_expr(call.args[0], None, env, call=True))
             if source in converters:
                 call._metadata["conversion"] = converters[source]
@@ -422,7 +422,7 @@ class BidirectionalTypeChecker:
                 allowed = ", ".join(converters)
                 message = f"`{function_name}(...)` cannot convert `{source}`; expected {allowed}"
                 self._error(call, message, call=True)
-            return AppliedType(result)
+            return AppliedType(conversion_result)
 
         self._check_call_arguments(call, env, function_name)
         builtin_types = {
@@ -452,8 +452,8 @@ class BidirectionalTypeChecker:
                 return AppliedType("ContractId", (payload,))
         if function_name == "error":
             return expected
-        result = self.return_types.get(function_name) if function_name else None
-        return self._term(result)
+        return_type = self.return_types.get(function_name) if function_name else None
+        return self._term(return_type)
 
     def _binary_type(
         self, expr: vy_ast.BinOp, expected: TypeTerm | None, env: TypeEnvironment
@@ -741,7 +741,7 @@ class BidirectionalTypeChecker:
     def _wrap_choice_return(self, value, actual: TypeTerm | None, env: TypeEnvironment) -> None:
         if actual is None and isinstance(value, (vy_ast.Dict, vy_ast.List)):
             inner = self._choice_return
-            while _optional_depth(inner):
+            while isinstance(inner, AppliedType) and inner.name == "Optional" and inner.args:
                 inner = inner.args[0]
             actual = self.check_expr(value, inner, env)
         if value is None or self._name(actual) in (None, "None"):

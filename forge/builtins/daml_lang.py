@@ -102,5 +102,5 @@ def reverse(values: list[_T1]) -> list[_T1]:
 
 
 @DamlName("error")
-def error(message: Text) -> _T1:
+def error(message: Text) -> _T1:  # type: ignore[type-var]
     raise NotImplementedError

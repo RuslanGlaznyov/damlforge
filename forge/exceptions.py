@@ -226,10 +226,6 @@ class DecimalOverrideException(VyperException):
     """
 
 
-class NatSpecSyntaxException(SyntaxException):
-    """Invalid syntax within NatSpec docstring."""
-
-
 class StructureException(VyperException):
     """Invalid structure for parsable syntax."""
 

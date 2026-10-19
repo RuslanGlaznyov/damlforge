@@ -4,8 +4,7 @@ isort:skip_file
 
 import sys
 
-from . import nodes, validation
-from .natspec import parse_natspec
+from . import nodes
 from .nodes import as_tuple
 from .utils import ast_to_dict
 from .parse import parse_to_ast

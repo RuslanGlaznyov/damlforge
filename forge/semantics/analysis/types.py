@@ -237,7 +237,7 @@ def known_declarations(modules) -> dict:
 
 
 def _qualified_import_type_names(modules) -> set:
-    names = set()
+    names: set[str] = set()
     for module in _scope_modules(modules):
         for stmt in module.body:
             if not isinstance(stmt, vy_ast.Import):

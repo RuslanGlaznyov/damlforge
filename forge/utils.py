@@ -494,22 +494,6 @@ VALID_IR_MACROS = {
 }
 
 
-EIP_170_LIMIT = 0x6000  # 24kb
-EIP_3860_LIMIT = EIP_170_LIMIT * 2
-ERC5202_PREFIX = b"\xfe\x71\x00"  # default prefix from ERC-5202
-
-assert EIP_3860_LIMIT == 49152  # directly from the EIP
-
-SHA3_BASE = 30
-SHA3_PER_WORD = 6
-
-# 0x04: identity precompile. Lives here rather than codegen_venom/constants.py
-# because FmpLoweringPass (vyper.venom) also needs it, and vyper.venom does
-# not import from vyper.codegen_venom. (ECRECOVER/SHA256 stayed behind since
-# only codegen uses them.)
-IDENTITY_PRECOMPILE = 0x04
-
-
 def indent(text: str, indent_chars: Union[str, List[str]] = " ", level: int = 1) -> str:
     """
     Indent lines of text in the string ``text`` using the indentation

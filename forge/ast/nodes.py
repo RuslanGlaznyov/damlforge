@@ -1,5 +1,4 @@
 import ast as python_ast
-import contextlib
 import copy
 import decimal
 import functools
@@ -426,7 +425,7 @@ class VyperNode:
         """
         Validate the content of a node.
 
-        Called by `ast.validation.validate_literal_nodes` to verify values
+        Used by the parser to verify literal values
         within literal nodes.
 
         Returns `None` if the node is valid, raises `InvalidLiteral` or another
@@ -636,20 +635,6 @@ class Module(TopLevel):
     @property
     def source_sha256sum(self):
         return sha256sum(self.full_source_code)
-
-    @contextlib.contextmanager
-    def namespace(self):
-        from vyper.semantics.namespace import get_namespace, override_global_namespace
-
-        # kludge implementation for backwards compatibility.
-        # TODO: replace with type_from_ast
-        try:
-            ns = self._metadata["namespace"]
-        except AttributeError:
-            ns = get_namespace()
-        with override_global_namespace(ns):
-            yield
-
 
 class FunctionDef(TopLevel):
     __slots__ = ("args", "returns", "decorator_list")
