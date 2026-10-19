@@ -5,9 +5,28 @@
 ```
 python -m forge daml <file_or_dir> -o <out_dir>   # .vy -> .daml
 python -m forge dar <project_dir> -o <out.dar>    # .vy -> .daml -> real .dar via dpm build
-python -m forge json <file>                       # .vy -> JSON AST
+python -m forge json <file>                       # .vy -> JSON AST (or read stdin)
+python -m forge stubs <file.dar> -o <out_dir>     # DAR -> supported .vy declarations
 # `python -m forge <file_or_dir> -o <out_dir>` (no subcommand) is shorthand for `daml`
 ```
+
+`forge daml` writes both `<Module>.daml` and `<Module>.map.json`. Directory input
+compiles only `.vy` files directly in that directory. `forge dar` requires an existing
+Daml project with `daml.yaml` fields `name`, `source`, `version`, and a non-empty
+`dependencies` list; it recursively compiles `.vy` files below `source`, writes the
+generated `.daml` files into that source tree, and runs `dpm build`. DPM is resolved
+from `PATH`, then `~/.dpm/bin/dpm`, or can be supplied with `--dpm PATH`.
+
+Use `forge daml --no-i` to fail on the first file error instead of continuing with
+the remaining files. Use `--traceback` on any command for the Python traceback.
+
+Stub generation accepts a DAR or a Daml project directory. It requires the optional
+`forge[stubgen]` extra (for Daml-LF decoding), and `--module MODULE` may be repeated
+to select modules from the main package or any dependency. Unsupported declarations
+are skipped and reported.
+
+For Daml tests that need coverage from data-dependency packages, run `daml test --all`;
+the package-local test mode does not include those external definitions in its report.
 
 ## 1. Container keywords
 

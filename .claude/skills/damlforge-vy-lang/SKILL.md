@@ -9,6 +9,14 @@ description: Use when writing, reading, or reviewing .vy source files in the Dam
 
 DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into real `.daml` source. It is NOT Vyper (no EVM/gas/storage concepts survive) and NOT Python (nothing executes - it's an AST that lowers straight to Daml). Full detail: [reference.md](reference.md).
 
+## Current project workflow
+
+- Use `python -m forge daml <file-or-directory> -o <directory>` for source generation. A file input produces one `.daml` file and a `.map.json` source map; a directory input covers only `.vy` files directly in that directory.
+- Use `python -m forge dar <project-directory> -o <file.dar>` for a real package build. The project must already have a valid `daml.yaml`; DamlForge recursively compiles `.vy` files below its `source` directory and then invokes DPM.
+- Use `python -m forge stubs <file.dar> -o <directory>` to reconstruct supported declarations as `.vy`. Stub generation requires `pip install 'forge[stubgen]'`; a project directory can be supplied instead of a DAR and will be built with DPM.
+- Use `daml test --all` when test coverage must include templates and choices imported from data-dependency DARs. Plain `daml test` can report only the package-local definitions.
+- DPM is resolved from `PATH`, then `~/.dpm/bin/dpm`; pass `--dpm PATH` when necessary. Add `--traceback` while diagnosing compiler failures. `forge daml --no-i` makes the default error-tolerant multi-file compile fail on the first error.
+
 ## Before writing any .vy file
 
 1. Every field/type name in the file must resolve to one of: a Python-native type (including `date`, `datetime`, and `timedelta` imported from Python's `datetime` module), a DamlForge builtin type (`Party`, `Decimal`, `Int`, `ContractId[T]`, `GenMap[K,V]`, `TextMap[T]`), or a `struct`/`template`/`interface`/`flag`/`variant` declared/imported in scope. See reference.md § Type System.
@@ -16,6 +24,11 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 3. Every `template` needs `signatory`. `key` requires `maintainer` and vice versa. `ensure` (if present) must be a `bool`-typed comparison/boolop/call, never bare arithmetic. See reference.md § Template Fields.
 4. A plain `def` that calls `fetch`/`exercise`/`create`/`archive`/`lookup` must be marked `@ledger_effect` (choices are exempt). See reference.md § Ledger Effects.
 5. Never put a `def` inside a `struct` - it is silently dropped, no error. Use a free top-level function instead.
+
+Generated stubs may also contain `@no_derive` from `forge.builtins` when the DAR
+does not expose the equality/show instances needed for normal DamlForge derivation.
+Keep that marker when editing a generated stub unless you intentionally want to
+change the generated Daml derivations.
 
 ## Quick Reference
 

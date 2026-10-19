@@ -11,7 +11,7 @@ Download the wheel for the version you want, then install it into your own virtu
 ```bash
 python -m venv .venv
 source .venv/bin/activate          # .venv\Scripts\activate on Windows
-pip install forge-1.0.0-py3-none-any.whl
+pip install forge-<version>-py3-none-any.whl
 ```
 
 No source checkout, no dev dependencies, no repo access needed - the wheel is fully self-contained.
@@ -23,19 +23,62 @@ Installing the wheel puts a `forge` command on your `PATH`. It's a [Click](https
 ```bash
 forge --help          # top-level usage and subcommand list
 forge --version       # installed forge version
-forge daml --help     # per-subcommand usage (also: forge dar --help, forge json --help)
+forge daml --help     # per-subcommand usage (also: forge dar, forge json, forge stubs)
 ```
 
 ```bash
-forge daml path/to/file.vy -o out/          # .vy -> .daml, writes out/<Module>.daml
-forge daml path/to/vy_source_dir -o out/    # compiles every top-level .vy in a directory into out/
-forge dar path/to/vy_project -o out.dar     # .vy -> .daml -> real .dar (requires `dpm` on PATH)
+forge daml path/to/file.vy -o out/          # .vy -> out/<Module>.daml + out/<Module>.map.json
+forge daml path/to/vy_source_dir -o out/    # compiles top-level .vy files in the directory
+forge dar path/to/vy_project -o out.dar     # compile the project and build a real .dar
 forge json path/to/file.vy --pretty-json    # .vy -> JSON AST, printed to stdout
+forge stubs input.dar -o generated/         # .dar -> generated .vy stubs
 ```
 
 `forge <path> [options]` (no subcommand) is shorthand for `forge daml <path> [options]`.
 
-Add `--traceback` to any subcommand to get a Python traceback instead of a short error message on compile failure - useful while debugging a new `.vy` file.
+`forge daml` writes a JSON source map next to each `.daml` file. Directory input is
+intentionally non-recursive; `forge dar` recursively compiles every `.vy` below the
+project's configured `source` directory. Use `--no-i` with `forge daml` to stop at the
+first compile error; the default is to continue with the remaining files. Add
+`--traceback` to any subcommand for a Python traceback instead of a short error message.
+
+## Daml projects and DARs
+
+`forge dar` compiles into an existing Daml project. The project must contain a
+`daml.yaml` with `name`, `source`, `version`, and a non-empty `dependencies` list.
+`data-dependencies` are supported and are checked before invoking DPM. Generated
+`.daml` files are written under the configured source directory, then DamlForge runs
+`dpm build` to produce the DAR.
+
+By default DPM is searched for on `PATH`, then at `~/.dpm/bin/dpm`; use `--dpm PATH`
+when it is installed elsewhere. For example:
+
+```bash
+forge dar examples/splice-util-batched-markers \
+  -o examples/splice-util-batched-markers/splice-util-batched-markers-current.dar
+```
+
+When validating tests that exercise templates from data dependencies, use the Daml
+test runner's all-packages mode:
+
+```bash
+daml test --all
+```
+
+## Generating `.vy` stubs
+
+The optional stub generator reconstructs supported Daml-LF declarations from a DAR.
+Install its extra dependency with `pip install 'forge[stubgen]'`. It accepts either a
+DAR file or a Daml project directory (the latter is built with DPM first):
+
+```bash
+forge stubs path/to/package.dar -o generated/
+forge stubs path/to/daml_project -o generated/ --dpm /path/to/dpm
+forge stubs path/to/package.dar --module Some.Module --module Other.Module
+```
+
+The `--module` option may be repeated and selects modules from the main package or
+its dependencies. Unsupported declarations are skipped and reported by the command.
 
 ## Variants
 
