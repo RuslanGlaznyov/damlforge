@@ -714,6 +714,9 @@ def known_return_types(modules, field_types: dict) -> dict:
     return types
 
 
+_TIME_ARITHMETIC_MARKERS = ("add_rel_time", "sub_time", "sub_rel_time")
+
+
 def _infer_expr_type(
     expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict
 ):
@@ -727,7 +730,9 @@ def _infer_expr_type(
         return TypeRef("Date")
     if isinstance(expr, vy_ast.Call) and "timedelta_arguments" in expr._metadata:
         return TypeRef("RelTime")
-    if isinstance(expr, vy_ast.BinOp) and expr._metadata.get("add_rel_time"):
+    if isinstance(expr, vy_ast.BinOp) and (
+        expr._metadata.get("add_rel_time") or expr._metadata.get("sub_rel_time")
+    ):
         return TypeRef("Timestamp")
     if isinstance(expr, vy_ast.BinOp) and expr._metadata.get("sub_time"):
         return TypeRef("RelTime")
@@ -866,6 +871,14 @@ def _mark_expr_optional_conversions(
             and right_type.name in ("Timestamp", "Time")
         ):
             binary._metadata["sub_time"] = True
+        elif (
+            isinstance(binary.op, vy_ast.Sub)
+            and left_type is not None
+            and left_type.name in ("Timestamp", "Time")
+            and right_type is not None
+            and right_type.name == "RelTime"
+        ):
+            binary._metadata["sub_rel_time"] = True
     for call in expr.get_descendants(vy_ast.Call, include_self=True):
         _mark_call_optional_conversions(
             call, enclosing_type, local_types, field_types, return_types
@@ -979,7 +992,7 @@ def mark_optional_conversions(node: vy_ast.TopLevel, field_types: dict, return_t
             fn.body, enclosing_type, local_types, field_types, return_types, return_type
         )
     if any(
-        binary._metadata.get("add_rel_time") or binary._metadata.get("sub_time")
+        any(binary._metadata.get(marker) for marker in _TIME_ARITHMETIC_MARKERS)
         for binary in node.get_descendants(vy_ast.BinOp, include_self=True)
     ):
         required = set(node.module_node._metadata.get("required_daml_modules", ()))

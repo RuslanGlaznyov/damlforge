@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 
 from forge.exceptions import CompilerPanic
 from forge.ir.nodes import (
@@ -34,7 +34,7 @@ class LoopPlan:
     captured: tuple[str, ...]
     assertion: IRAssert | None
     has_return: bool
-    monadic: bool
+    in_update_block: bool
 
 
 class LoopAnalysis:
@@ -123,6 +123,56 @@ class LoopAnalysis:
         return acc
 
     @classmethod
+    def hoist_nested_effects(cls, stmts, namer, known_effect_fns: frozenset) -> list[IRStmt]:
+        result: list[IRStmt] = []
+        for s in stmts:
+            if isinstance(s, IRIf):
+                s = replace(
+                    s,
+                    body=tuple(cls.hoist_nested_effects(s.body, namer, known_effect_fns)),
+                    orelse=tuple(cls.hoist_nested_effects(s.orelse, namer, known_effect_fns)),
+                )
+            elif isinstance(s, IRFor):
+                s = replace(
+                    s, body=tuple(cls.hoist_nested_effects(s.body, namer, known_effect_fns))
+                )
+            elif isinstance(s, (IRReturn, IRAssign, IRExprStmt)) and s.value is not None:
+                lifted: list[tuple[str, IRCall]] = []
+                value = cls._lift_effects(s.value, lifted, namer, known_effect_fns, top=True)
+                result.extend(IRAssign(IRName(name), call, src=s.src) for name, call in lifted)
+                s = replace(s, value=value)
+            result.append(s)
+        return result
+
+    @classmethod
+    def _lift_effects(cls, expr, lifted, namer, known_effect_fns, top=False):
+        if isinstance(expr, IRIfExp):
+            return replace(expr, test=cls._lift_effects(expr.test, lifted, namer, known_effect_fns))
+        if isinstance(expr, IRBoolOp):
+            first = cls._lift_effects(expr.values[0], lifted, namer, known_effect_fns)
+            return replace(expr, values=(first, *expr.values[1:]))
+        if isinstance(expr, (IRName, IRConstant)) or not is_dataclass(expr):
+            return expr
+        rebuilt = replace(
+            expr,
+            **{
+                f.name: cls._lift_field(getattr(expr, f.name), lifted, namer, known_effect_fns)
+                for f in fields(expr)
+            },
+        )
+        if not top and cls.is_effect_call(rebuilt, known_effect_fns):
+            name = namer.next_rebind("effect")
+            lifted.append((name, rebuilt))
+            return IRName(name)
+        return rebuilt
+
+    @classmethod
+    def _lift_field(cls, value, lifted, namer, known_effect_fns):
+        if isinstance(value, tuple):
+            return tuple(cls._lift_field(item, lifted, namer, known_effect_fns) for item in value)
+        return cls._lift_effects(value, lifted, namer, known_effect_fns)
+
+    @classmethod
     def is_effect_call(cls, expr, known_effect_fns: frozenset = frozenset()) -> bool:
         return (
             isinstance(expr, IRCall)
@@ -202,36 +252,38 @@ class LoopAnalysis:
             raise CompilerPanic(f"_expr_free_names: unsupported IR expression {type(e).__name__}")
 
     @classmethod
-    def collect_free_names(cls, stmts, acc=None) -> set:
+    def collect_free_names(cls, stmts, acc=None, bound=frozenset()) -> set:
         if acc is None:
             acc = set()
         for s in stmts:
+            names: set = set()
             if isinstance(s, IRAssert):
-                cls._expr_free_names(s.test, acc)
+                cls._expr_free_names(s.test, names)
                 if s.msg is not None:
-                    cls._expr_free_names(s.msg, acc)
+                    cls._expr_free_names(s.msg, names)
             elif isinstance(s, IRAssign):
-                cls._expr_free_names(s.value, acc)
+                cls._expr_free_names(s.value, names)
                 if not isinstance(s.target, IRName):
-                    cls._expr_free_names(s.target, acc)
+                    cls._expr_free_names(s.target, names)
             elif isinstance(s, IRIf):
-                cls._expr_free_names(s.test, acc)
-                cls.collect_free_names(s.body, acc)
-                cls.collect_free_names(s.orelse, acc)
+                cls._expr_free_names(s.test, names)
+                cls.collect_free_names(s.body, acc, bound)
+                cls.collect_free_names(s.orelse, acc, bound)
             elif isinstance(s, IRFor):
-                cls._expr_free_names(s.iter, acc)
-                cls.collect_free_names(s.body, acc)
+                cls._expr_free_names(s.iter, names)
+                cls.collect_free_names(s.body, acc, bound)
             elif isinstance(s, IRReturn):
                 if s.value is not None:
-                    cls._expr_free_names(s.value, acc)
+                    cls._expr_free_names(s.value, names)
             elif isinstance(s, IRExprStmt):
-                cls._expr_free_names(s.value, acc)
-            elif isinstance(s, IRPass):
-                pass
-            else:
+                cls._expr_free_names(s.value, names)
+            elif not isinstance(s, IRPass):
                 raise CompilerPanic(
                     f"collect_free_names: unsupported IR statement {type(s).__name__}"
                 )
+            acc |= names - bound
+            if isinstance(s, IRAssign) and isinstance(s.target, IRName):
+                bound = bound | {s.target.id}
         return acc
 
     @classmethod
@@ -308,17 +360,16 @@ class LoopAnalyzer:
         self.known_effect_fns = known_effect_fns
 
     def normalize(self, stmts) -> list[IRStmt]:
-        return LoopAnalysis.rewrite_appends(stmts, self.namer, self.known_effect_fns)
+        rewritten = LoopAnalysis.rewrite_appends(stmts, self.namer, self.known_effect_fns)
+        return LoopAnalysis.hoist_nested_effects(rewritten, self.namer, self.known_effect_fns)
 
-    def plan(self, node: IRFor, known: frozenset, monadic: bool) -> LoopPlan:
+    def plan(self, node: IRFor, known: frozenset, in_update_block: bool) -> LoopPlan:
         body = tuple(node.body)
         accumulators = tuple(LoopAnalysis.collect_accumulators(body, known))
         assertion = body[0] if self._is_assertion_only_loop(body) else None
         captured = tuple(
             sorted(
-                (LoopAnalysis.collect_free_names(body) & known)
-                - set(accumulators)
-                - {node.target}
+                (LoopAnalysis.collect_free_names(body) & known) - set(accumulators) - {node.target}
             )
         )
         return LoopPlan(
@@ -327,8 +378,8 @@ class LoopAnalyzer:
             captured=captured,
             assertion=assertion,
             has_return=LoopAnalysis.body_has_return(body),
-            monadic=assertion is None
-            and monadic
+            in_update_block=assertion is None
+            and in_update_block
             and LoopAnalysis.body_has_ledger_effect(body, self.known_effect_fns),
         )
 

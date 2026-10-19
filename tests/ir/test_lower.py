@@ -2,6 +2,7 @@ import pytest
 
 from forge.ast.parse import parse_to_ast
 from forge.ir import lower_module
+from forge.ir.imports import _walk_ir
 from forge.ir.nodes import (
     Field,
     IRAssert,
@@ -555,7 +556,12 @@ def test_module_level_function_lowers_with_decorators():
         ("x -= y", IRAssign(IRName("x"), IRBinOp("-", IRName("x"), IRName("y")))),
         ("x *= y", IRAssign(IRName("x"), IRBinOp("*", IRName("x"), IRName("y")))),
         ("x /= y", IRAssign(IRName("x"), IRBinOp("/", IRName("x"), IRName("y")))),
-        ("x //= y", IRAssign(IRName("x"), IRBinOp("//", IRName("x"), IRName("y")))),
+        (
+            "x //= y",
+            IRAssign(
+                IRName("x"), IRCall(IRName("_damlforge_floorDiv"), (IRName("x"), IRName("y")))
+            ),
+        ),
         ("x %= y", IRAssign(IRName("x"), IRBinOp("%", IRName("x"), IRName("y")))),
         ("x **= y", IRAssign(IRName("x"), IRBinOp("**", IRName("x"), IRName("y")))),
         ("pass", IRPass()),
@@ -676,7 +682,7 @@ def test_for_statement_without_target_type_lowers_with_inferred_type_placeholder
         ("(x, y)", IRTuple((IRName("x"), IRName("y")))),
         ("{}", IRDict((), ())),
         ("x + y", IRBinOp("+", IRName("x"), IRName("y"))),
-        ("x // y", IRBinOp("//", IRName("x"), IRName("y"))),
+        ("x // y", IRCall(IRName("_damlforge_floorDiv"), (IRName("x"), IRName("y")))),
         ("x and y", IRBoolOp("and", (IRName("x"), IRName("y")))),
         ("not x", IRUnaryOp("not", IRName("x"))),
         ("x == y", IRCompare(IRName("x"), "==", IRName("y"))),
@@ -720,3 +726,21 @@ def test_conditional_expression_lowering_fuzzer_case():
 )
 def test_map_literal_requires_its_map_module(source, expected):
     assert expected in _lower(source).imports
+
+
+@pytest.mark.parametrize(
+    "source, is_list",
+    [
+        ("def f(xs: list[list[int]]) -> int:\n    return len(xs[0])\n", True),
+        ("def f() -> int:\n    return [-2147483648][0]\n", True),
+        ("def f(xs: list[int], i: int) -> int:\n    return xs[i]\n", True),
+        ("def f(t: tuple[int, int]) -> int:\n    return t[0]\n", False),
+    ],
+)
+def test_subscript_uses_inferred_base_type(source, is_list):
+    ir = _analyze_and_lower(source)
+    (fn,) = ir.functions
+    (subscript,) = [node for node in _walk_ir(fn.body) if isinstance(node, IRSubscript)]
+
+    assert subscript.is_list is is_list
+    assert (IRImport("DA.List", ("!!",)) in ir.imports) is is_list

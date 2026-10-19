@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 from typing import Optional
 
@@ -10,6 +11,7 @@ from forge.codegen.optional import is_optional_type, render_optional_type
 from forge.codegen.sets import is_set_type, render_set_type
 from forge.exceptions import CompilerPanic
 from forge.utils import daml_choice_name
+from forge.ir.lower import FLOOR_DIV_DECIMAL_HELPER, FLOOR_DIV_HELPER
 from forge.ir.nodes import (
     IRAssert,
     IRAssign,
@@ -76,6 +78,20 @@ _COMPARE_OP_MAP = {
     "not in": "`notElem`",
 }
 _BOOL_OP_MAP = {"and": "&&", "or": "||"}
+_HELPER_DEFINITIONS = {
+    FLOOR_DIV_HELPER: (
+        f"{FLOOR_DIV_HELPER} : Int -> Int -> Int",
+        f"{FLOOR_DIV_HELPER} a b =",
+        "  let q = a / b",
+        "      r = a % b",
+        "  in if r /= 0 && (r < 0) /= (b < 0) then q - 1 else q",
+    ),
+    FLOOR_DIV_DECIMAL_HELPER: (
+        f"{FLOOR_DIV_DECIMAL_HELPER} : Decimal -> Decimal -> Decimal",
+        f"{FLOOR_DIV_DECIMAL_HELPER} a b =",
+        "  intToDecimal (floor (a / b))",
+    ),
+}
 _UNARY_OP_MAP = {"not": "not ", "-": "-"}
 _BIN_OP_MAP = {"+": "+", "-": "-", "*": "*", "/": "/", "%": "%", "**": "^"}
 
@@ -153,21 +169,43 @@ def render_constant(value) -> str:
 
 
 _NEEDS_PARENS_AS_INFIX_OPERAND = (IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
-_NEEDS_PARENS_AS_CALL_ARG = (IRCall, IRDict, IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
+_NEEDS_PARENS_AS_CALL_ARG = (
+    IRCall,
+    IRDict,
+    IRSubscript,
+    IRBinOp,
+    IRBoolOp,
+    IRUnaryOp,
+    IRCompare,
+    IRIfExp,
+)
+
+
+def _is_negative_constant(e) -> bool:
+    return (
+        isinstance(e, IRConstant)
+        and isinstance(e.value, (int, float, Decimal))
+        and not isinstance(e.value, bool)
+        and e.value < 0
+    )
 
 
 def _render_infix_operand(e) -> str:
     rendered = render_expr(e)
-    if isinstance(e, _NEEDS_PARENS_AS_INFIX_OPERAND):
+    if isinstance(e, _NEEDS_PARENS_AS_INFIX_OPERAND) or _is_negative_constant(e):
         return f"({rendered})"
     return rendered
 
 
+def _render_unary_operand(e) -> str:
+    if isinstance(e, (IRAttribute, IRSubscript)):
+        return f"({render_expr(e)})"
+    return _render_infix_operand(e)
+
+
 def _render_call_arg(e) -> str:
     rendered = render_expr(e)
-    if isinstance(e, _NEEDS_PARENS_AS_CALL_ARG) or (
-        isinstance(e, IRConstant) and isinstance(e.value, (int, Decimal)) and e.value < 0
-    ):
+    if isinstance(e, _NEEDS_PARENS_AS_CALL_ARG) or _is_negative_constant(e):
         return f"({rendered})"
     return rendered
 
@@ -215,7 +253,7 @@ def render_expr(e) -> str:
         op = f" {_BOOL_OP_MAP.get(e.op, e.op)} "
         return op.join(_render_infix_operand(v) for v in e.values)
     if isinstance(e, IRUnaryOp):
-        return f"{_UNARY_OP_MAP.get(e.op, e.op)}{_render_infix_operand(e.operand)}"
+        return f"{_UNARY_OP_MAP.get(e.op, e.op)}{_render_unary_operand(e.operand)}"
     if isinstance(e, IRCompare):
         op = _COMPARE_OP_MAP.get(e.op, e.op)
         return f"{_render_infix_operand(e.left)} {op} {_render_infix_operand(e.right)}"
@@ -332,21 +370,23 @@ class BodyTranslator:
         self.self_type = self_type
         self.loop_analyzer = LoopAnalyzer(namer, known_effect_fns)
 
-    def render_body(self, stmts, indent: int, monadic: bool = True, known=frozenset()) -> list:
+    def render_body(
+        self, stmts, indent: int, in_update_block: bool = True, known=frozenset()
+    ) -> list:
         rewritten = self.loop_analyzer.normalize(list(stmts))
 
         def tail(i, extra_known=frozenset(), renames=None):
-            return self._final_tail(i, monadic)
+            return self._final_tail(i, in_update_block)
 
-        return self._translate(rewritten, indent, monadic, tail, known)
+        return self._translate(rewritten, indent, in_update_block, tail, known)
 
-    def render_stmt(self, stmt, indent: int, monadic: bool = True) -> list:
-        return self.render_body([stmt], indent, monadic)
+    def render_stmt(self, stmt, indent: int, in_update_block: bool = True) -> list:
+        return self.render_body([stmt], indent, in_update_block)
 
     @staticmethod
-    def _final_tail(i: int, monadic: bool) -> list:
+    def _final_tail(i: int, in_update_block: bool) -> list:
         pad = "  " * i
-        return [f"{pad}pure ()"] if monadic else [f"{pad}()"]
+        return [f"{pad}pure ()"] if in_update_block else [f"{pad}()"]
 
     @staticmethod
     def _resolve_all(names, renames: dict) -> list:
@@ -360,9 +400,9 @@ class BodyTranslator:
         return f"({rendered} : {render_type(s.type)})"
 
     @staticmethod
-    def _render_assert(indent, test: str, msg, monadic: bool, render_rest) -> list:
+    def _render_assert(indent, test: str, msg, in_update_block: bool, render_rest) -> list:
         pad = "  " * indent
-        if monadic:
+        if in_update_block:
             head = f"{pad}assert ({test})" if msg is None else f"{pad}assertMsg {msg} ({test})"
             return [head] + render_rest(indent)
         failure = 'error "Assertion failed"' if msg is None else f"error {msg}"
@@ -372,21 +412,21 @@ class BodyTranslator:
             + [f"{pad}  else {failure}"]
         )
 
-    def _render_leaf(self, s, indent: int, monadic: bool, renames: dict) -> list:
+    def _render_leaf(self, s, indent: int, in_update_block: bool, renames: dict) -> list:
         pad = "  " * indent
         if isinstance(s, IRAssign):
             value = LoopAnalysis.apply_renames(s.value, renames)
             target = self._render_assign_target(s)
-            if monadic and LoopAnalysis.is_effect_call(s.value, self.known_effect_fns):
+            if in_update_block and LoopAnalysis.is_effect_call(s.value, self.known_effect_fns):
                 return [f"{pad}{target} <- {render_expr(value)}"]
             binding = f"let {target} = {render_expr(value)}"
-            return [f"{pad}{binding} in" if not monadic else f"{pad}{binding}"]
+            return [f"{pad}{binding} in" if not in_update_block else f"{pad}{binding}"]
         if isinstance(s, IRExprStmt):
             return [f"{pad}{render_expr(LoopAnalysis.apply_renames(s.value, renames))}"]
         raise CompilerPanic(f"_render_leaf: unsupported IR statement {type(s).__name__}")
 
     def _translate(
-        self, stmts, indent, monadic, make_tail, known=frozenset(), renames=None
+        self, stmts, indent, in_update_block, make_tail, known=frozenset(), renames=None
     ) -> list:
         renames = renames or {}
         pad = "  " * indent
@@ -397,13 +437,13 @@ class BodyTranslator:
 
         if isinstance(first, IRReturn):
             if first.value is None:
-                return [f"{pad}pure ()"] if monadic else [f"{pad}()"]
+                return [f"{pad}pure ()"] if in_update_block else [f"{pad}()"]
             value_expr = render_expr(LoopAnalysis.apply_renames(first.value, renames))
-            if monadic and LoopAnalysis.is_effect_call(first.value, self.known_effect_fns):
+            if in_update_block and LoopAnalysis.is_effect_call(first.value, self.known_effect_fns):
                 return [f"{pad}{value_expr}"]
             already_parenthesized = isinstance(first.value, IRTuple)
             wrapped = value_expr if already_parenthesized else f"({value_expr})"
-            return [f"{pad}pure {wrapped}"] if monadic else [f"{pad}{value_expr}"]
+            return [f"{pad}pure {wrapped}"] if in_update_block else [f"{pad}{value_expr}"]
 
         if isinstance(first, IRPass):
             return [f"{pad}pure ()"]
@@ -421,29 +461,35 @@ class BodyTranslator:
                     if n not in known and n in free_after and n not in cont_vars
                 )
                 cont_vars = cont_vars + new_vars
-                if monadic and not cont_vars and not LoopAnalysis.body_has_return(branch_stmts):
+                if (
+                    in_update_block
+                    and not cont_vars
+                    and not LoopAnalysis.body_has_return(branch_stmts)
+                ):
                     inline_rest = True
 
                     def branch_tail(i, extra_known=frozenset(), br_renames=None):
-                        return self._final_tail(i, monadic)
+                        return self._final_tail(i, in_update_block)
 
                 else:
                     cont_name = self.namer.next_cont()
                     params = " ".join(cont_vars)
                     header = f"{cont_name} {params}".rstrip()
-                    cont_lines = [f"{pad}let {header} = do" if monadic else f"{pad}let {header} ="]
+                    cont_lines = [
+                        f"{pad}let {header} = do" if in_update_block else f"{pad}let {header} ="
+                    ]
                     cont_renames = {k: v for k, v in renames.items() if k not in cont_vars}
                     cont_lines.extend(
                         self._translate(
                             rest,
                             indent + 3,
-                            monadic,
+                            in_update_block,
                             make_tail,
                             known | set(cont_vars),
                             cont_renames,
                         )
                     )
-                    if not monadic:
+                    if not in_update_block:
                         cont_lines.append(f"{pad}in")
 
                     def branch_tail(i, extra_known=frozenset(), br_renames=None):
@@ -455,28 +501,35 @@ class BodyTranslator:
                 branch_tail = make_tail
 
             test_expr = render_expr(LoopAnalysis.apply_renames(first.test, renames))
-            lines = [f"{pad}if {test_expr}", f"{pad}  then do" if monadic else f"{pad}  then"]
-            lines.extend(
-                self._translate(list(first.body), indent + 2, monadic, branch_tail, known, renames)
-            )
-            lines.append(f"{pad}  else do" if monadic else f"{pad}  else")
+            lines = [
+                f"{pad}if {test_expr}",
+                f"{pad}  then do" if in_update_block else f"{pad}  then",
+            ]
             lines.extend(
                 self._translate(
-                    list(first.orelse), indent + 2, monadic, branch_tail, known, renames
+                    list(first.body), indent + 2, in_update_block, branch_tail, known, renames
+                )
+            )
+            lines.append(f"{pad}  else do" if in_update_block else f"{pad}  else")
+            lines.extend(
+                self._translate(
+                    list(first.orelse), indent + 2, in_update_block, branch_tail, known, renames
                 )
             )
             if inline_rest:
-                lines.extend(self._translate(rest, indent, monadic, make_tail, known, renames))
+                lines.extend(
+                    self._translate(rest, indent, in_update_block, make_tail, known, renames)
+                )
             return cont_lines + lines
 
         if isinstance(first, IRFor):
 
             def rest_tail(i, extra_known=frozenset(), for_renames=None):
                 return self._translate(
-                    rest, i, monadic, make_tail, known | extra_known, for_renames or {}
+                    rest, i, in_update_block, make_tail, known | extra_known, for_renames or {}
                 )
 
-            return self._translate_for(first, indent, monadic, rest_tail, known, renames)
+            return self._translate_for(first, indent, in_update_block, rest_tail, known, renames)
 
         if isinstance(first, IRAssert):
             test = render_expr(LoopAnalysis.apply_renames(first.test, renames))
@@ -487,8 +540,8 @@ class BodyTranslator:
                 indent,
                 test,
                 msg,
-                monadic,
-                lambda i: self._translate(rest, i, monadic, make_tail, known, renames),
+                in_update_block,
+                lambda i: self._translate(rest, i, in_update_block, make_tail, known, renames),
             )
 
         if isinstance(first, IRAssign) and isinstance(first.target, IRName):
@@ -498,16 +551,21 @@ class BodyTranslator:
                 fresh_target = (
                     f"({fresh} : {render_type(first.type)})" if first.type is not None else fresh
                 )
-                binding = f"let {fresh_target} = {render_expr(value)}"
-                line = f"{pad}{binding}" if monadic else f"{pad}{binding} in"
+                if in_update_block and LoopAnalysis.is_effect_call(
+                    first.value, self.known_effect_fns
+                ):
+                    line = f"{pad}{fresh_target} <- {render_expr(value)}"
+                else:
+                    binding = f"let {fresh_target} = {render_expr(value)}"
+                    line = f"{pad}{binding}" if in_update_block else f"{pad}{binding} in"
                 new_renames = {**renames, first.target.id: fresh}
                 return [line] + self._translate(
-                    rest, indent, monadic, make_tail, known, new_renames
+                    rest, indent, in_update_block, make_tail, known, new_renames
                 )
             known = known | {first.target.id}
 
-        return self._render_leaf(first, indent, monadic, renames) + self._translate(
-            rest, indent, monadic, make_tail, known, renames
+        return self._render_leaf(first, indent, in_update_block, renames) + self._translate(
+            rest, indent, in_update_block, make_tail, known, renames
         )
 
     def _wrap_returns_as_some(self, stmts):
@@ -530,22 +588,26 @@ class BodyTranslator:
         return result
 
     def _translate_for(
-        self, node: IRFor, indent, monadic, make_tail, known=frozenset(), renames=None
+        self, node: IRFor, indent, in_update_block, make_tail, known=frozenset(), renames=None
     ) -> list:
         renames = renames or {}
-        plan = self.loop_analyzer.plan(node, known, monadic)
+        plan = self.loop_analyzer.plan(node, known, in_update_block)
         if plan.accumulators and plan.has_return:
             raise CompilerPanic(
                 "_translate_for: a `for` loop with both loop-carried accumulator "
                 "mutation and an early `return` inside its body is not supported"
             )
         if plan.assertion is not None:
-            return self._translate_assertion_loop(node, plan, indent, monadic, make_tail, renames)
-        if plan.accumulators or plan.monadic:
-            return self._translate_fold(node, plan, indent, monadic, make_tail, known, renames)
+            return self._translate_assertion_loop(
+                node, plan, indent, in_update_block, make_tail, renames
+            )
+        if plan.accumulators or plan.in_update_block:
+            return self._translate_fold(
+                node, plan, indent, in_update_block, make_tail, known, renames
+            )
         if plan.has_return:
             return self._translate_early_return_loop(
-                node, plan, indent, monadic, make_tail, known, renames
+                node, plan, indent, in_update_block, make_tail, known, renames
             )
         return make_tail(indent, frozenset(), renames)
 
@@ -558,7 +620,9 @@ class BodyTranslator:
             return resolved[0]
         return f"({', '.join(resolved)})"
 
-    def _translate_assertion_loop(self, node, plan, indent, monadic, make_tail, renames) -> list:
+    def _translate_assertion_loop(
+        self, node, plan, indent, in_update_block, make_tail, renames
+    ) -> list:
         assertion = plan.assertion
         assert assertion is not None
         body_renames = {name: value for name, value in renames.items() if name != node.target}
@@ -567,11 +631,11 @@ class BodyTranslator:
         condition = f"all (\\{node.target} -> {test}) {iterable}"
         msg = None if assertion.msg is None else _render_call_arg(assertion.msg)
         return self._render_assert(
-            indent, condition, msg, monadic, lambda i: make_tail(i, frozenset(), renames)
+            indent, condition, msg, in_update_block, lambda i: make_tail(i, frozenset(), renames)
         )
 
     def _translate_fold(
-        self, node: IRFor, plan: LoopPlan, indent, monadic, make_tail, known, renames
+        self, node: IRFor, plan: LoopPlan, indent, in_update_block, make_tail, known, renames
     ) -> list:
         pad = "  " * indent
         accumulators = list(plan.accumulators)
@@ -584,17 +648,22 @@ class BodyTranslator:
 
         def fold_tail(i, extra_known=frozenset(), fold_renames=None):
             state = self._loop_state(accumulators, fold_renames or {})
-            return [f"{'  ' * i}{'pure ' if plan.monadic else ''}{state}"]
+            return [f"{'  ' * i}{'pure ' if plan.in_update_block else ''}{state}"]
 
-        body_indent = indent + (3 if plan.monadic else 5)
+        body_indent = indent + (3 if plan.in_update_block else 5)
         body_lines = self._translate(
-            list(plan.body), body_indent, plan.monadic, fold_tail, inner_known, inner_renames
+            list(plan.body),
+            body_indent,
+            plan.in_update_block,
+            fold_tail,
+            inner_known,
+            inner_renames,
         )
         body_lines[-1] += ")"
         fresh_names = [self.namer.next_rebind(name) for name in accumulators]
         bind_target = self._loop_state(fresh_names) if fresh_names else "_"
 
-        if plan.monadic:
+        if plan.in_update_block:
             lines = [
                 f"{pad}{bind_target} <-",
                 f"{pad}  foldlA",
@@ -610,14 +679,14 @@ class BodyTranslator:
                 *body_lines,
                 f"{pad}        {initial_state} {iter_expr}",
             ]
-            if not monadic:
+            if not in_update_block:
                 lines.append(f"{pad}in")
         post_renames = {**renames, **dict(zip(accumulators, fresh_names))}
         lines.extend(make_tail(indent, set(accumulators), post_renames))
         return lines
 
     def _translate_early_return_loop(
-        self, node: IRFor, plan: LoopPlan, indent, monadic, make_tail, known, renames
+        self, node: IRFor, plan: LoopPlan, indent, in_update_block, make_tail, known, renames
     ) -> list:
         pad = "  " * indent
         helper = self.namer.next()
@@ -635,7 +704,7 @@ class BodyTranslator:
         iter_expr = render_expr(LoopAnalysis.apply_renames(node.iter, renames))
 
         wrapped_body = self._wrap_returns_as_some(plan.body)
-        base_rhs = "pure None" if plan.monadic else "None"
+        base_rhs = "pure None" if plan.in_update_block else "None"
 
         def recursive_tail(i, extra_known=frozenset(), rec_renames=None):
             call = f"{helper} {' '.join(captured)} {rest_name}".strip()
@@ -643,11 +712,11 @@ class BodyTranslator:
 
         def_lines = [
             f"{base_head} = {base_rhs}",
-            f"{rec_head} = do" if plan.monadic else f"{rec_head} =",
+            f"{rec_head} = do" if plan.in_update_block else f"{rec_head} =",
         ]
         def_lines.extend(
             self._translate(
-                wrapped_body, 1, plan.monadic, recursive_tail, inner_known, inner_renames
+                wrapped_body, 1, plan.in_update_block, recursive_tail, inner_known, inner_renames
             )
         )
         self.hoisted.extend(def_lines)
@@ -659,15 +728,16 @@ class BodyTranslator:
         lines = [
             (
                 f"{pad}{maybe_name} <- {call_expr}"
-                if plan.monadic
-                else f"{pad}let {maybe_name} = {call_expr}{' in' if not monadic else ''}"
+                if plan.in_update_block
+                else f"{pad}let {maybe_name} = {call_expr}{' in' if not in_update_block else ''}"
             )
         ]
         lines.append(f"{pad}case {maybe_name} of")
         lines.append(
-            f"{pad}  Some {early_name} -> " + (f"pure {early_name}" if monadic else early_name)
+            f"{pad}  Some {early_name} -> "
+            + (f"pure {early_name}" if in_update_block else early_name)
         )
-        lines.append(f"{pad}  None -> do" if monadic else f"{pad}  None ->")
+        lines.append(f"{pad}  None -> do" if in_update_block else f"{pad}  None ->")
         lines.extend(make_tail(indent + 2, frozenset(), renames))
         return lines
 
@@ -675,7 +745,7 @@ class BodyTranslator:
 def render_body(
     stmts,
     indent: int,
-    monadic: bool = True,
+    in_update_block: bool = True,
     known=frozenset(),
     hoisted: list = None,
     namer: LoopNamer = None,
@@ -686,11 +756,11 @@ def render_body(
     translator = BodyTranslator(
         namer, hoisted if hoisted is not None else [], known_effect_fns, self_type
     )
-    return translator.render_body(stmts, indent, monadic, known)
+    return translator.render_body(stmts, indent, in_update_block, known)
 
 
-def render_stmt(stmt, indent: int, monadic: bool = True) -> list:
-    return render_body([stmt], indent, monadic)
+def render_stmt(stmt, indent: int, in_update_block: bool = True) -> list:
+    return render_body([stmt], indent, in_update_block)
 
 
 class Emitter:
@@ -885,21 +955,24 @@ class Emitter:
 
     def emit_function(self, fn: IRFunction) -> None:
         start = len(self.lines) + 1
-        is_monadic = "ledger_effect" in fn.decorators
+        in_update_block = "ledger_effect" in fn.decorators
         return_type = (
             render_type(fn.return_type, as_arg=True) if fn.return_type is not None else "()"
         )
-        full_return = f"Update {return_type}" if is_monadic else return_type
+        full_return = f"Update {return_type}" if in_update_block else return_type
         arg_types = [
             render_type(a.type, as_arg=True) if a.type is not None else "()" for a in fn.args
         ]
         self.line(f"{fn.name} : {' -> '.join(arg_types + [full_return])}")
         header = f"{fn.name} {' '.join(a.name for a in fn.args)}".rstrip()
-        self.line(f"{header} = do" if is_monadic else f"{header} =")
+        self.line(f"{header} = do" if in_update_block else f"{header} =")
         translator = self._translator()
         self.lines_block(
             translator.render_body(
-                fn.body, 1, monadic=is_monadic, known=frozenset(a.name for a in fn.args)
+                fn.body,
+                1,
+                in_update_block=in_update_block,
+                known=frozenset(a.name for a in fn.args),
             )
         )
         self.record(fn.src, "function", fn.name, start)
@@ -1082,6 +1155,10 @@ class Emitter:
             self.line("")
         if self.hoisted:
             self.lines_block(self.hoisted)
+        used = set(re.findall(r"_damlforge_\w+", "\n".join(self.lines)))
+        for name, definition in _HELPER_DEFINITIONS.items():
+            if name in used:
+                self.lines_block([*definition, ""])
 
         body_source = "\n".join(self.lines).rstrip("\n") + "\n"
         mappings = self.mappings

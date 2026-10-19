@@ -1,5 +1,6 @@
 import dataclasses
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 
 from forge.ast import nodes as vy_ast
@@ -63,10 +64,14 @@ _BIN_OPS = {
     "Sub": "-",
     "Mult": "*",
     "Div": "/",
-    "FloorDiv": "//",
     "Mod": "%",
     "Pow": "**",
 }
+
+_CONCAT_OPS = {"Text": "<>", "list": "++"}
+
+FLOOR_DIV_HELPER = "_damlforge_floorDiv"
+FLOOR_DIV_DECIMAL_HELPER = "_damlforge_floorDivDecimal"
 
 _BOOL_OPS = {"And": "and", "Or": "or"}
 
@@ -112,7 +117,7 @@ def lower_type(node: vy_ast.VyperNode) -> TypeRef:
 
 def lower_expr(node: vy_ast.VyperNode):
     result = _lower_expr_inner(node)
-    if node._metadata.get("needs_some_wrap"):
+    for _ in range(int(node._metadata.get("needs_some_wrap", 0))):
         result = IRCall(IRName("Some"), (result,))
     if node._metadata.get("needs_from_some_unwrap"):
         result = IRCall(IRName("from_some"), (result,))
@@ -156,14 +161,22 @@ def _lower_expr_Attribute(node):
 
 
 def _lower_expr_Subscript(node):
-    is_list = bool(node._metadata.get("is_list_value"))
+    base_type = _inferred_type(node.value)
+    is_list = bool(node._metadata.get("is_list_value")) or (
+        base_type is not None and base_type.name == "list"
+    )
     return IRSubscript(lower_expr(node.value), lower_expr(node.slice), is_list=is_list)
 
 
 def _lower_expr_Call(node):
-    if conversion := node._metadata.get("int_conversion"):
+    if "conversion" in node._metadata:
         value = lower_expr(node.args[0])
-        return value if conversion == "identity" else IRCall(IRName("truncate"), (value,))
+        converter = node._metadata["conversion"]
+        if converter is None:
+            return value
+        if isinstance(value, IRConstant) and isinstance(value.value, Decimal):
+            value = IRCall(IRName("Decimal"), (value,))
+        return IRCall(IRName(converter), (value,))
     if node._metadata.get("datetime_now"):
         return IRCall(IRName("getTime"))
     if "fromtimestamp_argument" in node._metadata:
@@ -254,10 +267,26 @@ def _lower_expr_Dict(node):
 def _lower_expr_BinOp(node):
     if node._metadata.get("add_rel_time"):
         return IRCall(IRName("addRelTime"), (lower_expr(node.left), lower_expr(node.right)))
+    if node._metadata.get("sub_rel_time"):
+        negated = IRCall(IRName("negate"), (lower_expr(node.right),))
+        return IRCall(IRName("addRelTime"), (lower_expr(node.left), negated))
     if node._metadata.get("sub_time"):
         return IRCall(IRName("subTime"), (lower_expr(node.left), lower_expr(node.right)))
-    op = _BIN_OPS[type(node.op).__name__]
-    return IRBinOp(op, lower_expr(node.left), lower_expr(node.right))
+    return _lower_arithmetic(
+        node.op, lower_expr(node.left), lower_expr(node.right), _inferred_type(node)
+    )
+
+
+def _lower_arithmetic(op, left, right, result_type):
+    if isinstance(op, vy_ast.FloorDiv):
+        is_decimal = result_type is not None and result_type.name == "Decimal"
+        helper = FLOOR_DIV_DECIMAL_HELPER if is_decimal else FLOOR_DIV_HELPER
+        return IRCall(IRName(helper), (left, right))
+    if isinstance(op, vy_ast.Add) and result_type is not None:
+        concat = _CONCAT_OPS.get(result_type.name)
+        if concat is not None:
+            return IRBinOp(concat, left, right)
+    return IRBinOp(_BIN_OPS[type(op).__name__], left, right)
 
 
 def _lower_expr_BoolOp(node):
@@ -306,8 +335,22 @@ def _lower_stmt_Assign(node):
 
 def _lower_stmt_AugAssign(node):
     target = lower_expr(node.target)
-    op = _BIN_OPS[type(node.op).__name__]
-    return IRAssign(target, IRBinOp(op, target, lower_expr(node.value)), src=_src(node))
+    value = lower_expr(node.value)
+    target_type = _inferred_type(node.target)
+    value_type = _inferred_type(node.value)
+    is_time_shift = (
+        isinstance(node.op, (vy_ast.Add, vy_ast.Sub))
+        and target_type is not None
+        and target_type.name in ("Time", "Timestamp")
+        and value_type is not None
+        and value_type.name == "RelTime"
+    )
+    if is_time_shift:
+        if isinstance(node.op, vy_ast.Sub):
+            value = IRCall(IRName("negate"), (value,))
+        return IRAssign(target, IRCall(IRName("addRelTime"), (target, value)), src=_src(node))
+    result = _lower_arithmetic(node.op, target, value, target_type or value_type)
+    return IRAssign(target, result, src=_src(node))
 
 
 def _lower_stmt_If(node):

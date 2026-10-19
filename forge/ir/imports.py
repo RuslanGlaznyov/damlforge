@@ -69,9 +69,8 @@ def _expr_type(expr: IRExpr, context_fields: dict[str, TypeRef], fields: dict) -
             return None
         return base.args[-1] if base.name in ("GenMap", "TextMap") else base.args[0]
     if isinstance(expr, IRIfExp):
-        return (
-            _expr_type(expr.body, context_fields, fields)
-            or _expr_type(expr.orelse, context_fields, fields)
+        return _expr_type(expr.body, context_fields, fields) or _expr_type(
+            expr.orelse, context_fields, fields
         )
     return None
 
@@ -80,7 +79,7 @@ def _uses_dynamic_index(
     expr: IRSubscript, context_fields: dict[str, TypeRef], fields: dict
 ) -> bool:
     if expr.is_list:
-        return False
+        return True
     if (
         isinstance(expr.index, IRConstant)
         and isinstance(expr.index.value, int)
@@ -153,20 +152,20 @@ def _is_assertion_only_loop(body) -> bool:
     )
 
 
-def _body_requires_foldl_a(stmts, monadic: bool, effect_functions: frozenset[str]) -> bool:
+def _body_requires_foldl_a(stmts, in_update_block: bool, effect_functions: frozenset[str]) -> bool:
     for stmt in stmts:
         if isinstance(stmt, IRFor):
             if (
-                monadic
+                in_update_block
                 and not _is_assertion_only_loop(stmt.body)
                 and _body_has_ledger_effect(stmt.body, effect_functions)
             ):
                 return True
-            if _body_requires_foldl_a(stmt.body, monadic, effect_functions):
+            if _body_requires_foldl_a(stmt.body, in_update_block, effect_functions):
                 return True
         elif isinstance(stmt, IRIf) and (
-            _body_requires_foldl_a(stmt.body, monadic, effect_functions)
-            or _body_requires_foldl_a(stmt.orelse, monadic, effect_functions)
+            _body_requires_foldl_a(stmt.body, in_update_block, effect_functions)
+            or _body_requires_foldl_a(stmt.orelse, in_update_block, effect_functions)
         ):
             return True
     return False

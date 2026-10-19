@@ -418,3 +418,266 @@ def test_python_int_conversion(signature, body, expected):
 def test_python_int_rejects_unsupported_source_type():
     with pytest.raises(DamlForgeException, match="cannot convert `Text`"):
         _compile("def f(s: str) -> int:\n    return int(s)\n")
+
+
+@pytest.mark.parametrize(
+    "signature, body, call, helpers",
+    [
+        ("(a: int, b: int) -> int", "a // b", "_damlforge_floorDiv a b", ["_damlforge_floorDiv"]),
+        (
+            "(a: Decimal, b: Decimal) -> Decimal",
+            "a // b",
+            "_damlforge_floorDivDecimal a b",
+            ["_damlforge_floorDivDecimal"],
+        ),
+        (
+            "(a: int) -> int",
+            "-a // -2",
+            "_damlforge_floorDiv (-a) (-2)",
+            ["_damlforge_floorDiv"],
+        ),
+        ("(a: int, b: int) -> int", "a / b", "a / b", []),
+    ],
+)
+def test_floor_division_uses_generated_helper(signature, body, call, helpers):
+    daml = _compile(f"def f{signature}:\n    return {body}\n")
+
+    assert call in daml
+    assert " // " not in daml
+    for name in ("_damlforge_floorDiv", "_damlforge_floorDivDecimal"):
+        assert (f"\n{name} : " in daml) is (name in helpers)
+
+
+@pytest.mark.parametrize(
+    "returns, body, expected",
+    [
+        ("date", "date(2024, int(d), 1)", "date 2024 (toEnum (truncate d - 1)) 1"),
+        ("datetime", "datetime.combine(day, time(int(d), 0, 0))", "time day (truncate d) 0 0"),
+        ("timedelta", "timedelta(seconds=int(d))", "seconds (truncate d)"),
+        (
+            "datetime",
+            "datetime.fromtimestamp(int(d), timezone.utc)",
+            "(microseconds (truncate d * 1000000))",
+        ),
+    ],
+)
+def test_python_int_conversion_inside_datetime_intrinsics(returns, body, expected):
+    daml = _compile(
+        "from datetime import date, datetime, time, timedelta, timezone\n\n"
+        f"def f(d: Decimal, day: date) -> {returns}:\n    return {body}\n"
+    )
+
+    assert expected in daml
+    assert "int (" not in daml and "(int d" not in daml
+
+
+@pytest.mark.parametrize(
+    "literal, expected",
+    [
+        ("2.5", "truncate ((2.5 : Decimal))"),
+        ("-2147483648.0", "truncate ((-2147483648.0 : Decimal))"),
+        ("Decimal(7)", "truncate ((7.0 : Decimal))"),
+    ],
+)
+def test_python_int_of_decimal_literal_is_annotated(literal, expected):
+    assert expected in _compile(f"def f() -> int:\n    return int({literal})\n")
+
+
+@pytest.mark.parametrize(
+    "argument, value, expected",
+    [
+        ("x: int", "str(x)", "show x"),
+        ("x: Decimal", "str(x)", "show x"),
+        ("x: bool", "str(x)", "show x"),
+        ("x: Party", "str(x)", "partyToText x"),
+        ("x: str", "str(x)", "f x =\n  x\n"),
+        ("x: int", "str(1.5)", "show ((1.5 : Decimal))"),
+    ],
+)
+def test_python_str_conversion(argument, value, expected):
+    daml = _compile(f"def f({argument}) -> str:\n    return {value}\n")
+
+    assert expected in daml
+    assert "str " not in daml
+
+
+def test_python_str_rejects_unsupported_source_type():
+    with pytest.raises(DamlForgeException, match="`str\\(...\\)` cannot convert `list`"):
+        _compile("def f(xs: list[int]) -> str:\n    return str(xs)\n")
+
+
+@pytest.mark.parametrize(
+    "signature, body, expected",
+    [
+        ("(a: str, b: str) -> str", "    return a + b\n", "a <> b"),
+        ("(a: int) -> str", "    return str(a) + str(a)\n", "show a <> show a"),
+        ("(a: list[int], b: list[int]) -> list[int]", "    return a + b\n", "a ++ b"),
+        ("(a: str, b: str) -> str", "    c: str = a\n    c += b\n    return c\n", "c <> b"),
+        (
+            "(a: Decimal, b: Decimal) -> Decimal",
+            "    c: Decimal = a\n    c //= b\n    return c\n",
+            "_damlforge_floorDivDecimal c b",
+        ),
+        ("(a: int, b: int) -> int", "    return a + b\n", "a + b"),
+    ],
+)
+def test_addition_uses_inferred_operand_type(signature, body, expected):
+    assert expected in _compile(f"def f{signature}:\n{body}")
+
+
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        ("    return a - d\n", "addRelTime a (negate d)"),
+        ("    return a - d - d\n", "addRelTime (addRelTime a (negate d)) (negate d)"),
+        ("    t: datetime = a\n    t += d\n    return t\n", "addRelTime t d"),
+        ("    t: datetime = a\n    t -= d\n    return t\n", "addRelTime t (negate d)"),
+    ],
+)
+def test_datetime_shift_by_timedelta_lowers_to_add_rel_time(body, expected):
+    daml = _compile(
+        "from datetime import datetime, timedelta\n\n"
+        f"def f(a: datetime, d: timedelta) -> datetime:\n{body}"
+    )
+
+    assert expected in daml
+    assert daml.count("import DA.Time") == 1
+
+
+def _compile_choice(returns, body, args=""):
+    return _compile(
+        "@template\nclass Tpl:\n"
+        "    owner: Party\n"
+        "    signatory: Party = owner\n\n"
+        "    @choice(controller=owner, consuming=False)\n"
+        f"    def Go(self{args}) -> {returns}:\n{body}"
+    )
+
+
+_NEW_TPL = "create(Tpl(owner=self.owner))"
+
+
+@pytest.mark.parametrize(
+    "returns, body, expected",
+    [
+        (
+            "tuple[ContractId[Tpl], ContractId[Tpl]]",
+            f"        return ({_NEW_TPL}, {_NEW_TPL})\n",
+            [
+                "_damlforge_effect1 <- create (Tpl with owner = self.owner)",
+                "_damlforge_effect2 <- create (Tpl with owner = self.owner)",
+                "pure (_damlforge_effect1, _damlforge_effect2)",
+            ],
+        ),
+        (
+            "list[ContractId[Tpl]]",
+            f"        return [{_NEW_TPL}]\n",
+            ["_damlforge_effect1 <- create", "pure ([_damlforge_effect1])"],
+        ),
+        (
+            "tuple[int, ContractId[Tpl]]",
+            f"        pair: tuple[int, ContractId[Tpl]] = (1, {_NEW_TPL})\n        return pair\n",
+            [
+                "_damlforge_effect1 <- create",
+                "let (pair : (Int, ContractId Tpl)) = (1, _damlforge_effect1)",
+            ],
+        ),
+        (
+            "ContractId[Tpl]",
+            f"        return {_NEW_TPL}\n",
+            ["create (Tpl with owner = self.owner)"],
+        ),
+    ],
+)
+def test_choice_hoists_nested_ledger_effects(returns, body, expected):
+    daml = _compile_choice(returns, body)
+
+    for line in expected:
+        assert line in daml
+    assert "pure (create" not in daml and ", create" not in daml
+
+
+@pytest.mark.parametrize(
+    "returns, body, args, expected",
+    [
+        ("Optional[int]", "        return -5\n", "", "pure (Some (-5))"),
+        ("Optional[Optional[int]]", "        return 1\n", "", "pure (Some (Some 1))"),
+        ("Optional[TextMap[int]]", "        return {}\n", "", "pure (Some (TextMap.fromList []))"),
+        ("Optional[list[int]]", "        return []\n", "", "pure (Some [])"),
+        ("Optional[int]", "        return o\n", ", o: Optional[int]", "pure (o)"),
+        ("Optional[int]", "        return None\n", "", "pure (None)"),
+        (
+            "Optional[ContractId[Tpl]]",
+            f"        return {_NEW_TPL}\n",
+            "",
+            "pure (Some _damlforge_effect1)",
+        ),
+    ],
+)
+def test_choice_optional_return_is_wrapped_in_some(returns, body, args, expected):
+    assert expected in _compile_choice(returns, body, args)
+
+
+@pytest.mark.parametrize(
+    "returns, value, expected",
+    [
+        ("Optional[int]", "1", "Some 1"),
+        ("Optional[Optional[int]]", "1", "Some (Some 1)"),
+        ("Optional[Optional[int]]", "None", "  None"),
+    ],
+)
+def test_function_optional_return_wraps_each_layer(returns, value, expected):
+    assert expected in _compile(f"def f() -> {returns}:\n    return {value}\n")
+
+
+def _compile_counter_choice(body, args=""):
+    return _compile(
+        "@template\nclass Counter:\n"
+        "    owner: Party\n"
+        "    n: int\n"
+        "    signatory: Party = owner\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        f"    def Go(self{args}) -> int:\n{body}"
+    )
+
+
+@pytest.mark.parametrize(
+    "body, args",
+    [
+        (
+            "        self.n = 2\n        if b:\n            return 1\n"
+            "        else:\n            x: int = 0\n        return 0\n",
+            ", b: bool",
+        ),
+        (
+            "        if b:\n            self.n = 1\n            if c:\n                return 5\n"
+            "        else:\n            x: int = 0\n        return 0\n",
+            ", b: bool, c: bool",
+        ),
+        (
+            "        if b:\n            self.n = self.n + 1\n"
+            "        else:\n            x: int = 0\n        return 0\n",
+            ", b: bool",
+        ),
+    ],
+)
+def test_self_mutation_continuation_does_not_take_new_self(body, args):
+    daml = _compile_counter_choice(body, args)
+
+    assert "_damlforge_new_self <- create" in daml
+    assert "_damlforge_new_self =" not in daml
+    for line in daml.splitlines():
+        if "_damlforge_cont" in line:
+            assert "_damlforge_new_self" not in line
+
+
+def test_rebound_ledger_effect_uses_bind():
+    daml = _compile_choice(
+        "ContractId[Tpl]",
+        f"        cid: ContractId[Tpl] = {_NEW_TPL}\n"
+        f"        cid = {_NEW_TPL}\n"
+        "        return cid\n",
+    )
+
+    assert "_damlforge_cid1 <- create (Tpl with owner = self.owner)" in daml
+    assert "let _damlforge_cid1" not in daml

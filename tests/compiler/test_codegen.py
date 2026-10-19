@@ -1,7 +1,9 @@
 import pytest
 
 from forge.codegen.emit import generate_daml, render_body, render_expr, render_stmt, render_type
+from forge.codegen.loops import LoopAnalysis
 from forge.daml_versions import DamlCodegenSettings
+from forge.exceptions import CompilerPanic
 from forge.ir.nodes import (
     Field,
     IRAssert,
@@ -75,7 +77,10 @@ def test_render_type(type_ref, expected):
         (IRBoolOp("or", (IRName("a"), IRName("b"))), "a || b"),
         (IRUnaryOp("not", IRName("a")), "not a"),
         (IRBinOp("+", IRName("a"), IRName("b")), "a + b"),
-        (IRBinOp("//", IRName("a"), IRName("b")), "a // b"),
+        (
+            IRCall(IRName("_damlforge_floorDiv"), (IRName("a"), IRConstant(-2))),
+            "_damlforge_floorDiv a (-2)",
+        ),
         (IRBinOp("+", IRConstant("a"), IRName("b")), '"a" <> b'),
         (IRBinOp("+", IRName("a"), IRConstant("b")), 'a <> "b"'),
         (IRBinOp("+", IRList((IRName("a"),)), IRName("b")), "[a] ++ b"),
@@ -123,14 +128,53 @@ def test_render_expr_nested_generic_type_parenthesized():
     [
         (IRBinOp("**", IRName("x"), IRName("y")), "x ^ y"),
         (IRUnaryOp("-", IRBinOp("**", IRName("x"), IRConstant(2))), "-(x ^ 2)"),
-        (
-            IRBinOp("*", IRBinOp("**", IRName("x"), IRName("y")), IRConstant(3)),
-            "(x ^ y) * 3",
-        ),
+        (IRBinOp("*", IRBinOp("**", IRName("x"), IRName("y")), IRConstant(3)), "(x ^ y) * 3"),
     ],
 )
 def test_render_power_uses_caret(expr, expected):
     assert render_expr(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "expr, expected",
+    [
+        (IRBinOp("%", IRConstant(-7), IRConstant(-2)), "(-7) % (-2)"),
+        (IRBinOp("*", IRName("x"), IRConstant(-1.5)), "x * (-1.5)"),
+        (IRCompare(IRConstant(-1), "not in", IRList((IRConstant(-1),))), "(-1) `notElem` [-1]"),
+        (IRBinOp("**", IRConstant(-1), IRConstant(2)), "(-1) ^ 2"),
+        (IRBinOp("+", IRName("x"), IRConstant(1)), "x + 1"),
+    ],
+)
+def test_render_negative_constant_infix_operand_is_parenthesized(expr, expected):
+    assert render_expr(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "expr, expected",
+    [
+        (IRUnaryOp("-", IRAttribute(IRName("r"), "f")), "-(r.f)"),
+        (
+            IRUnaryOp("-", IRAttribute(IRCall(IRName("Rec"), (), (("f", IRConstant(-5)),)), "f")),
+            "-((Rec with f = -5).f)",
+        ),
+        (IRUnaryOp("-", IRConstant(-5)), "-(-5)"),
+        (IRUnaryOp("-", IRName("x")), "-x"),
+    ],
+)
+def test_render_unary_operand_is_parenthesized(expr, expected):
+    assert render_expr(expr) == expected
+
+
+@pytest.mark.parametrize(
+    "arg, expected",
+    [
+        (IRSubscript(IRName("xs"), IRName("i"), is_list=True), "length ((xs) !! (i))"),
+        (IRSubscript(IRName("xs"), IRConstant(0), is_list=True), "length ((xs) !! (0))"),
+        (IRSubscript(IRName("t"), IRConstant(0)), "length (t._1)"),
+    ],
+)
+def test_render_subscript_call_arg_is_parenthesized(arg, expected):
+    assert render_expr(IRCall(IRName("len"), (arg,))) == expected
 
 
 def test_render_qualified_import_with_alias():
@@ -161,7 +205,7 @@ def test_render_import_wraps_operators(names, expected):
         (IRAssign(IRName("x"), IRName("y")), ["let x = y", "pure ()"]),
         (
             IRAssign(IRName("p_INT_1"), IRBinOp("*", IRName("p_INT_1"), IRConstant(-2147483648))),
-            ["let p_INT_1 = p_INT_1 * -2147483648", "pure ()"],
+            ["let p_INT_1 = p_INT_1 * (-2147483648)", "pure ()"],
         ),
         (IRReturn(IRName("x")), ["pure (x)"]),
         (IRReturn(None), ["pure ()"]),
@@ -199,7 +243,7 @@ def test_render_stmt_simple(stmt, expected_lines):
     ],
 )
 def test_render_body_pure_assert_guards_rest(stmts, expected_lines):
-    assert render_body(stmts, indent=0, monadic=False) == expected_lines
+    assert render_body(stmts, indent=0, in_update_block=False) == expected_lines
 
 
 def test_render_stmt_if_else():
@@ -414,3 +458,45 @@ def test_generate_daml_interface_with_requires():
     assert "interface Holding requires Base where" in source
     assert "viewtype HoldingView" in source
     assert "nonconsuming choice Get_amount : Decimal" in source
+
+
+@pytest.mark.parametrize(
+    "stmts, expected",
+    [
+        ([IRAssign(IRName("x"), IRConstant(1)), IRReturn(IRName("x"))], set()),
+        ([IRReturn(IRName("x"))], {"x"}),
+        ([IRAssign(IRName("x"), IRName("x")), IRReturn(IRName("x"))], {"x"}),
+        (
+            [IRIf(IRName("c"), (IRAssign(IRName("y"), IRConstant(1)),)), IRReturn(IRName("y"))],
+            {"c", "y"},
+        ),
+        (
+            [
+                IRAssign(IRName("y"), IRConstant(1)),
+                IRIf(IRName("c"), (IRReturn(IRName("y")),), (IRReturn(IRName("z")),)),
+            ],
+            {"c", "z"},
+        ),
+        ([IRAssign(IRAttribute(IRName("r"), "f"), IRName("v"))], {"r", "v"}),
+        (
+            [
+                IRAssign(IRName("m"), IRConstant(0)),
+                IRAssign(IRSubscript(IRName("m"), IRName("k")), IRConstant(1)),
+            ],
+            {"k"},
+        ),
+    ],
+)
+def test_collect_free_names_skips_names_bound_earlier(stmts, expected):
+    assert LoopAnalysis.collect_free_names(stmts) == expected
+
+
+@pytest.mark.parametrize(
+    "stmt, panics", [(IRPass(), False), (IRName("x"), True), (IRConstant(1), True)]
+)
+def test_collect_free_names_rejects_non_statements(stmt, panics):
+    if panics:
+        with pytest.raises(CompilerPanic):
+            LoopAnalysis.collect_free_names([stmt])
+    else:
+        assert LoopAnalysis.collect_free_names([stmt]) == set()

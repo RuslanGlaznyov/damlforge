@@ -19,6 +19,27 @@ from forge.models.error_codes import ErrorCodes
 from forge.semantics.primitive_specs import canonical_type_name, generic_spec, primitive_spec
 
 _NUMERIC_TYPES = {"Int", "Decimal", "RelTime"}
+
+
+def _optional_depth(term) -> int:
+    depth = 0
+    while isinstance(term, AppliedType) and term.name == "Optional" and term.args:
+        depth += 1
+        term = term.args[0]
+    return depth
+
+
+_INT_CONVERSION = ("Int", {"Int": None, "Decimal": "truncate"})
+_TEXT_CONVERSION = (
+    "Text",
+    {"Text": None, "Int": "show", "Decimal": "show", "Bool": "show", "Party": "partyToText"},
+)
+_CONVERSIONS = {
+    "int": _INT_CONVERSION,
+    "Int": _INT_CONVERSION,
+    "str": _TEXT_CONVERSION,
+    "Text": _TEXT_CONVERSION,
+}
 _COLLECTION_TYPES = {"list", "set", "frozenset", "Optional"}
 _MAP_TYPES = {"TextMap", "GenMap"}
 
@@ -156,6 +177,7 @@ class BidirectionalTypeChecker:
         self.inference = InferenceContext()
         self._reported: set[tuple[int, str]] = set()
         self.aliases = _type_aliases(node)
+        self._choice_return: TypeTerm | None = None
 
     def _error(self, node, message: str, *, call: bool = False) -> None:
         key = (id(node), message)
@@ -249,7 +271,9 @@ class BidirectionalTypeChecker:
             return self._compatible(actual.args[0], expected.args[0], node, call=call)
         if self._compatible(actual, expected.args[0], node, call=call):
             if not isinstance(node, vy_ast.NameConstant):
-                node._metadata["needs_some_wrap"] = True
+                node._metadata["needs_some_wrap"] = _optional_depth(expected) - _optional_depth(
+                    actual
+                )
             return True
         return False
 
@@ -370,6 +394,7 @@ class BidirectionalTypeChecker:
             ("timedelta_arguments", "RelTime"),
         ):
             if metadata in call._metadata:
+                self._check_call_arguments(call, env, None)
                 return AppliedType(type_name)
 
         if isinstance(call.func, vy_ast.Attribute):
@@ -387,16 +412,17 @@ class BidirectionalTypeChecker:
             self._check_call_arguments(call, env, None)
             return None
 
-        if function_name in ("int", "Int") and len(call.args) == 1 and not call.keywords:
+        conversion = _CONVERSIONS.get(function_name)
+        if conversion is not None and len(call.args) == 1 and not call.keywords:
+            result, converters = conversion
             source = self._name(self.check_expr(call.args[0], None, env, call=True))
-            if source == "Decimal":
-                call._metadata["int_conversion"] = "truncate"
-            elif source == "Int":
-                call._metadata["int_conversion"] = "identity"
+            if source in converters:
+                call._metadata["conversion"] = converters[source]
             elif source is not None:
-                message = f"`int(...)` cannot convert `{source}`; expected Int or Decimal"
+                allowed = ", ".join(converters)
+                message = f"`{function_name}(...)` cannot convert `{source}`; expected {allowed}"
                 self._error(call, message, call=True)
-            return AppliedType("Int")
+            return AppliedType(result)
 
         self._check_call_arguments(call, env, function_name)
         builtin_types = {
@@ -457,6 +483,8 @@ class BidirectionalTypeChecker:
                 return left
             if op_type is vy_ast.Sub and {left_name, right_name} == {"Time"}:
                 return AppliedType("RelTime")
+            if op_type is vy_ast.Sub and (left_name, right_name) == ("Time", "RelTime"):
+                return AppliedType("Time")
             if op_type is vy_ast.Add and {left_name, right_name} == {"Time", "RelTime"}:
                 return AppliedType("Time")
             if left_name == right_name and self._is_numeric(left_name):
@@ -636,8 +664,13 @@ class BidirectionalTypeChecker:
                     env.bind(stmt.target.id, actual)
                 elif isinstance(stmt.target, vy_ast.Attribute) and existing is not None:
                     self._compatible(actual, existing, stmt.value)
+            elif isinstance(stmt, vy_ast.AugAssign):
+                self.check_expr(stmt.target, None, env)
+                self.check_expr(stmt.value, None, env)
             elif isinstance(stmt, vy_ast.Return):
-                self.check_expr(stmt.value, return_type, env)
+                actual = self.check_expr(stmt.value, return_type, env)
+                if return_type is None and self._choice_return is not None:
+                    self._wrap_choice_return(stmt.value, actual, env)
             elif isinstance(stmt, vy_ast.If):
                 self.check_expr(stmt.test, AppliedType("Bool"), env)
                 body_env = env.child()
@@ -700,8 +733,22 @@ class BidirectionalTypeChecker:
             # Choice bodies are lowered as ledger actions.  Their Python
             # return annotation describes the generated choice result, while
             # the source body may return the action's terminal value.
+            self._choice_return = return_type if _optional_depth(return_type) else None
             return_type = None
         self._check_statements(fn.body, env, return_type)
+        self._choice_return = None
+
+    def _wrap_choice_return(self, value, actual: TypeTerm | None, env: TypeEnvironment) -> None:
+        if actual is None and isinstance(value, (vy_ast.Dict, vy_ast.List)):
+            inner = self._choice_return
+            while _optional_depth(inner):
+                inner = inner.args[0]
+            actual = self.check_expr(value, inner, env)
+        if value is None or self._name(actual) in (None, "None"):
+            return
+        depth = _optional_depth(self._choice_return) - _optional_depth(actual)
+        if depth > 0:
+            value._metadata["needs_some_wrap"] = depth
 
     def _check_container_values(self, container: vy_ast.TopLevel) -> None:
         if not isinstance(container, (vy_ast.StructDef, vy_ast.TemplateDef)):

@@ -1,6 +1,6 @@
 """Semantic validation for Daml primitive values and constant expressions."""
 
-from decimal import Decimal, InvalidOperation, localcontext
+from decimal import ROUND_FLOOR, ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 
 from forge.ast import nodes as vy_ast
 from forge.exceptions import DamlForgeException, ExceptionList
@@ -8,6 +8,7 @@ from forge.ir.lower import lower_type
 from forge.ir.nodes import TypeRef
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.primitive_specs import (
+    DECIMAL_SCALE,
     INT_MAX,
     INT_MIN,
     canonical_type_name,
@@ -16,6 +17,8 @@ from forge.semantics.primitive_specs import (
 )
 
 _LITERAL_NODES = (vy_ast.Int, vy_ast.Decimal, vy_ast.Str, vy_ast.NameConstant)
+_INT_BITS = 64
+_DECIMAL_QUANTUM = Decimal(1).scaleb(-DECIMAL_SCALE)
 
 
 def _canonical(ref: TypeRef) -> TypeRef:
@@ -75,13 +78,25 @@ def _constant_value(expr):
             elif isinstance(expr.op, (vy_ast.Div, vy_ast.FloorDiv)):
                 if rhs == 0:
                     return None
-                value = lhs / rhs if kind == "Decimal" else int(lhs / rhs)
+                if isinstance(expr.op, vy_ast.FloorDiv) and kind == "Int":
+                    value = lhs // rhs
+                elif isinstance(expr.op, vy_ast.FloorDiv):
+                    value = (lhs / rhs).to_integral_value(ROUND_FLOOR)
+                elif kind == "Decimal":
+                    value = (lhs / rhs).quantize(_DECIMAL_QUANTUM, ROUND_HALF_EVEN)
+                else:
+                    quotient = abs(lhs) // abs(rhs)
+                    value = quotient if (lhs < 0) == (rhs < 0) else -quotient
             elif isinstance(expr.op, vy_ast.Mod):
                 if rhs == 0:
                     return None
                 value = lhs % rhs
             elif isinstance(expr.op, vy_ast.Pow) and isinstance(rhs, int) and rhs >= 0:
-                value = lhs**rhs
+                if kind == "Int" and abs(lhs) > 1 and rhs >= _INT_BITS:
+                    sign = -1 if lhs < 0 and rhs % 2 else 1
+                    value = Decimal(sign) * Decimal("Infinity")
+                else:
+                    value = lhs**rhs
             else:
                 return None
     except (ArithmeticError, InvalidOperation):

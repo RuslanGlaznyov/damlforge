@@ -241,7 +241,7 @@ def text_policy_error(value: str) -> str | None:
 def date_policy_error(year: int, month: int, day: int) -> str | None:
     try:
         value = date(year, month, day)
-    except ValueError as exc:
+    except Exception as exc:
         return str(exc)
     if not DATE_MIN <= value <= DATE_MAX:
         return f"must be between {DATE_MIN.isoformat()} and {DATE_MAX.isoformat()}"

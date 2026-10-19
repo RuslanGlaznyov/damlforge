@@ -86,3 +86,23 @@ def test_datetime_subtraction_yields_timedelta(signature, body, valid):
         _analyze(source)
     else:
         _assert_type_error(source)
+
+
+@pytest.mark.parametrize(
+    "signature, body, valid",
+    [
+        ("(a: datetime) -> datetime", "a - timedelta(seconds=1)", True),
+        ("(a: datetime, d: timedelta) -> datetime", "a - d - d", True),
+        ("(a: datetime, b: datetime, d: timedelta) -> timedelta", "(a - d) - b", True),
+        ("(a: datetime, d: timedelta) -> timedelta", "a - d", False),
+    ],
+)
+def test_datetime_minus_timedelta_yields_datetime(signature, body, valid):
+    source = (
+        "from datetime import datetime, timedelta\n\n"
+        f"def f{signature}:\n    return {body}\n"
+    )
+    if valid:
+        _analyze(source)
+    else:
+        _assert_type_error(source)
