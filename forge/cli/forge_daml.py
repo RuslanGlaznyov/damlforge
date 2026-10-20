@@ -6,6 +6,7 @@ from loguru import logger
 
 from forge.ast.parse import parse_to_ast
 from forge.codegen import daml_module_name, generate_daml
+from forge.codegen.source_map import with_source_file
 from forge.daml_versions import DamlCodegenSettings
 from forge.exceptions import tag_exceptions
 from forge.ir import lower_module
@@ -25,6 +26,7 @@ def _compile_one(
         ir = lower_module(module, import_graph=import_graph)
         module_name = daml_module_name(path.stem)
         daml_source, source_map = generate_daml(ir, module_name=module_name, settings=settings)
+        source_map = with_source_file(source_map, file)
 
     output_file = output_dir / (module_name + ".daml")
     with output_file.open("w") as fh:

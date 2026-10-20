@@ -8,6 +8,7 @@ from loguru import logger
 
 from forge.ast.parse import parse_to_ast
 from forge.codegen import daml_module_name, generate_daml
+from forge.codegen.source_map import annotate_daml_output, with_source_file
 from forge.daml_versions import DamlCodegenSettings
 from forge.exceptions import tag_exceptions
 from forge.ir import lower_module
@@ -132,6 +133,7 @@ def build_dar(
         else input_dir / f"{package_name}-{package_version}.dar"
     )
 
+    source_maps = {}
     for file in vy_files:
         logger.info(f"Compiling: {file}")
         source = file.read_text()
@@ -142,10 +144,14 @@ def build_dar(
             ir = lower_module(module, import_graph=import_graph)
             mod_stem = daml_module_name(rel.stem)
             mod_name = ".".join((*rel.parent.parts, mod_stem))
-            daml_source, _ = generate_daml(ir, module_name=mod_name, settings=codegen_settings)
+            daml_source, source_map = generate_daml(
+                ir, module_name=mod_name, settings=codegen_settings
+            )
         out_dir = source_dir / rel.parent
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / f"{mod_stem}.daml").write_text(daml_source)
+        daml_file = out_dir / f"{mod_stem}.daml"
+        source_maps[str(daml_file.relative_to(input_dir))] = with_source_file(source_map, file)
+        daml_file.write_text(daml_source)
 
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Running dpm build (package: {package_name}, version: {package_version})")
@@ -156,8 +162,11 @@ def build_dar(
         text=True,
     )
     if result.returncode != 0:
+        dpm_output = annotate_daml_output(
+            f"{result.stdout}\n{result.stderr}", source_maps
+        )
         raise RuntimeError(
-            f"dpm build failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+            f"dpm build failed (exit {result.returncode}):\n{dpm_output}"
         )
     logger.info(result.stdout.strip())
 
