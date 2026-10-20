@@ -372,8 +372,14 @@ class BidirectionalTypeChecker:
                 self._check_args(call.args, fields.values(), env)
                 for keyword in call.keywords:
                     type_ref = fields.get(keyword.arg)
-                    if type_ref is not None:
-                        self.check_expr(keyword.value, self._term(type_ref), env, call=True)
+                    if type_ref is None:
+                        self._error(
+                            keyword.value,
+                            f"`{function_name}` has no field `{keyword.arg}`",
+                            call=True,
+                        )
+                        continue
+                    self.check_expr(keyword.value, self._term(type_ref), env, call=True)
                 return
 
         for arg in call.args:

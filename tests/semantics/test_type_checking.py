@@ -34,6 +34,16 @@ def test_function_arguments_are_checked_left_to_right_against_signature():
     _assert_type_error(source, ErrorCodes.DF1226.value)
 
 
+def test_constructor_rejects_unknown_keyword_field():
+    source = (
+        "struct Terms:\n"
+        "    label: Text\n\n"
+        "def invalid() -> Terms:\n"
+        '    return Terms(unknown="not a field")\n'
+    )
+    _assert_type_error(source, ErrorCodes.DF1226.value)
+
+
 def test_all_list_elements_share_one_expected_type():
     _analyze("def valid() -> list[Int]:\n    return [1, 2, 3]\n")
     _assert_type_error('def invalid() -> list[Int]:\n    return [1, "wrong"]\n')
