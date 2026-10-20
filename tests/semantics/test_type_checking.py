@@ -83,6 +83,29 @@ def test_template_method_arguments_are_type_checked_on_attribute_calls():
     _assert_type_error(source, ErrorCodes.DF1226.value)
 
 
+def test_contract_id_choice_attribute_call_is_checked_against_payload_type():
+    source = (
+        "from forge.models import choice, template\n"
+        "from forge.builtins.daml_lang import exercise\n\n"
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n"
+        "    signatory: Party = owner\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def transfer(self, new_owner: Party) -> ContractId[Asset]:\n"
+        "        return create(Asset(owner=new_owner))\n\n"
+        "@template\n"
+        "class Holder:\n"
+        "    owner: Party\n"
+        "    signatory: Party = owner\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def move(self, asset_cid: ContractId[Asset], new_owner: Party) -> ContractId[Asset]:\n"
+        "        return exercise(asset_cid, asset_cid.transfer(new_owner=new_owner))\n"
+    )
+
+    _analyze(source)
+
+
 def test_all_list_elements_share_one_expected_type():
     _analyze("def valid() -> list[Int]:\n    return [1, 2, 3]\n")
     _assert_type_error('def invalid() -> list[Int]:\n    return [1, "wrong"]\n')

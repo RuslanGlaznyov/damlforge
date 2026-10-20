@@ -166,6 +166,7 @@ class BidirectionalTypeChecker:
         return_types: dict,
         function_param_types: dict,
         function_param_names: dict,
+        choice_names: dict[str, str],
         errors: ExceptionList,
         known_names: set[str] | None = None,
     ) -> None:
@@ -174,6 +175,7 @@ class BidirectionalTypeChecker:
         self.return_types = return_types
         self.function_param_types = function_param_types
         self.function_param_names = function_param_names
+        self.choice_names = choice_names
         self.errors = errors
         self.known_names = known_names or set()
         self.inference = InferenceContext()
@@ -451,8 +453,12 @@ class BidirectionalTypeChecker:
             method_name = (
                 f"{receiver_name}.{call.func.attr}" if receiver_name is not None else None
             )
-            if method_name in self.function_param_types:
+            if method_name is not None and method_name in self.function_param_types:
                 self._check_call_arguments(call, env, method_name)
+                choice_name = self.choice_names.get(method_name)
+                if choice_name is not None:
+                    # TODO: Refactor this hardcoded metadata key into a typed IR marker.
+                    call._metadata["daml_choice_call"] = choice_name
                 return self._term(self.return_types.get(method_name))
             if call.func.attr == "append":
                 element = self._element_type(receiver)
@@ -845,6 +851,7 @@ def check_bidirectional_types(
     return_types: dict,
     function_param_types: dict,
     function_param_names: dict,
+    choice_names: dict[str, str],
     errors: ExceptionList,
     known_names: set[str] | None = None,
 ) -> None:
@@ -856,6 +863,7 @@ def check_bidirectional_types(
         return_types,
         function_param_types,
         function_param_names,
+        choice_names,
         errors,
         known_names,
     ).run()

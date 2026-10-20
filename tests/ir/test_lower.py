@@ -383,6 +383,32 @@ def test_forward_ref_string_type_lowers_to_type_ref():
     assert asset.choices[0].return_type == TypeRef("ContractId", (TypeRef("Asset"),))
 
 
+def test_contract_id_choice_attribute_call_lowers_to_choice_argument():
+    ir = _analyze_and_lower(
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n"
+        "    signatory: Party = owner\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def transfer(self, new_owner: Party) -> ContractId[Asset]:\n"
+        "        return create(Asset(owner=new_owner))\n"
+        "@template\n"
+        "class Holder:\n"
+        "    owner: Party\n"
+        "    signatory: Party = owner\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def move(self, asset_cid: ContractId[Asset], new_owner: Party) -> ContractId[Asset]:\n"
+        "        return exercise(asset_cid, asset_cid.transfer(new_owner=new_owner))\n"
+    )
+
+    move_body = ir.templates[1].choices[0].body
+    exercise_call = move_body[0].value
+    choice_arg = exercise_call.args[1]
+    assert isinstance(choice_arg, IRCall)
+    assert choice_arg.func == IRName("Transfer")
+    assert choice_arg.keywords[0][0] == "new_owner"
+
+
 def test_template_lowers_signatory_and_fields():
     ir = _lower("@template\nclass Asset:\n    owner: Party\n    signatory: list[Party] = [owner]\n")
 

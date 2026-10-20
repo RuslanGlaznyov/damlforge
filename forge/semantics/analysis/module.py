@@ -274,6 +274,7 @@ class ModuleAnalyzer:
             self.scope.return_types,
             self.scope.function_param_types,
             self.scope.function_param_names,
+            self.scope.choice_names,
             self.errors,
             self.scope.type_names,
         )

@@ -168,6 +168,10 @@ class ModuleScope:
         return known_function_param_names(self)
 
     @cached_property
+    def choice_names(self) -> dict[str, str]:
+        return known_choice_names(self)
+
+    @cached_property
     def list_returning_functions(self) -> frozenset:
         return known_list_returning_functions(self)
 
@@ -474,6 +478,24 @@ def known_function_param_names(modules) -> dict:
                 names[function.name] = signature
                 names[f"{node.name}.{function.name}"] = signature
     return names
+
+
+def known_choice_names(modules) -> dict[str, str]:
+    """Return template/interface method names and their Daml choice names."""
+
+    choices: dict[str, str] = {}
+    for node in _scope_nodes(modules):
+        if not isinstance(node, (vy_ast.InterfaceDef, vy_ast.TemplateDef)):
+            continue
+        for function in node.body:
+            if not isinstance(function, vy_ast.FunctionDef):
+                continue
+            choice_name = ImportsBuilder._choice_export_name(function)
+            if choice_name is None:
+                continue
+            choices[function.name] = choice_name
+            choices[f"{node.name}.{function.name}"] = choice_name
+    return choices
 
 
 def _calls_to_check(fn: vy_ast.FunctionDef, param_types: dict):

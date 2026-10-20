@@ -225,6 +225,14 @@ def _lower_expr_Call(node):
         return result
     if "timedelta_arguments" in node._metadata:
         return IRCall(IRName("microseconds"), (IRConstant(0),))
+    # TODO: Refactor hardcoded choice-call metadata into a shared lowering abstraction.
+    if choice_name := node._metadata.get("daml_choice_call"):
+        args = tuple(lower_expr(a) for a in node.args)
+        keywords = tuple(
+            (fields.current().keyword(node.func.attr, kw.arg), lower_expr(kw.value))
+            for kw in node.keywords
+        )
+        return IRCall(IRName(choice_name), args, keywords)
     if isinstance(node.func, vy_ast.Name) and node.func.id == "len" and len(node.args) == 1:
         argument = node.args[0]
         argument_type = _inferred_type(argument)
