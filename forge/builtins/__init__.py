@@ -428,6 +428,8 @@ class BuiltinMetadata:
     constructor_of: dict
     case_accessors: dict
     field_types: dict
+    function_param_names: dict
+    function_param_types: dict
     function_return_types: dict
     no_derive_types: frozenset
     type_field_renames: dict
@@ -500,6 +502,8 @@ def _collect_daml_builtins(scope) -> BuiltinMetadata:
     constructor_of: dict = {}
     case_accessors: dict = {}
     field_types: dict = {}
+    function_param_names: dict = {}
+    function_param_types: dict = {}
     function_return_types: dict = {}
     no_derive_types: set = set()
     type_field_renames: dict = {}
@@ -512,10 +516,20 @@ def _collect_daml_builtins(scope) -> BuiltinMetadata:
             daml_name = getattr(obj, "__daml_name__", None)
             if daml_name is not None and callable(obj):
                 function_renames[name] = daml_name
+                signature = inspect.signature(obj)
+                hints = typing.get_type_hints(obj)
+                function_param_names[name] = tuple(signature.parameters)
+                is_ledger_effect = getattr(obj, "__daml_ledger_effect__", False)
+                function_param_types[name] = tuple(
+                    None
+                    if is_ledger_effect
+                    else _python_type_to_type_ref(hints.get(parameter.name))
+                    for parameter in signature.parameters.values()
+                )
                 required_module = getattr(obj, "__daml_module__", None)
                 if required_module is not None:
                     function_import_modules[daml_name] = required_module
-                if getattr(obj, "__daml_ledger_effect__", False):
+                if is_ledger_effect:
                     ledger_effect_fns.add(name)
 
             case_constructor = getattr(obj, "__daml_case_accessor__", None)
@@ -585,6 +599,8 @@ def _collect_daml_builtins(scope) -> BuiltinMetadata:
         constructor_of=constructor_of,
         case_accessors=case_accessors,
         field_types=field_types,
+        function_param_names=function_param_names,
+        function_param_types=function_param_types,
         function_return_types=function_return_types,
         no_derive_types=frozenset(no_derive_types),
         type_field_renames=type_field_renames,

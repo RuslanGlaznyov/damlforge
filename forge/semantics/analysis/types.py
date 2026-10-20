@@ -164,6 +164,10 @@ class ModuleScope:
         return known_function_param_types(self)
 
     @cached_property
+    def function_param_names(self) -> dict:
+        return known_function_param_names(self)
+
+    @cached_property
     def list_returning_functions(self) -> frozenset:
         return known_list_returning_functions(self)
 
@@ -411,7 +415,9 @@ def check_unresolved_names(
 
 
 def known_function_param_types(modules) -> dict:
-    types = {}
+    from forge.builtins import collect_daml_builtins
+
+    types = dict(collect_daml_builtins().function_param_types)
     for node in _scope_nodes(modules):
         if isinstance(node, vy_ast.FunctionDef):
             types[node.name] = tuple(
@@ -428,7 +434,46 @@ def known_function_param_types(modules) -> dict:
                     for a in constructor.args.args
                     if a.arg != "self"
                 )
+        elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.TemplateDef)):
+            for function in node.body:
+                if not isinstance(function, vy_ast.FunctionDef):
+                    continue
+                signature = tuple(
+                    lower_type(a.annotation) if a.annotation is not None else None
+                    for a in function.args.args
+                    if a.arg != "self"
+                )
+                types[function.name] = signature
+                types[f"{node.name}.{function.name}"] = signature
     return types
+
+
+def known_function_param_names(modules) -> dict:
+    from forge.builtins import collect_daml_builtins
+
+    names = dict(collect_daml_builtins().function_param_names)
+    for node in _scope_nodes(modules):
+        if isinstance(node, vy_ast.FunctionDef):
+            names[node.name] = tuple(
+                a.arg for a in node.args.args if a.arg != "self"
+            )
+        elif isinstance(node, vy_ast.VariantDef):
+            for constructor in node.body:
+                if not isinstance(constructor, vy_ast.FunctionDef):
+                    continue
+                names[constructor.name] = tuple(
+                    a.arg for a in constructor.args.args if a.arg != "self"
+                )
+        elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.TemplateDef)):
+            for function in node.body:
+                if not isinstance(function, vy_ast.FunctionDef):
+                    continue
+                signature = tuple(
+                    a.arg for a in function.args.args if a.arg != "self"
+                )
+                names[function.name] = signature
+                names[f"{node.name}.{function.name}"] = signature
+    return names
 
 
 def _calls_to_check(fn: vy_ast.FunctionDef, param_types: dict):
@@ -703,6 +748,10 @@ def known_return_types(modules, field_types: dict) -> dict:
     for node in _scope_nodes(modules):
         if isinstance(node, vy_ast.FunctionDef) and node.returns is not None:
             types[node.name] = lower_type(node.returns)
+        elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.TemplateDef)):
+            for function in node.body:
+                if isinstance(function, vy_ast.FunctionDef) and function.returns is not None:
+                    types[f"{node.name}.{function.name}"] = lower_type(function.returns)
         elif isinstance(node, vy_ast.VariantDef):
             types.update(
                 {

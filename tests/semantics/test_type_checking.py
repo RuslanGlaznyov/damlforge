@@ -44,6 +44,45 @@ def test_constructor_rejects_unknown_keyword_field():
     _assert_type_error(source, ErrorCodes.DF1226.value)
 
 
+def test_function_keyword_arguments_are_type_checked():
+    source = (
+        "def takes_int(value: Int) -> Int:\n"
+        "    return value\n\n"
+        "def invalid() -> Int:\n"
+        '    return takes_int(value="not an integer")\n'
+    )
+    _assert_type_error(source, ErrorCodes.DF1226.value)
+
+
+def test_builtin_exercise_argument_count_is_checked():
+    source = (
+        "from forge.models import ledger_effect\n"
+        "from forge.builtins.daml_lang import exercise\n\n"
+        "@ledger_effect\n"
+        "def invalid(cid: ContractId[Int]) -> Int:\n"
+        "    exercise(cid)\n"
+        "    return 0\n"
+    )
+    _assert_type_error(source, ErrorCodes.DF1225.value)
+
+
+def test_template_method_arguments_are_type_checked_on_attribute_calls():
+    source = (
+        "from forge.models import choice, template\n\n"
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n"
+        "    signatory: Party = owner\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def transfer(self, new_owner: Party) -> ContractId[Asset]:\n"
+        "        return create(Asset(owner=new_owner))\n\n"
+        "def invalid(cid: ContractId[Asset]) -> Int:\n"
+        '    cid.transfer(new_owner="not a party")\n'
+        "    return 0\n"
+    )
+    _assert_type_error(source, ErrorCodes.DF1226.value)
+
+
 def test_all_list_elements_share_one_expected_type():
     _analyze("def valid() -> list[Int]:\n    return [1, 2, 3]\n")
     _assert_type_error('def invalid() -> list[Int]:\n    return [1, "wrong"]\n')

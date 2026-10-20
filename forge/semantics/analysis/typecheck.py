@@ -165,6 +165,7 @@ class BidirectionalTypeChecker:
         field_types: dict,
         return_types: dict,
         function_param_types: dict,
+        function_param_names: dict,
         errors: ExceptionList,
         known_names: set[str] | None = None,
     ) -> None:
@@ -172,6 +173,7 @@ class BidirectionalTypeChecker:
         self.field_types = field_types
         self.return_types = return_types
         self.function_param_types = function_param_types
+        self.function_param_names = function_param_names
         self.errors = errors
         self.known_names = known_names or set()
         self.inference = InferenceContext()
@@ -363,8 +365,41 @@ class BidirectionalTypeChecker:
     ) -> None:
         if function_name is not None:
             expected = self.function_param_types.get(function_name)
-            if expected is not None and not call.keywords:
+            if expected is not None:
+                names = self.function_param_names.get(function_name, ())
+                if not call.keywords:
+                    self._check_args(call.args, expected, env)
+                    return
+
+                if len(call.args) > len(expected):
+                    self._error(
+                        call,
+                        f"`{function_name}(...)` called with {len(call.args)} positional "
+                        f"arguments, but it takes {len(expected)} arguments",
+                        call=True,
+                    )
+
+                supplied = set(range(min(len(call.args), len(expected))))
                 self._check_args(call.args, expected, env)
+                for keyword in call.keywords:
+                    if keyword.arg not in names:
+                        self._error(
+                            keyword.value,
+                            f"`{function_name}` has no argument `{keyword.arg}`",
+                            call=True,
+                        )
+                        continue
+                    index = names.index(keyword.arg)
+                    if index in supplied:
+                        self._error(
+                            keyword.value,
+                            f"`{function_name}` received argument `{keyword.arg}` more "
+                            "than once",
+                            call=True,
+                        )
+                        continue
+                    supplied.add(index)
+                    self.check_expr(keyword.value, self._term(expected[index]), env, call=True)
                 return
 
             fields = self.field_types.get(function_name)
@@ -410,6 +445,15 @@ class BidirectionalTypeChecker:
                     self._check_call_arguments(call, env, qualified)
                     return None
             receiver = self.check_expr(call.func.value, None, env)
+            receiver_name = self._name(receiver)
+            if receiver_name == "ContractId" and isinstance(receiver, AppliedType) and receiver.args:
+                receiver_name = self._name(receiver.args[0])
+            method_name = (
+                f"{receiver_name}.{call.func.attr}" if receiver_name is not None else None
+            )
+            if method_name in self.function_param_types:
+                self._check_call_arguments(call, env, method_name)
+                return self._term(self.return_types.get(method_name))
             if call.func.attr == "append":
                 element = self._element_type(receiver)
                 if call.args:
@@ -800,11 +844,18 @@ def check_bidirectional_types(
     field_types: dict,
     return_types: dict,
     function_param_types: dict,
+    function_param_names: dict,
     errors: ExceptionList,
     known_names: set[str] | None = None,
 ) -> None:
     """Run type-directed expression checking for one top-level AST node."""
 
     BidirectionalTypeChecker(
-        node, field_types, return_types, function_param_types, errors, known_names
+        node,
+        field_types,
+        return_types,
+        function_param_types,
+        function_param_names,
+        errors,
+        known_names,
     ).run()
