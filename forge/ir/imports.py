@@ -176,14 +176,18 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
     )
     for fn in module.functions:
         if "ledger_effect" in fn.decorators and LoopAnalysis.requires_foldl_a(
-            fn.body, True, effect_functions
+            LoopAnalysis.normalize_for_analysis(fn.body, effect_functions), True, effect_functions
         ):
             add(IRImport("DA.Action", ("foldlA",)))
     for template in module.templates:
         for choice in template.choices + tuple(
             c for ii in template.interface_instances for c in ii.choices
         ):
-            if LoopAnalysis.requires_foldl_a(choice.body, True, effect_functions):
+            if LoopAnalysis.requires_foldl_a(
+                LoopAnalysis.normalize_for_analysis(choice.body, effect_functions),
+                True,
+                effect_functions,
+            ):
                 add(IRImport("DA.Action", ("foldlA",)))
     return tuple(imports)
 

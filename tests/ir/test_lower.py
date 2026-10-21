@@ -1,3 +1,5 @@
+from textwrap import indent
+
 import pytest
 
 from forge.ast.parse import parse_to_ast
@@ -63,6 +65,41 @@ def test_lower_module_prepares_structured_support_imports():
     ir = _analyze_and_lower("struct Ledger:\n" "    balances: GenMap[Party, Decimal]\n")
 
     assert IRImport("DA.Map", alias="Map", qualified=False) in ir.imports
+
+
+@pytest.mark.parametrize(
+    "choice_body",
+    [
+        "@choice(controller=issuer, consuming=False)\n"
+        "def GiveEach(self, owners: list[Party]) -> list[ContractId[Iou]]:\n"
+        "    cids: list[ContractId[Iou]] = []\n"
+        "    for o in owners:\n"
+        "        cids.append(create(Iou(issuer=self.issuer, owner=o, amount=self.amount)))\n"
+        "    return cids\n",
+        "@choice(controller=owner, consuming=False)\n"
+        "def Total(self, cids: list[ContractId[Iou]]) -> Decimal:\n"
+        "    total = Decimal(0)\n"
+        "    for c in cids:\n"
+        "        total = total + fetch(c).amount\n"
+        "    return total\n",
+    ],
+    ids=["create-inside-append", "fetch-inside-expression"],
+)
+def test_foldla_import_detects_effects_hidden_before_loop_normalization(choice_body):
+    ir = _analyze_and_lower(
+        "from forge.models import ContractId, Decimal, Party\n"
+        "\n"
+        "@template\n"
+        "class Iou:\n"
+        "    issuer: Party\n"
+        "    owner: Party\n"
+        "    amount: Decimal\n"
+        "\n"
+        "    signatory: list[Party] = [issuer]\n"
+        "    observer: list[Party] = [owner]\n\n" + indent(choice_body, "    ")
+    )
+
+    assert IRImport("DA.Action", ("foldlA",)) in ir.imports
 
 
 def test_enum_lowers_to_values():

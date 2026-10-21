@@ -44,6 +44,18 @@ class LoopPlan:
 
 class LoopAnalysis:
     @classmethod
+    def normalize_for_analysis(cls, stmts, known_effect_fns: frozenset = frozenset()):
+        """Normalize effect expressions before inspecting loop requirements.
+
+        Import analysis must see the same statement shape as code generation:
+        effects hidden in ``append`` calls or larger expressions are lifted to
+        statements before deciding whether a loop needs ``foldlA``.
+        """
+        namer = LoopNamer()
+        rewritten = cls.rewrite_appends(stmts, namer, known_effect_fns)
+        return cls.hoist_nested_effects(rewritten, namer, known_effect_fns)
+
+    @classmethod
     def rewrite_appends(cls, stmts, namer=None, known_effect_fns: frozenset = frozenset()):
         rewritten: list[IRStmt] = []
         for s in stmts:
