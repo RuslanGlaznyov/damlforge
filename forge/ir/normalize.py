@@ -144,8 +144,12 @@ class LoopAnalysis:
         result: list[IRStmt] = []
         for s in stmts:
             if isinstance(s, IRIf):
+                test_lifted: list[tuple[str, IRCall]] = []
+                test = cls._lift_effects(s.test, test_lifted, namer, known_effect_fns, top=True)
+                result.extend(IRAssign(IRName(name), call, src=s.src) for name, call in test_lifted)
                 s = replace(
                     s,
+                    test=test,
                     body=tuple(cls.hoist_nested_effects(s.body, namer, known_effect_fns)),
                     orelse=tuple(cls.hoist_nested_effects(s.orelse, namer, known_effect_fns)),
                 )

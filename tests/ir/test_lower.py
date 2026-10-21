@@ -82,8 +82,15 @@ def test_lower_module_prepares_structured_support_imports():
         "    for c in cids:\n"
         "        total = total + fetch(c).amount\n"
         "    return total\n",
+        "@choice(controller=owner, consuming=False)\n"
+        "def CountLarger(self, cids: list[ContractId[Iou]]) -> int:\n"
+        "    n = 0\n"
+        "    for c in cids:\n"
+        "        if fetch(c).amount > self.amount:\n"
+        "            n = n + 1\n"
+        "    return n\n",
     ],
-    ids=["create-inside-append", "fetch-inside-expression"],
+    ids=["create-inside-append", "fetch-inside-expression", "fetch-inside-if-test"],
 )
 def test_foldla_import_detects_effects_hidden_before_loop_normalization(choice_body):
     ir = _analyze_and_lower(
