@@ -14,6 +14,7 @@ from forge.utils import daml_choice_name
 from forge.ir.lower import FLOOR_DIV_DECIMAL_HELPER, FLOOR_DIV_HELPER
 from forge.ir.nodes import (
     IRAssert,
+    IRAssertLoop,
     IRAssign,
     IRAttribute,
     IRBinOp,
@@ -25,17 +26,20 @@ from forge.ir.nodes import (
     Field,
     IRDict,
     IRExprStmt,
+    IRFold,
     IREnum,
     IRFor,
     IRFunction,
     IRIf,
     IRIfExp,
+    IREarlyReturnLoop,
     IRInterface,
     IRInterfaceInstance,
     IRList,
     IRModule,
     IRName,
     IRPass,
+    IRPureAssertionLoop,
     IRRecordUpdate,
     IRReturn,
     IRStruct,
@@ -48,7 +52,7 @@ from forge.ir.nodes import (
     TypeRef,
 )
 from forge.models.decorators import Consuming
-from forge.codegen.loops import LoopAnalysis, LoopAnalyzer, LoopNamer, LoopPlan
+from forge.ir.normalize import LoopAnalysis, LoopAnalyzer, LoopNamer
 from forge.codegen.self_mutation import SELF, SelfFieldRewriter, SelfMutationInjector
 
 _PRIMITIVE_TYPE_MAP = {
@@ -446,7 +450,9 @@ class BodyTranslator:
             return [f"{pad}pure {wrapped}"] if in_update_block else [f"{pad}{value_expr}"]
 
         if isinstance(first, IRPass):
-            return [f"{pad}pure ()"]
+            # `pass` is a no-op in Python.  It must not terminate the
+            # surrounding block and hide statements that follow it.
+            return self._translate(rest, indent, in_update_block, make_tail, known, renames)
 
         if isinstance(first, IRIf):
             cont_lines = []
@@ -568,48 +574,31 @@ class BodyTranslator:
             rest, indent, in_update_block, make_tail, known, renames
         )
 
-    def _wrap_returns_as_some(self, stmts):
-        result = []
-        for s in stmts:
-            if isinstance(s, IRReturn):
-                value = s.value if s.value is not None else IRTuple(())
-                result.append(IRReturn(IRCall(IRName("Some"), (value,)), src=s.src))
-            elif isinstance(s, IRIf):
-                result.append(
-                    IRIf(
-                        s.test,
-                        tuple(self._wrap_returns_as_some(s.body)),
-                        tuple(self._wrap_returns_as_some(s.orelse)),
-                        src=s.src,
-                    )
-                )
-            else:
-                result.append(s)
-        return result
-
     def _translate_for(
         self, node: IRFor, indent, in_update_block, make_tail, known=frozenset(), renames=None
     ) -> list:
         renames = renames or {}
-        plan = self.loop_analyzer.plan(node, known, in_update_block)
-        if plan.accumulators and plan.has_return:
-            raise CompilerPanic(
-                "_translate_for: a `for` loop with both loop-carried accumulator "
-                "mutation and an early `return` inside its body is not supported"
-            )
-        if plan.assertion is not None:
-            return self._translate_assertion_loop(
-                node, plan, indent, in_update_block, make_tail, renames
-            )
-        if plan.accumulators or plan.in_update_block:
+        normalized = self.loop_analyzer.lower_loop(node, known, in_update_block)
+        if normalized is None:
+            return make_tail(indent, frozenset(), renames)
+        return self._translate_normalized_loop(
+            normalized, indent, make_tail, known, renames, in_update_block
+        )
+
+    def _translate_normalized_loop(
+        self, node, indent, make_tail, known, renames, surrounding_in_update_block
+    ) -> list:
+        if isinstance(node, IRFold):
             return self._translate_fold(
-                node, plan, indent, in_update_block, make_tail, known, renames
+                node, indent, make_tail, known, renames, surrounding_in_update_block
             )
-        if plan.has_return:
-            return self._translate_early_return_loop(
-                node, plan, indent, in_update_block, make_tail, known, renames
-            )
-        return make_tail(indent, frozenset(), renames)
+        if isinstance(node, IRAssertLoop):
+            return self._translate_assertion_loop(node, indent, make_tail, renames)
+        if isinstance(node, IREarlyReturnLoop):
+            return self._translate_early_return_loop(node, indent, make_tail, known, renames)
+        if isinstance(node, IRPureAssertionLoop):
+            return self._translate_pure_assertion_loop(node, indent, make_tail, known, renames)
+        raise CompilerPanic(f"_translate_normalized_loop: unsupported node {type(node).__name__}")
 
     @staticmethod
     def _loop_state(names, renames=None) -> str:
@@ -620,27 +609,28 @@ class BodyTranslator:
             return resolved[0]
         return f"({', '.join(resolved)})"
 
-    def _translate_assertion_loop(
-        self, node, plan, indent, in_update_block, make_tail, renames
-    ) -> list:
-        assertion = plan.assertion
-        assert assertion is not None
+    def _translate_assertion_loop(self, node: IRAssertLoop, indent, make_tail, renames) -> list:
+        assertion = node.assertion
         body_renames = {name: value for name, value in renames.items() if name != node.target}
         test = render_expr(LoopAnalysis.apply_renames(assertion.test, body_renames))
         iterable = _render_call_arg(LoopAnalysis.apply_renames(node.iter, renames))
         condition = f"all (\\{node.target} -> {test}) {iterable}"
         msg = None if assertion.msg is None else _render_call_arg(assertion.msg)
         return self._render_assert(
-            indent, condition, msg, in_update_block, lambda i: make_tail(i, frozenset(), renames)
+            indent,
+            condition,
+            msg,
+            node.in_update_block,
+            lambda i: make_tail(i, frozenset(), renames),
         )
 
     def _translate_fold(
-        self, node: IRFor, plan: LoopPlan, indent, in_update_block, make_tail, known, renames
+        self, node: IRFold, indent, make_tail, known, renames, surrounding_in_update_block
     ) -> list:
         pad = "  " * indent
-        accumulators = list(plan.accumulators)
+        accumulators = list(node.accumulators)
         inner_known = known | {node.target} | set(accumulators)
-        fresh_here = set(accumulators) | set(plan.captured) | {node.target}
+        fresh_here = set(accumulators) | set(node.captured) | {node.target}
         inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
         state_pattern = self._loop_state(accumulators)
         initial_state = self._loop_state(accumulators, renames)
@@ -648,13 +638,13 @@ class BodyTranslator:
 
         def fold_tail(i, extra_known=frozenset(), fold_renames=None):
             state = self._loop_state(accumulators, fold_renames or {})
-            return [f"{'  ' * i}{'pure ' if plan.in_update_block else ''}{state}"]
+            return [f"{'  ' * i}{'pure ' if node.in_update_block else ''}{state}"]
 
-        body_indent = indent + (3 if plan.in_update_block else 5)
+        body_indent = indent + (3 if node.in_update_block else 5)
         body_lines = self._translate(
-            list(plan.body),
+            list(node.body),
             body_indent,
-            plan.in_update_block,
+            node.in_update_block,
             fold_tail,
             inner_known,
             inner_renames,
@@ -663,7 +653,7 @@ class BodyTranslator:
         fresh_names = [self.namer.next_rebind(name) for name in accumulators]
         bind_target = self._loop_state(fresh_names) if fresh_names else "_"
 
-        if plan.in_update_block:
+        if node.in_update_block:
             lines = [
                 f"{pad}{bind_target} <-",
                 f"{pad}  foldlA",
@@ -679,19 +669,19 @@ class BodyTranslator:
                 *body_lines,
                 f"{pad}        {initial_state} {iter_expr}",
             ]
-            if not in_update_block:
+            if not surrounding_in_update_block:
                 lines.append(f"{pad}in")
         post_renames = {**renames, **dict(zip(accumulators, fresh_names))}
         lines.extend(make_tail(indent, set(accumulators), post_renames))
         return lines
 
     def _translate_early_return_loop(
-        self, node: IRFor, plan: LoopPlan, indent, in_update_block, make_tail, known, renames
+        self, node: IREarlyReturnLoop, indent, make_tail, known, renames
     ) -> list:
         pad = "  " * indent
         helper = self.namer.next()
         rest_name = "_damlforge_rest"
-        captured = list(plan.captured)
+        captured = list(node.captured)
         inner_known = known | {node.target}
         fresh_here = set(captured) | {node.target}
         inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
@@ -703,8 +693,7 @@ class BodyTranslator:
         resolved_captured = self._resolve_all(captured, renames)
         iter_expr = render_expr(LoopAnalysis.apply_renames(node.iter, renames))
 
-        wrapped_body = self._wrap_returns_as_some(plan.body)
-        base_rhs = "pure None" if plan.in_update_block else "None"
+        base_rhs = "pure None" if node.in_update_block else "None"
 
         def recursive_tail(i, extra_known=frozenset(), rec_renames=None):
             call = f"{helper} {' '.join(captured)} {rest_name}".strip()
@@ -712,11 +701,11 @@ class BodyTranslator:
 
         def_lines = [
             f"{base_head} = {base_rhs}",
-            f"{rec_head} = do" if plan.in_update_block else f"{rec_head} =",
+            f"{rec_head} = do" if node.in_update_block else f"{rec_head} =",
         ]
         def_lines.extend(
             self._translate(
-                wrapped_body, 1, plan.in_update_block, recursive_tail, inner_known, inner_renames
+                list(node.body), 1, node.in_update_block, recursive_tail, inner_known, inner_renames
             )
         )
         self.hoisted.extend(def_lines)
@@ -728,18 +717,59 @@ class BodyTranslator:
         lines = [
             (
                 f"{pad}{maybe_name} <- {call_expr}"
-                if plan.in_update_block
-                else f"{pad}let {maybe_name} = {call_expr}{' in' if not in_update_block else ''}"
+                if node.in_update_block
+                else f"{pad}let {maybe_name} = {call_expr} in"
             )
         ]
         lines.append(f"{pad}case {maybe_name} of")
         lines.append(
             f"{pad}  Some {early_name} -> "
-            + (f"pure {early_name}" if in_update_block else early_name)
+            + (f"pure {early_name}" if node.in_update_block else early_name)
         )
-        lines.append(f"{pad}  None -> do" if in_update_block else f"{pad}  None ->")
+        lines.append(f"{pad}  None -> do" if node.in_update_block else f"{pad}  None ->")
         lines.extend(make_tail(indent + 2, frozenset(), renames))
         return lines
+
+    def _translate_pure_assertion_loop(
+        self, node: IRPureAssertionLoop, indent, make_tail, known, renames
+    ) -> list:
+        """Preserve assertions in a loop inside a pure function.
+
+        A Daml `assert` is an Update action, but Python functions may use an
+        assertion as a pure validation guard. For that case the helper is a
+        pure recursive traversal whose failing branch is `error`.
+        """
+        pad = "  " * indent
+        helper = self.namer.next()
+        rest_name = "_damlforge_rest"
+        captured = list(node.captured)
+        inner_known = known | {node.target}
+        fresh_here = set(captured) | {node.target}
+        inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
+        base_params = [
+            f"({p} : {self.self_type})" if p == SELF and self.self_type else p for p in captured
+        ]
+        base_head = f"{helper} {' '.join(base_params + ['[]'])}".strip()
+        rec_head = f"{helper} {' '.join(captured + [f'({node.target} :: {rest_name})'])}"
+        resolved_captured = self._resolve_all(captured, renames)
+        iter_expr = render_expr(LoopAnalysis.apply_renames(node.iter, renames))
+
+        def recursive_tail(i, extra_known=frozenset(), rec_renames=None):
+            call = f"{helper} {' '.join(captured)} {rest_name}".strip()
+            return [f"{'  ' * i}{call}"]
+
+        def_lines = [f"{base_head} = ()", f"{rec_head} ="]
+        def_lines.extend(
+            self._translate(list(node.body), 1, False, recursive_tail, inner_known, inner_renames)
+        )
+        self.hoisted.extend(def_lines)
+        self.hoisted.append("")
+
+        call_expr = f"{helper} {' '.join(resolved_captured)} {iter_expr}".strip()
+        checked_name = self.namer.next_rebind("checked")
+        return [f"{pad}let {checked_name} = {call_expr}", f"{pad}in"] + make_tail(
+            indent, frozenset(), renames
+        )
 
 
 def render_body(

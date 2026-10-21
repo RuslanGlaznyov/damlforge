@@ -174,6 +174,57 @@ class IRFor:
 
 
 @dataclass(frozen=True)
+class IRFold:
+    """A loop normalized to a pure or action-aware Daml fold."""
+
+    target: str
+    target_type: Optional[TypeRef]
+    iter: IRExpr
+    body: tuple["IRStmt", ...]
+    accumulators: tuple[str, ...]
+    captured: tuple[str, ...]
+    in_update_block: bool
+    src: Optional[SourceSpan] = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class IRAssertLoop:
+    """A loop containing one assertion, rendered with `all`."""
+
+    target: str
+    target_type: Optional[TypeRef]
+    iter: IRExpr
+    assertion: IRAssert
+    in_update_block: bool
+    src: Optional[SourceSpan] = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class IREarlyReturnLoop:
+    """A loop normalized to a recursive helper that can return early."""
+
+    target: str
+    target_type: Optional[TypeRef]
+    iter: IRExpr
+    body: tuple["IRStmt", ...]
+    captured: tuple[str, ...]
+    in_update_block: bool
+    src: Optional[SourceSpan] = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class IRPureAssertionLoop:
+    """A loop of pure assertions normalized to a recursive validation helper."""
+
+    target: str
+    target_type: Optional[TypeRef]
+    iter: IRExpr
+    body: tuple["IRStmt", ...]
+    captured: tuple[str, ...]
+    src: Optional[SourceSpan] = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
 class IRReturn:
     value: Optional[IRExpr] = None
     src: Optional[SourceSpan] = field(default=None, compare=False)
@@ -190,7 +241,19 @@ class IRExprStmt:
     src: Optional[SourceSpan] = field(default=None, compare=False)
 
 
-IRStmt = Union[IRAssert, IRAssign, IRIf, IRFor, IRReturn, IRPass, IRExprStmt]
+IRStmt = Union[
+    IRAssert,
+    IRAssign,
+    IRIf,
+    IRFor,
+    IRFold,
+    IRAssertLoop,
+    IREarlyReturnLoop,
+    IRPureAssertionLoop,
+    IRReturn,
+    IRPass,
+    IRExprStmt,
+]
 
 
 # ---- containers ----

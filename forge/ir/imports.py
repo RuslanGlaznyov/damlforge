@@ -4,24 +4,19 @@ from dataclasses import is_dataclass, replace
 from forge.builtins import collect_daml_builtins
 from forge.builtins.maps import TextMap, known_map_types
 from forge.ir.nodes import (
-    IRAssert,
-    IRAssign,
     IRAttribute,
     IRCall,
     IRConstant,
     IRDict,
     IRExpr,
-    IRExprStmt,
-    IRFor,
-    IRIf,
     IRIfExp,
     IRImport,
     IRModule,
     IRName,
-    IRReturn,
     IRSubscript,
     TypeRef,
 )
+from forge.ir.normalize import LoopAnalysis
 
 _OPTIONAL_METHODS = frozenset({"isSome", "isNone", "fromSome", "fromSomeNote", "fromOptional"})
 _MAX_TUPLE_ACCESSOR_INDEX = 8
@@ -115,62 +110,6 @@ def _scan_expr(
                     imports.append(import_)
 
 
-def _body_has_ledger_effect(stmts, effect_functions: frozenset[str]) -> bool:
-    for stmt in stmts:
-        if isinstance(stmt, IRAssert):
-            return True
-        if isinstance(stmt, IRExprStmt) and _is_effect_call(stmt.value, effect_functions):
-            return True
-        if isinstance(stmt, IRAssign) and _is_effect_call(stmt.value, effect_functions):
-            return True
-        if isinstance(stmt, IRReturn) and stmt.value is not None:
-            if _is_effect_call(stmt.value, effect_functions):
-                return True
-        if isinstance(stmt, IRIf) and (
-            _body_has_ledger_effect(stmt.body, effect_functions)
-            or _body_has_ledger_effect(stmt.orelse, effect_functions)
-        ):
-            return True
-        if isinstance(stmt, IRFor) and _body_has_ledger_effect(stmt.body, effect_functions):
-            return True
-    return False
-
-
-def _is_effect_call(expr, effect_functions: frozenset[str]) -> bool:
-    return (
-        isinstance(expr, IRCall)
-        and isinstance(expr.func, IRName)
-        and expr.func.id in effect_functions
-    )
-
-
-def _is_assertion_only_loop(body) -> bool:
-    return (
-        len(body) == 1
-        and isinstance(body[0], IRAssert)
-        and (body[0].msg is None or isinstance(body[0].msg, IRConstant))
-    )
-
-
-def _body_requires_foldl_a(stmts, in_update_block: bool, effect_functions: frozenset[str]) -> bool:
-    for stmt in stmts:
-        if isinstance(stmt, IRFor):
-            if (
-                in_update_block
-                and not _is_assertion_only_loop(stmt.body)
-                and _body_has_ledger_effect(stmt.body, effect_functions)
-            ):
-                return True
-            if _body_requires_foldl_a(stmt.body, in_update_block, effect_functions):
-                return True
-        elif isinstance(stmt, IRIf) and (
-            _body_requires_foldl_a(stmt.body, in_update_block, effect_functions)
-            or _body_requires_foldl_a(stmt.orelse, in_update_block, effect_functions)
-        ):
-            return True
-    return False
-
-
 def required_imports(module: IRModule) -> tuple[IRImport, ...]:
     imports = []
     builtin_import_modules = collect_daml_builtins().function_import_modules
@@ -236,7 +175,7 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
         | frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
     )
     for fn in module.functions:
-        if "ledger_effect" in fn.decorators and _body_requires_foldl_a(
+        if "ledger_effect" in fn.decorators and LoopAnalysis.requires_foldl_a(
             fn.body, True, effect_functions
         ):
             add(IRImport("DA.Action", ("foldlA",)))
@@ -244,7 +183,7 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
         for choice in template.choices + tuple(
             c for ii in template.interface_instances for c in ii.choices
         ):
-            if _body_requires_foldl_a(choice.body, True, effect_functions):
+            if LoopAnalysis.requires_foldl_a(choice.body, True, effect_functions):
                 add(IRImport("DA.Action", ("foldlA",)))
     return tuple(imports)
 
