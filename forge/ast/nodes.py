@@ -145,7 +145,7 @@ def _to_dict(value):
 
 
 def _node_filter(node, filters):
-    # recursive equality check for VyperNode.get_children filters
+    # Recursive equality check for AST node filters.
     if not filters:
         return True
     for key, value in filters.items():
@@ -479,42 +479,6 @@ class VyperNode:
             return self._parent
 
         return self._parent.get_ancestor(node_type)
-
-    def get_children(
-        self,
-        node_type: Union["VyperNode", tuple, None] = None,
-        filters: Optional[dict] = None,
-        reverse: bool = False,
-    ) -> list:
-        """
-        Return a list of children of this node which match the given filter(s).
-
-        Results are sorted by the starting source offset and node ID, ascending.
-
-        Parameters
-        ----------
-        node_type : VyperNode | tuple, optional
-            A node type or tuple of types. If given, only child nodes where the
-            type matches this value are returned. This is functionally identical
-            to calling `isinstance(child, node_type)`
-        filters : dict, optional
-            Dictionary of attribute names and expected values. Only nodes that
-            contain the given attributes and match the given values are returned.
-            * You can use dots within the name in order to check members of members.
-              e.g. `{'annotation.func.id': "constant"}`
-            * Expected values may be given as a set, in order to match a node must
-              contain the given attribute and match any one value within the set.
-              e.g. `{'id': {'public', 'constant'}}` will match nodes with an `id`
-                    member that contains either "public" or "constant".
-        reverse : bool, optional
-            If `True`, the order of results is reversed prior to return.
-
-        Returns
-        -------
-        list
-            Child nodes matching the filter conditions.
-        """
-        return _apply_filters(iter(self._children), node_type, filters, reverse)
 
     def get_descendants(
         self,

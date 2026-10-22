@@ -54,7 +54,6 @@ Each node contains several methods that are used to traverse the AST. These meth
 can optionally include one or more filters in order to quickly search for children
 or parents that match a desired pattern.
 
-* `get_children`: Returns a list of children of the given node.
 * `get_descendants`: Returns a list of descendants of the given node.
 * `get_ancestor`: Returns the parent or an ascendant of the given node.
 * `get`: Recursive getter function for node attributes.

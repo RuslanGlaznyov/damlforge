@@ -49,12 +49,6 @@ class VyperNode:
     @classmethod
     def from_node(cls, node: VyperNode, **kwargs: Any) -> Any: ...
     def to_dict(self) -> dict: ...
-    def get_children(
-        self,
-        node_type: Union[Type[VyperNode], Sequence[Type[VyperNode]], None] = ...,
-        filters: Optional[dict] = ...,
-        reverse: bool = ...,
-    ) -> list: ...
     def get_descendants(
         self,
         node_type: Union[Type[VyperNode], Sequence[Type[VyperNode]], None] = ...,

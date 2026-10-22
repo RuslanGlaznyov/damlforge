@@ -240,7 +240,8 @@ class ModuleAnalyzer:
         self._check_enum_constructor_collisions()
         check_hidden_ledger_effects(self.module, self.errors)
         DatetimeIntrinsicAnalyzer(self.module, self.errors).analyze()
-        
+
+        # Run child level analyzing, i.e. body of the module, which will recursively
         for node in self.module.body:
             self.visit(node)
 
