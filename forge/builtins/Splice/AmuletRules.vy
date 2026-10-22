@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Annotated, TypeVar
 
-from forge.models import choice, ContractId, Decimal, GenMap, ledger_effect, Optional, Party, template, variant, variant_record
+from forge.models import choice, ContractId, Decimal, GenMap, Optional, Party, template, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName, no_derive
 from DA.Internal.Fail.Types import FailureStatus
 from DA.Types import Either
@@ -676,8 +676,7 @@ def ext_invalid_transfer_reason(value: InvalidTransferReason) -> Optional[None]:
     pass
 
 
-@ledger_effect
-@DamlName("validateOpenMiningRoundTriple")
+@DamlName("validateOpenMiningRoundTriple", is_ledger_effect=True)
 def validate_open_mining_round_triple(party: Party, round_triple: OpenMiningRoundTriple) -> ValidatedOpenMiningRounds:
     pass
 
@@ -727,44 +726,37 @@ def check_transfer_constraints(transfer: Transfer, summary: TransferSummary, tra
     pass
 
 
-@ledger_effect
-@DamlName("executeTransfer")
+@DamlName("executeTransfer", is_ledger_effect=True)
 def execute_transfer(event_log_cid: ContractId[EventLog], config: RewardsIssuanceConfig, context: TransferContext, party: Party, development_fund_manager_blacklist: list[Party], t: Transfer) -> TransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("executeExternalPartyTransfer")
+@DamlName("executeExternalPartyTransfer", is_ledger_effect=True)
 def execute_external_party_transfer(party: Party, context: ExternalPartyTransferContext, t: Transfer) -> TransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("summarizeAndValidateContext")
+@DamlName("summarizeAndValidateContext", is_ledger_effect=True)
 def summarize_and_validate_context(contract_id: ContractId[EventLog], transfer_context: TransferContext, party: Party, list_value: list[Party], transfer: Transfer) -> TransferContextSummaryV2:
     pass
 
 
-@ledger_effect
-@DamlName("summarizeAndValidateExternalPartyContext")
+@DamlName("summarizeAndValidateExternalPartyContext", is_ledger_effect=True)
 def summarize_and_validate_external_party_context(context: ExternalPartyTransferContext, party: Party, tf: Transfer) -> TransferContextSummaryV2:
     pass
 
 
-@ledger_effect
-@DamlName("getValidatorRight")
+@DamlName("getValidatorRight", is_ledger_effect=True)
 def get_validator_right(csum: TransferContextSummaryV2, user: Party) -> ContractId[ValidatorRight]:
     pass
 
 
-@ledger_effect
-@DamlName("getIssuingMiningRound")
+@DamlName("getIssuingMiningRound", is_ledger_effect=True)
 def get_issuing_mining_round(csum: TransferContextSummaryV2, round: Round) -> IssuingMiningRound:
     pass
 
 
-@ledger_effect
-@DamlName("summarizeAndConsumeInputs")
+@DamlName("summarizeAndConsumeInputs", is_ledger_effect=True)
 def summarize_and_consume_inputs(csum: TransferContextSummaryV2, party: Party, sender: Party, inps: list[TransferInput]) -> TransferInputsSummary:
     pass
 
@@ -774,26 +766,22 @@ def dedup_output_lock_holders(out: TransferOutput) -> TransferOutput:
     pass
 
 
-@ledger_effect
-@DamlName("preprocessOutputs")
+@DamlName("preprocessOutputs", is_ledger_effect=True)
 def preprocess_outputs(transfer_config_amulet: TransferConfigV2[Amulet], outs: list[TransferOutput]) -> list[PreprocessedTransferOutput]:
     pass
 
 
-@ledger_effect
-@DamlName("summarizeTransfer")
+@DamlName("summarizeTransfer", is_ledger_effect=True)
 def summarize_transfer(sender: Party, open_round_number: Round, amulet_price: Decimal, transfer_config_amulet: TransferConfigV2[Amulet], inp: TransferInputsSummary, preprocessed_outputs: list[PreprocessedTransferOutput]) -> TransferSummary:
     pass
 
 
-@ledger_effect
-@DamlName("issueRewards")
+@DamlName("issueRewards", is_ledger_effect=True)
 def issue_rewards(config: RewardsIssuanceConfig, csum: TransferContextSummaryV2, provider: Party, beneficiaries: Optional[list[AppRewardBeneficiary]]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("createTransferOutputs")
+@DamlName("createTransferOutputs", is_ledger_effect=True)
 def create_transfer_outputs(round: Round, transfer_config_v2: TransferConfigV2[Amulet], party: Party, party_3: Party, transfer_summary: TransferSummary, list_value: list[PreprocessedTransferOutput]) -> tuple[list[CreatedAmulet], Optional[ContractId[Amulet]], list[EventLog_HoldingsChange]]:
     pass
 
@@ -823,32 +811,27 @@ def validate_buy_member_traffic_inputs(config_usd: AmuletConfig[USD], synchroniz
     pass
 
 
-@ledger_effect
-@DamlName("computeSynchronizerFees")
+@DamlName("computeSynchronizerFees", is_ledger_effect=True)
 def compute_synchronizer_fees(party: Party, validator: Party, traffic_amount: int, amulet_rules: AmuletRules, context: TransferContext) -> tuple[Decimal, Decimal]:
     pass
 
 
-@ledger_effect
-@DamlName("legacyAmuletCreateSummary")
+@DamlName("legacyAmuletCreateSummary", is_ledger_effect=True)
 def legacy_amulet_create_summary(party: Party, p: Party, mining_round_cid: ContractId[OpenMiningRound], amulet: ContractId[Amulet]) -> AmuletCreateSummary[ContractId[Amulet]]:
     pass
 
 
-@ledger_effect
-@DamlName("checkExpectedDso")
+@DamlName("checkExpectedDso", is_ledger_effect=True)
 def check_expected_dso(actual_dso: Party, opt_expected_dso: Optional[Party]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("exerciseAppTransfer")
+@DamlName("exerciseAppTransfer", is_ledger_effect=True)
 def exercise_app_transfer(expected_dso: Party, app_transfer_context: AppTransferContext, transfer: Transfer) -> TransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("exercisePaymentTransfer")
+@DamlName("exercisePaymentTransfer", is_ledger_effect=True)
 def exercise_payment_transfer(expected_dso: Party, payment_transfer_context: PaymentTransferContext, transfer: Transfer) -> TransferResult:
     pass
 
@@ -868,14 +851,12 @@ def mk_input_validator_faucet_coupon(cid: ContractId[ValidatorFaucetCoupon]) -> 
     pass
 
 
-@ledger_effect
-@DamlName("computeTransferPreapprovalFee")
+@DamlName("computeTransferPreapprovalFee", is_ledger_effect=True)
 def compute_transfer_preapproval_fee(duration: timedelta, amulet_config: AmuletConfig[USD], context: TransferContext, party: Party) -> tuple[Decimal, Decimal]:
     pass
 
 
-@ledger_effect
-@DamlName("splitAndBurn")
+@DamlName("splitAndBurn", is_ledger_effect=True)
 def split_and_burn(event_log_cid: ContractId[EventLog], sender: Party, amount: Decimal, inputs: list[TransferInput], context: TransferContext, party: Party, development_fund_manager_blacklist: list[Party], usage: str) -> tuple[TransferResult, Metadata]:
     pass
 
@@ -885,38 +866,32 @@ def total_burn_from_summary(transfer_summary: TransferSummary) -> Decimal:
     pass
 
 
-@ledger_effect
-@DamlName("payForTransferPreapproval")
+@DamlName("payForTransferPreapproval", is_ledger_effect=True)
 def pay_for_transfer_preapproval(reason: str, party: Party, provider: Party, context: PaymentTransferContext, inputs: list[TransferInput], expires_at: datetime, new_expires_at: datetime) -> tuple[Decimal, TransferResult, Metadata]:
     pass
 
 
-@ledger_effect
-@DamlName("externalPartyTransferFromChoiceContext")
+@DamlName("externalPartyTransferFromChoiceContext", is_ledger_effect=True)
 def external_party_transfer_from_choice_context(party: Party, context: ChoiceContext) -> ExternalPartyTransferContext:
     pass
 
 
-@ledger_effect
-@DamlName("unfeaturedPaymentContextFromChoiceContext")
+@DamlName("unfeaturedPaymentContextFromChoiceContext", is_ledger_effect=True)
 def unfeatured_payment_context_from_choice_context(party: Party, choice_context: ChoiceContext) -> ExternalPartyTransferContext:
     pass
 
 
-@ledger_effect
-@DamlName("getExternalPartyConfigStateFromChoiceContext")
+@DamlName("getExternalPartyConfigStateFromChoiceContext", is_ledger_effect=True)
 def get_external_party_config_state_from_choice_context(party: Party, context: ChoiceContext) -> tuple[ContractId[ExternalPartyConfigState], ExternalPartyConfigState]:
     pass
 
 
-@ledger_effect
-@DamlName("bootstrapExternalPartyConfigState")
+@DamlName("bootstrapExternalPartyConfigState", is_ledger_effect=True)
 def bootstrap_external_party_config_state(amulet_rules: AmuletRules, open_mining_round_triple: OpenMiningRoundTriple) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("getAndValidateCreatedAt")
+@DamlName("getAndValidateCreatedAt", is_ledger_effect=True)
 def get_and_validate_created_at(optional: Optional[datetime]) -> datetime:
     pass
 

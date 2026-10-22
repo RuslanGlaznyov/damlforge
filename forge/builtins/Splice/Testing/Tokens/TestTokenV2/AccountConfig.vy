@@ -1,6 +1,6 @@
 from typing import Annotated, Generic, TypeVar
 
-from forge.models import choice, ContractId, GenMap, ledger_effect, Optional, Party, template, variant
+from forge.models import choice, ContractId, GenMap, Optional, Party, template, variant
 from forge.builtins import DamlCaseAccessor, DamlName, no_derive
 from Splice.Api.Token.AllocationInstructionV2 import AllocationInstruction, AllocationInstructionAction, AllocationInstructionResult
 from Splice.Api.Token.AllocationV2 import Allocation, AllocationAction, AllocationResult
@@ -202,8 +202,7 @@ def store_account_config_for(account: Account, account_map: GenMap[Account, tupl
     pass
 
 
-@ledger_effect
-@DamlName("extractAccountConfigMap")
+@DamlName("extractAccountConfigMap", is_ledger_effect=True)
 def extract_account_config_map(admin: Party, extra_args: ExtraArgs, as_: list[Account]) -> GenMap[Account, tuple[AccountConfig, Optional[ContractId[AccountConfig]]]]:
     pass
 

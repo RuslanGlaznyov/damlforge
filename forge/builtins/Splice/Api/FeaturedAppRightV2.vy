@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party
+from forge.models import choice, ContractId, Decimal, Optional, Party
 from forge.builtins import DamlName, no_derive
 
 
@@ -36,7 +36,6 @@ interface FeaturedAppRight(view=FeaturedAppRightView):
         pass
 
 
-@ledger_effect
-@DamlName("featuredAppRight_CreateActivityMarkerImpl")
+@DamlName("featuredAppRight_CreateActivityMarkerImpl", is_ledger_effect=True)
 def featured_app_right_create_activity_marker_impl(i: FeaturedAppRight, contract_id: ContractId[FeaturedAppRight], featured_app_right_create_activity_marker: FeaturedAppRight_CreateActivityMarker) -> FeaturedAppRight_CreateActivityMarkerResult:
     pass

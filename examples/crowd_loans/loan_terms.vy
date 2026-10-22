@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from datetime import datetime
 
-from forge.models import ContractId, Decimal, Optional, Party, choice, ledger_effect, GenMap, template
+from forge.models import ContractId, Decimal, Optional, Party, choice, GenMap, template
 from forge.builtins import DamlName
 from forge.builtins.daml_lang import create, fetch
 from Splice.Amulet import Amulet
@@ -107,7 +107,6 @@ def update_milestones(paid_amount: Decimal, milestones: list[RepaymentMilestone]
     return updated
 
 
-@ledger_effect
 def verify_amulets(dso_party: Party, amulets: list[ContractId[Amulet]]) -> Decimal:
     total = Decimal(0)
     for amulet_cid in amulets:

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Annotated, Generic, TypeVar
 
-from forge.models import choice, ContractId, Decimal, GenMap, ledger_effect, Optional, Party, template, TextMap, variant, variant_record
+from forge.models import choice, ContractId, Decimal, GenMap, Optional, Party, template, TextMap, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName, no_derive
 from Splice.Amulet import Amulet, AmuletExpireSummary, AmuletExpireV2Summary, Amulet_Expire, Amulet_ExpireV2, DevelopmentFundCoupon, DevelopmentFundCoupon_DsoExpireResult, FeaturedAppRight, FeaturedAppRight_Update, FeaturedAppRight_UpdateResult, LockedAmulet, LockedAmulet_ExpireAmulet, LockedAmulet_ExpireAmuletV2, SvRewardCoupon, UnclaimedActivityRecord, UnclaimedReward
 from Splice.Amulet.RewardAccountingV2 import ProcessRewardsV2, ProcessRewardsV2_ProcessBatch, ProcessRewardsV2_ProcessBatchResult
@@ -1007,26 +1007,22 @@ def summarize_dso(dso_rules: DsoRules) -> DsoSummary:
     pass
 
 
-@ledger_effect
-@DamlName("executeActionRequiringConfirmation")
+@DamlName("executeActionRequiringConfirmation", is_ledger_effect=True)
 def execute_action_requiring_confirmation(party: Party, contract_id: ContractId[DsoRules], amulet_rules_cid: Optional[ContractId[AmuletRules]], act: ActionRequiringConfirmation) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("requireWellformedReason")
+@DamlName("requireWellformedReason", is_ledger_effect=True)
 def require_wellformed_reason(config: DsoRulesConfig, reason: Reason) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("requireWellformedVote")
+@DamlName("requireWellformedVote", is_ledger_effect=True)
 def require_wellformed_vote(config: DsoRulesConfig, vote: Vote) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("ensureNotExpired")
+@DamlName("ensureNotExpired", is_ledger_effect=True)
 def ensure_not_expired(expires_at: datetime) -> None:
     pass
 
@@ -1036,8 +1032,7 @@ def action_requiring_confirmation_effective_at(action: ActionRequiringConfirmati
     pass
 
 
-@ledger_effect
-@DamlName("getSvInfo")
+@DamlName("getSvInfo", is_ledger_effect=True)
 def get_sv_info(operator: Party, this: DsoRules) -> SvInfo:
     pass
 
@@ -1052,37 +1047,31 @@ def sv_has_been_onboarded_before(sv_name: str, this: DsoRules) -> bool:
     pass
 
 
-@ledger_effect
-@DamlName("ensureNeverOperatedNode")
+@DamlName("ensureNeverOperatedNode", is_ledger_effect=True)
 def ensure_never_operated_node(new_sv_party: Party, this: DsoRules) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("dsoRules_addSv")
+@DamlName("dsoRules_addSv", is_ledger_effect=True)
 def dso_rules_add_sv(this0: DsoRules, arg: DsoRules_AddSv) -> ContractId[DsoRules]:
     pass
 
 
-@ledger_effect
-@DamlName("createPerSvContracts")
+@DamlName("createPerSvContracts", is_ledger_effect=True)
 def create_per_sv_contracts(dso_rules: DsoRules, dso_rules_add_sv: DsoRules_AddSv) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("createPerSvPartyContracts")
+@DamlName("createPerSvPartyContracts", is_ledger_effect=True)
 def create_per_sv_party_contracts(party: Party, new_sv_party: Party, new_sv_name: str, synchronizer_nodes: GenMap[str, SynchronizerNodeConfig], amulet_price: Optional[Decimal], vote_cooldown_time: timedelta) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("getAndValidateSvParty")
+@DamlName("getAndValidateSvParty", is_ledger_effect=True)
 def get_and_validate_sv_party(dso_rules: DsoRules, optional: Optional[Party]) -> Party:
     pass
 
 
-@ledger_effect
-@DamlName("enforceCooldown")
+@DamlName("enforceCooldown", is_ledger_effect=True)
 def enforce_cooldown(cooldown_name: str, cooldown: timedelta, last_action_time: Optional[datetime]) -> None:
     pass

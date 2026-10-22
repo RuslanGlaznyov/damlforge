@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party
+from forge.models import choice, ContractId, Decimal, Optional, Party
 from forge.builtins import DamlName
 from Splice.Api.Token.MetadataV1 import ExtraArgs, Metadata
 
@@ -31,7 +31,6 @@ interface RewardCoupon(view=RewardCouponView):
         pass
 
 
-@ledger_effect
-@DamlName("rewardCoupon_assignBeneficiariesImpl")
+@DamlName("rewardCoupon_assignBeneficiariesImpl", is_ledger_effect=True)
 def reward_coupon_assign_beneficiaries_impl(i: RewardCoupon, contract_id: ContractId[RewardCoupon], reward_coupon_assign_beneficiaries: RewardCoupon_AssignBeneficiaries) -> RewardCoupon_AssignBeneficiariesResult:
     pass

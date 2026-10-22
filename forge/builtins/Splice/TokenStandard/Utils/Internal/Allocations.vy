@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TypeVar
 
-from forge.models import ContractId, Decimal, GenMap, ledger_effect, Optional, Party, TextMap
+from forge.models import ContractId, Decimal, GenMap, Optional, Party, TextMap
 from forge.builtins import DamlName
 from DA.Internal.Fail.Types import FailureStatus
 from Splice.Api.Token.AllocationRequestV2 import AllocationRequest, AllocationRequestView, AllocationRequest_Accept, AllocationRequest_AcceptResult, AllocationRequest_Reject, AllocationRequest_RejectResult, AllocationRequest_Withdraw, AllocationRequest_WithdrawResult
@@ -61,8 +61,7 @@ def is_valid_settlement_info_v2(allocation_v2: AllocationV2.SettlementInfo) -> b
     pass
 
 
-@ledger_effect
-@DamlName("ensureIsReceiptAllocation")
+@DamlName("ensureIsReceiptAllocation", is_ledger_effect=True)
 def ensure_is_receipt_allocation(executors: list[Party], receiver: Party, receipt_account: Account, choice_arg: AllocationInstructionV2.AllocationFactory_Allocate) -> None:
     pass
 
@@ -72,14 +71,12 @@ def cannot_withdraw_committed_allocation_failure(optional: Optional[datetime]) -
     pass
 
 
-@ledger_effect
-@DamlName("ensureWithdrawIsAllowed")
+@DamlName("ensureWithdrawIsAllowed", is_ledger_effect=True)
 def ensure_withdraw_is_allowed(allocation: AllocationV2.AllocationSpecification) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("allocationV2_withdrawDefaultImplUsingV1")
+@DamlName("allocationV2_withdrawDefaultImplUsingV1", is_ledger_effect=True)
 def allocation_v2_withdraw_default_impl_using_v1(this: AllocationV1.Allocation, self_: ContractId[AllocationV2.Allocation], allocation_v2: AllocationV2.Allocation_Withdraw) -> AllocationV2.AllocationResult:
     pass
 
@@ -94,14 +91,12 @@ def settlement_factory_v2_private_asset_settle_batch_extra_observers_default_imp
     pass
 
 
-@ledger_effect
-@DamlName("validateNextIterationArgs")
+@DamlName("validateNextIterationArgs", is_ledger_effect=True)
 def validate_next_iteration_args(name: str, iterated_settlement_allowed: bool, extra_transfer_leg_sides: list[AllocationV2.TransferLegSide], next_iteration_funding: Optional[TextMap[Decimal]]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("fetchAndValidateAllocations")
+@DamlName("fetchAndValidateAllocations", is_ledger_effect=True)
 def fetch_and_validate_allocations(admin: Party, allocation_v2: AllocationV2.SettlementFactory_SettleBatch) -> list[tuple[AllocationV2.FinalizedAllocation, AllocationV2.AllocationView]]:
     pass
 
@@ -171,8 +166,7 @@ def downcast_v2_v1_allocation_instruction_pending_actions(gen_map: GenMap[Alloca
     pass
 
 
-@ledger_effect
-@DamlName("allocationInstructionV1_updateDefaultImplUsingV2")
+@DamlName("allocationInstructionV1_updateDefaultImplUsingV2", is_ledger_effect=True)
 def allocation_instruction_v1_update_default_impl_using_v2(contract_id: ContractId[AllocationInstructionV1.AllocationInstruction], allocation_instruction_v1: AllocationInstructionV1.AllocationInstruction_Update) -> AllocationInstructionV1.AllocationInstructionResult:
     pass
 
@@ -202,50 +196,42 @@ def try_downcast_v2_v1_allocation_view(allocate_before: Optional[datetime], v2_v
     pass
 
 
-@ledger_effect
-@DamlName("allocationV1_executeTransferDefaultImplUsingV2")
+@DamlName("allocationV1_executeTransferDefaultImplUsingV2", is_ledger_effect=True)
 def allocation_v1_execute_transfer_default_impl_using_v2(allocation_factory_cid: ContractId[AllocationInstructionV2.AllocationFactory], settlement_factory_cid: ContractId[AllocationV2.SettlementFactory], v2_sender_allocation: AllocationV2.Allocation, v1_sender_alloc_cid: ContractId[AllocationV1.Allocation], arg: AllocationV1.Allocation_ExecuteTransfer) -> AllocationV1.Allocation_ExecuteTransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequestV2_rejectDefaultImplUsingV1")
+@DamlName("allocationRequestV2_rejectDefaultImplUsingV1", is_ledger_effect=True)
 def allocation_request_v2_reject_default_impl_using_v1(allowed_actors: list[list[Party]], self_: ContractId[AllocationRequest], arg: AllocationRequest_Reject) -> AllocationRequest_RejectResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequestV2_withdrawDefaultImplUsingV1")
+@DamlName("allocationRequestV2_withdrawDefaultImplUsingV1", is_ledger_effect=True)
 def allocation_request_v2_withdraw_default_impl_using_v1(this: AllocationRequest, self_: ContractId[AllocationRequest], arg: AllocationRequest_Withdraw) -> AllocationRequest_WithdrawResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequestV1_rejectDefaultImpl")
+@DamlName("allocationRequestV1_rejectDefaultImpl", is_ledger_effect=True)
 def allocation_request_v1_reject_default_impl(allowed_actors: list[Party], contract_id: ContractId[AllocationRequestV1.AllocationRequest], arg: AllocationRequestV1.AllocationRequest_Reject) -> ChoiceExecutionMetadata:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequestV1_withdrawDefaultImpl")
+@DamlName("allocationRequestV1_withdrawDefaultImpl", is_ledger_effect=True)
 def allocation_request_v1_withdraw_default_impl(allocation_request_v1: AllocationRequestV1.AllocationRequest, contract_id: ContractId[AllocationRequestV1.AllocationRequest], allocation_request_v1_2: AllocationRequestV1.AllocationRequest_Withdraw) -> ChoiceExecutionMetadata:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequestV2_acceptDefaultImpl")
+@DamlName("allocationRequestV2_acceptDefaultImpl", is_ledger_effect=True)
 def allocation_request_v2_accept_default_impl(allowed_actors: list[list[Party]], self_: ContractId[AllocationRequest], arg: AllocationRequest_Accept) -> AllocationRequest_AcceptResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequestV2_rejectDefaultImplV2Only")
+@DamlName("allocationRequestV2_rejectDefaultImplV2Only", is_ledger_effect=True)
 def allocation_request_v2_reject_default_impl_v2_only(allowed_actors: list[list[Party]], self_: ContractId[AllocationRequest], arg: AllocationRequest_Reject) -> AllocationRequest_RejectResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequestV2_withdrawDefaultImplV2Only")
+@DamlName("allocationRequestV2_withdrawDefaultImplV2Only", is_ledger_effect=True)
 def allocation_request_v2_withdraw_default_impl_v2_only(this: AllocationRequest, self_: ContractId[AllocationRequest], arg: AllocationRequest_Withdraw) -> AllocationRequest_WithdrawResult:
     pass
 

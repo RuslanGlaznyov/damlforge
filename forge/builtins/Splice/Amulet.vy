@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Generic, TypeVar
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party, template, variant
+from forge.models import choice, ContractId, Decimal, Optional, Party, template, variant
 from forge.builtins import DamlName, no_derive
 from Splice.Api.FeaturedAppRightV1 import AppRewardBeneficiary
 from Splice.Api.RewardAssignmentV1 import RewardCoupon, RewardCoupon_AssignBeneficiaries, RewardCoupon_AssignBeneficiariesResult
@@ -402,20 +402,17 @@ def default_app_activity_weight() -> Decimal:
     pass
 
 
-@ledger_effect
-@DamlName("validateAppRewardBeneficiaries")
+@DamlName("validateAppRewardBeneficiaries", is_ledger_effect=True)
 def validate_app_reward_beneficiaries(beneficiaries: list[AppRewardBeneficiary]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("validateAppRewardBeneficiariesV2")
+@DamlName("validateAppRewardBeneficiariesV2", is_ledger_effect=True)
 def validate_app_reward_beneficiaries_v2(beneficiaries: list[FeaturedAppRightV2.AppRewardBeneficiary]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("requireAmuletExpiredForAllRounds")
+@DamlName("requireAmuletExpiredForAllRounds", is_ledger_effect=True)
 def require_amulet_expired_for_all_rounds(external_party_config_state0_cid: ContractId[ExternalPartyConfigState], external_party_config_state1_cid: ContractId[ExternalPartyConfigState], amulet: Amulet) -> None:
     pass
 
@@ -425,25 +422,21 @@ def max_num_new_coupon_v2_beneficiaries() -> int:
     pass
 
 
-@ledger_effect
-@DamlName("rewardCouponV2_assignBeneficiariesImpl")
+@DamlName("rewardCouponV2_assignBeneficiariesImpl", is_ledger_effect=True)
 def reward_coupon_v2_assign_beneficiaries_impl(coupon: RewardCouponV2, contract_id: ContractId[RewardCoupon], arg: RewardCoupon_AssignBeneficiaries) -> RewardCoupon_AssignBeneficiariesResult:
     pass
 
 
-@ledger_effect
-@DamlName("logAmuletMint")
+@DamlName("logAmuletMint", is_ledger_effect=True)
 def log_amulet_mint(party: Party, factory_cid: ContractId[EventLog], receiver: Party, amount: Decimal, meta: Metadata, minted_amulet_cid: ContractId[Amulet]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("logAmuletBurn")
+@DamlName("logAmuletBurn", is_ledger_effect=True)
 def log_amulet_burn(party: Party, factory_cid: ContractId[EventLog], sender: Party, amount: Decimal, reason: str, burned_amulet_cid: ContractId[Holding]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("logAmuletUnlock")
+@DamlName("logAmuletUnlock", is_ledger_effect=True)
 def log_amulet_unlock(party: Party, reason: str, owner: Party, locked_amulet_cid: ContractId[LockedAmulet], unlocked_amulet_cid: ContractId[Amulet]) -> None:
     pass

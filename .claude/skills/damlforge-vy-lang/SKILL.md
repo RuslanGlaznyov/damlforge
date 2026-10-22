@@ -20,9 +20,9 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 ## Before writing any .vy file
 
 1. Every field/type name in the file must resolve to one of: a Python-native type (including `date`, `datetime`, and `timedelta` imported from Python's `datetime` module), a DamlForge builtin type (`Party`, `Decimal`, `Int`, `ContractId[T]`, `GenMap[K,V]`, `TextMap[T]`), or a `struct`/`template`/`interface`/`flag`/`variant` declared/imported in scope. See reference.md § Type System.
-2. Function and method decorators (`@choice`, `@view`, `@ledger_effect`, `@variant_record`, `@DamlName`) must be imported from `forge.models` or `forge.builtins`. The `@template` and `@variant` class markers are consumed by the pre-parser and need no import. See reference.md § Decorators.
+2. Function and method decorators (`@choice`, `@view`, `@variant_record`, `@DamlName`) must be imported from `forge.models` or `forge.builtins`. The `@template` and `@variant` class markers are consumed by the pre-parser and need no import. See reference.md § Decorators.
 3. Every `template` needs `signatory`. `key` requires `maintainer` and vice versa. `ensure` (if present) must be a `bool`-typed comparison/boolop/call, never bare arithmetic. See reference.md § Template Fields.
-4. A plain `def` that calls `fetch`/`exercise`/`create`/`archive`/`lookup` must be marked `@ledger_effect` (choices are exempt). See reference.md § Ledger Effects.
+4. Daml update effects are inferred automatically from calls to `fetch`/`exercise`/`create`/`archive`/`lookup` and from transitive calls to functions containing those operations. Choices are already update contexts. See reference.md § Ledger Effects.
 5. Never put a `def` inside a `struct` - it is silently dropped, no error. Use a free top-level function instead.
 
 Generated stubs may also contain `@no_derive` from `forge.builtins` when the DAR
@@ -44,7 +44,7 @@ change the generated Daml derivations.
 | Choice | `@choice(controller=..., consuming=True)` |
 | Fetch/exercise/create/archive/lookup | called directly, no import needed |
 | Optional field | `Optional[X]` - never write `Some(...)`/`from_some(...)` yourself, the compiler inserts it |
-| Current ledger time | `datetime.now()` from Python's `datetime`; use only in a choice or `@ledger_effect` function |
+| Current ledger time | `datetime.now()` from Python's `datetime`; DamlForge infers the enclosing function as an update |
 | Calendar date | `date(year, month, day)` from Python's `datetime`; integer months are `1..12` |
 | Date and time | `datetime.combine(date_value, time(hour, minute, second))`; lowers to `DA.Time.time` |
 | Add relative time | `timestamp + timedelta(...)`; lowers to `DA.Time.addRelTime` |
@@ -62,7 +62,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 Never import `Date`, `Timestamp`, or `RelTime` from `forge.models`. They are
 represented by `date`, `datetime`, and `timedelta`. Use `datetime.now()` only
-in ledger-effect contexts. See reference.md § Type System for constructors,
+in Daml update contexts. See reference.md § Type System for constructors,
 arithmetic, and Unix timestamp conversion.
 
 ## Common Mistakes
@@ -75,7 +75,7 @@ arithmetic, and Unix timestamp conversion.
 | Writing `def helper(): ...` inside a `struct` | Move it to a top-level `def`; structs are plain data records |
 | `controller=`/`observer=` referencing a name that isn't a with-arg, a template field, or `self.<field>` | Only reference the choice's own arguments/fields - anything else either resolves to an unrelated same-named field or fails `damlc` with "Ambiguous occurrence" (`DF1224`) |
 | `key` without `maintainer` (or vice versa) | Always declare both together (`DF1210`/`DF1211`) |
-| A bare `def` calling `archive(self)`/`fetch(...)` etc. | Add `@ledger_effect` above it (`DF1205`) |
+| A bare `def` calling `archive(self)`/`fetch(...)` etc. | No marker is needed; DamlForge infers the function as an update |
 | `from X import Y as Z` | Aliased from-imports are banned; use `import X as Y` (module alias) instead if disambiguation is needed |
 | `dict[K, V]` or a hand-rolled `Map[...]` field | Use `GenMap[K, V]` / `TextMap[V]` |
 

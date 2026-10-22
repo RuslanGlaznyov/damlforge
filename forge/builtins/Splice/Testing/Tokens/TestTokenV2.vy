@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party, template
+from forge.models import choice, ContractId, Decimal, Optional, Party, template
 from forge.builtins import DamlName
 from Splice.Api.Token.AllocationInstructionV2 import AllocationFactory, AllocationFactory_Allocate, AllocationInstructionResult
 from Splice.Api.Token.HoldingV2 import Account, InstrumentId
@@ -30,13 +30,11 @@ class TokenRules:
         pass
 
 
-@ledger_effect
-@DamlName("token_transferFactory_transferImpl")
+@DamlName("token_transferFactory_transferImpl", is_ledger_effect=True)
 def token_transfer_factory_transfer_impl(admin: Party, actors: list[Party], transfer: Transfer, extra_args: ExtraArgs) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("token_allocationFactoryV2_allocateImpl")
+@DamlName("token_allocationFactoryV2_allocateImpl", is_ledger_effect=True)
 def token_allocation_factory_v2_allocate_impl(call_source: CallSource, allocation_kind: AllocationKind, token_rules: TokenRules, allocate_before: Optional[datetime], contract_id: ContractId[AllocationFactory], arg: AllocationFactory_Allocate) -> AllocationInstructionResult:
     pass

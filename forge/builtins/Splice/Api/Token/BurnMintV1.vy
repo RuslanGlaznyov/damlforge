@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Party
+from forge.models import choice, ContractId, Decimal, Party
 from forge.builtins import DamlName
 from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
 from Splice.Api.Token.MetadataV1 import ChoiceContext, ExtraArgs, Metadata
@@ -31,13 +31,11 @@ interface BurnMintFactory(view=BurnMintFactoryView):
         pass
 
 
-@ledger_effect
-@DamlName("burnMintFactory_burnMintImpl")
+@DamlName("burnMintFactory_burnMintImpl", is_ledger_effect=True)
 def burn_mint_factory_burn_mint_impl(i: BurnMintFactory, contract_id: ContractId[BurnMintFactory], burn_mint_factory_burn_mint: BurnMintFactory_BurnMint) -> BurnMintFactory_BurnMintResult:
     pass
 
 
-@ledger_effect
-@DamlName("burnMintFactory_publicFetchImpl")
+@DamlName("burnMintFactory_publicFetchImpl", is_ledger_effect=True)
 def burn_mint_factory_public_fetch_impl(i: BurnMintFactory, contract_id: ContractId[BurnMintFactory], burn_mint_factory_public_fetch: BurnMintFactory_PublicFetch) -> BurnMintFactoryView:
     pass

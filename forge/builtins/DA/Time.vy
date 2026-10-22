@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 
-from forge.models import ledger_effect
 from forge.builtins import DamlName
 
 
@@ -53,25 +52,21 @@ def convert_microseconds_to_rel_time(msec: int) -> timedelta:
     pass
 
 
-@ledger_effect
-@DamlName("isLedgerTimeLT")
+@DamlName("isLedgerTimeLT", is_ledger_effect=True)
 def is_ledger_time_lt(v1: datetime) -> bool:
     pass
 
 
-@ledger_effect
-@DamlName("isLedgerTimeLE")
+@DamlName("isLedgerTimeLE", is_ledger_effect=True)
 def is_ledger_time_le(time: datetime) -> bool:
     pass
 
 
-@ledger_effect
-@DamlName("isLedgerTimeGT")
+@DamlName("isLedgerTimeGT", is_ledger_effect=True)
 def is_ledger_time_gt(time: datetime) -> bool:
     pass
 
 
-@ledger_effect
-@DamlName("isLedgerTimeGE")
+@DamlName("isLedgerTimeGE", is_ledger_effect=True)
 def is_ledger_time_ge(time: datetime) -> bool:
     pass

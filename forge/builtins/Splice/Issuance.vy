@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Annotated
 
-from forge.models import Decimal, ledger_effect, Optional
+from forge.models import Decimal, Optional
 from forge.builtins import DamlName, no_derive
 from Splice.Schedule import Schedule
 
@@ -64,8 +64,7 @@ def get_total_validator_faucet_coupons(open_mining_round_summary: OpenMiningRoun
     pass
 
 
-@ledger_effect
-@DamlName("validateOpenMiningRoundSummary")
+@DamlName("validateOpenMiningRoundSummary", is_ledger_effect=True)
 def validate_open_mining_round_summary(open_mining_round_summary: OpenMiningRoundSummary) -> None:
     pass
 

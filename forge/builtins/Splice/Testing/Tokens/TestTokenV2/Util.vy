@@ -1,6 +1,6 @@
 from typing import TypeVar
 
-from forge.models import ContractId, GenMap, ledger_effect, Optional, variant
+from forge.models import ContractId, GenMap, Optional, variant
 from forge.builtins import DamlName, no_derive
 from Splice.Api.Token.MetadataV1 import AnyContract, ChoiceContext
 from Splice.Api.Token.TransferEventsV2 import EventLog
@@ -32,19 +32,16 @@ def token_rules_context_key() -> str:
     pass
 
 
-@ledger_effect
-@DamlName("getTokenRulesFromContext")
+@DamlName("getTokenRulesFromContext", is_ledger_effect=True)
 def get_token_rules_from_context(context: ChoiceContext) -> ContractId[AnyContract]:
     pass
 
 
-@ledger_effect
-@DamlName("getEventLogFromContext")
+@DamlName("getEventLogFromContext", is_ledger_effect=True)
 def get_event_log_from_context(context: ChoiceContext) -> ContractId[EventLog]:
     pass
 
 
-@ledger_effect
-@DamlName("archiveIfCalledFromV2")
+@DamlName("archiveIfCalledFromV2", is_ledger_effect=True)
 def archive_if_called_from_v2(call_source: CallSource, optional: Optional[ContractId[T]]) -> None:
     pass

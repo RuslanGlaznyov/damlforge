@@ -41,7 +41,7 @@ def _lower(source):
 
 
 _DECORATOR_PREAMBLE = (
-    "from forge.models import choice, ledger_effect, template, view\n"
+    "from forge.models import choice, template, view\n"
     "from forge.builtins import DamlName\n"
 )
 
@@ -422,7 +422,7 @@ def test_create_infers_bare_contract_id_result_type():
         "    signatory: list[Party] = [owner]\n\n"
         "struct Holder:\n"
         "    tracker_cid: Optional[ContractId[Tracker]]\n\n"
-        "@ledger_effect\n"
+        ""
         "def build(owner: Party) -> Holder:\n"
         "    new_cid = create(Tracker(owner=owner))\n"
         "    return Holder(tracker_cid=new_cid)\n"
@@ -445,6 +445,23 @@ def test_create_infers_bare_contract_id_result_type():
             ),
         )
     )
+
+
+def test_ledger_effect_is_inferred_transitively_for_user_functions():
+    ir = _analyze_and_lower(
+        "from forge.builtins.daml_lang import create\n"
+        "from forge.models import ContractId\n\n"
+        "@template\n"
+        "class Tracker:\n"
+        "    owner: Party\n"
+        "    signatory: Party = owner\n\n"
+        "def inner(owner: Party) -> ContractId[Tracker]:\n"
+        "    return create(Tracker(owner=owner))\n\n"
+        "def outer(owner: Party) -> ContractId[Tracker]:\n"
+        "    return inner(owner)\n"
+    )
+
+    assert {fn.name for fn in ir.functions if fn.effectful} == {"inner", "outer"}
 
 
 def test_generic_type_ref_lowers_nested_subscripts():
@@ -660,12 +677,13 @@ def test_len_import_is_collected_from_template_init():
     assert IRImport("DA.Text", alias="Text") in ir.imports
 
 
-def test_module_level_function_lowers_with_decorators():
-    ir = _lower("@ledger_effect\n" "def helper(x: int128) -> int128:\n" "    return x\n")
+def test_module_level_function_lowers_with_inferred_effect():
+    ir = _lower("" "def helper(x: int128) -> int128:\n" "    return x\n")
 
     (fn,) = ir.functions
     assert fn.name == "helper"
-    assert fn.decorators == ("ledger_effect",)
+    assert fn.decorators == ()
+    assert fn.effectful is False
     assert fn.args == (Field("x", TypeRef("int128")),)
     assert fn.return_type == TypeRef("int128")
 

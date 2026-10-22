@@ -1,6 +1,6 @@
 from typing import Annotated, TypeVar
 
-from forge.models import choice, ContractId, GenMap, ledger_effect, Optional, Party, template
+from forge.models import choice, ContractId, GenMap, Optional, Party, template
 from forge.builtins import DamlName
 from Splice.Api.FeaturedAppRightV1 import AppRewardBeneficiary, FeaturedAppRight
 from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
@@ -110,24 +110,21 @@ class MergeDelegationProposal:
         pass
 
 
-@ledger_effect
-@DamlName("runBatch")
+@DamlName("runBatch", is_ledger_effect=True)
 def run_batch(party: Party, list_value: list[MergeDelegationCall], holding_map: GenMap[InstrumentId, list[ContractId[Holding]]], results: list[MergeDelegation_MergeResult]) -> BatchMergeUtility_BatchMergeResult:
     pass
 
 
-@ledger_effect
-@DamlName("createActivityMarkerForProvider")
+@DamlName("createActivityMarkerForProvider", is_ledger_effect=True)
 def create_activity_marker_for_provider(provider: Party, call: FeaturedAppRightCall) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("checkExpected")
+@DamlName("checkExpected", is_ledger_effect=True)
 def check_expected(description: str, expected: A, actual: A) -> None:
     pass
 
 
-@ledger_effect
+@DamlName("require", is_ledger_effect=True)
 def require(msg: str, invariant: bool) -> None:
     pass

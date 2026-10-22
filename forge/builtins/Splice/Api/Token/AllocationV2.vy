@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, GenMap, ledger_effect, Optional, Party, TextMap, variant, variant_record
+from forge.models import choice, ContractId, Decimal, GenMap, Optional, Party, TextMap, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName
 from Splice.Api.Token.HoldingV2 import Account, Holding
 from Splice.Api.Token.MetadataV1 import AnyContract, ExtraArgs, Metadata
@@ -165,20 +165,17 @@ def aa_custom(value: AllocationAction) -> Optional[str]:
     pass
 
 
-@ledger_effect
-@DamlName("allocation_settleImpl")
+@DamlName("allocation_settleImpl", is_ledger_effect=True)
 def allocation_settle_impl(i: Allocation, contract_id: ContractId[Allocation], allocation_settle: Allocation_Settle) -> AllocationResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocation_cancelImpl")
+@DamlName("allocation_cancelImpl", is_ledger_effect=True)
 def allocation_cancel_impl(i: Allocation, contract_id: ContractId[Allocation], allocation_cancel: Allocation_Cancel) -> AllocationResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocation_withdrawImpl")
+@DamlName("allocation_withdrawImpl", is_ledger_effect=True)
 def allocation_withdraw_impl(i: Allocation, contract_id: ContractId[Allocation], allocation_withdraw: Allocation_Withdraw) -> AllocationResult:
     pass
 
@@ -198,14 +195,12 @@ def allocation_withdraw_extra_observers(i: Allocation, allocation_withdraw: Allo
     pass
 
 
-@ledger_effect
-@DamlName("settlementFactory_publicFetchImpl")
+@DamlName("settlementFactory_publicFetchImpl", is_ledger_effect=True)
 def settlement_factory_public_fetch_impl(i: SettlementFactory, contract_id: ContractId[SettlementFactory], settlement_factory_public_fetch: SettlementFactory_PublicFetch) -> SettlementFactoryView:
     pass
 
 
-@ledger_effect
-@DamlName("settlementFactory_settleBatchImpl")
+@DamlName("settlementFactory_settleBatchImpl", is_ledger_effect=True)
 def settlement_factory_settle_batch_impl(i: SettlementFactory, contract_id: ContractId[SettlementFactory], settlement_factory_settle_batch: SettlementFactory_SettleBatch) -> SettlementFactory_SettleBatchResult:
     pass
 

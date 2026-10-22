@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, GenMap, ledger_effect, Optional, Party, variant, variant_record
+from forge.models import choice, ContractId, GenMap, Optional, Party, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName
 from Splice.Api.Token.AllocationV1 import Allocation, AllocationSpecification
 from Splice.Api.Token.HoldingV1 import Holding
@@ -72,25 +72,21 @@ def allocation_instruction_result_failed(value: AllocationInstructionResult_Outp
     pass
 
 
-@ledger_effect
-@DamlName("allocationInstruction_withdrawImpl")
+@DamlName("allocationInstruction_withdrawImpl", is_ledger_effect=True)
 def allocation_instruction_withdraw_impl(i: AllocationInstruction, contract_id: ContractId[AllocationInstruction], allocation_instruction_withdraw: AllocationInstruction_Withdraw) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationInstruction_updateImpl")
+@DamlName("allocationInstruction_updateImpl", is_ledger_effect=True)
 def allocation_instruction_update_impl(i: AllocationInstruction, contract_id: ContractId[AllocationInstruction], allocation_instruction_update: AllocationInstruction_Update) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationFactory_allocateImpl")
+@DamlName("allocationFactory_allocateImpl", is_ledger_effect=True)
 def allocation_factory_allocate_impl(i: AllocationFactory, contract_id: ContractId[AllocationFactory], allocation_factory_allocate: AllocationFactory_Allocate) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationFactory_publicFetchImpl")
+@DamlName("allocationFactory_publicFetchImpl", is_ledger_effect=True)
 def allocation_factory_public_fetch_impl(i: AllocationFactory, contract_id: ContractId[AllocationFactory], allocation_factory_public_fetch: AllocationFactory_PublicFetch) -> AllocationFactoryView:
     pass

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from forge.models import ContractId, ledger_effect, Party, template
+from forge.models import ContractId, Party, template
 from forge.builtins import DamlName
 from Splice.Amulet import LockedAmulet
 from Splice.Amulet.TwoStepTransfer import TwoStepTransfer
@@ -22,19 +22,16 @@ def standard_transfer_to_two_step_transfer(transfer: Transfer) -> TwoStepTransfe
     pass
 
 
-@ledger_effect
-@DamlName("executeTransferInstr")
+@DamlName("executeTransferInstr", is_ledger_effect=True)
 def execute_transfer_instr(instr: AmuletTransferInstruction, extra_args: ExtraArgs) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("abortAmuletTransferInstruction")
+@DamlName("abortAmuletTransferInstruction", is_ledger_effect=True)
 def abort_amulet_transfer_instruction(instr: AmuletTransferInstruction, extra_args: ExtraArgs) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("updateAmuletTransferInstruction")
+@DamlName("updateAmuletTransferInstruction", is_ledger_effect=True)
 def update_amulet_transfer_instruction(instr: AmuletTransferInstruction, extra_actors: list[Party], extra_args: ExtraArgs) -> TransferInstructionResult:
     pass

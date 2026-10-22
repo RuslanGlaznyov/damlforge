@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, GenMap, ledger_effect, Optional, Party, variant, variant_record
+from forge.models import choice, ContractId, Decimal, GenMap, Optional, Party, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName
 from Splice.Api.Token.HoldingV2 import Account, Holding, InstrumentId
 from Splice.Api.Token.MetadataV1 import ExtraArgs, Metadata
@@ -114,20 +114,17 @@ def transfer_instruction_result_failed(value: TransferInstructionResult_Output) 
     pass
 
 
-@ledger_effect
-@DamlName("transferInstruction_acceptImpl")
+@DamlName("transferInstruction_acceptImpl", is_ledger_effect=True)
 def transfer_instruction_accept_impl(i: TransferInstruction, contract_id: ContractId[TransferInstruction], transfer_instruction_accept: TransferInstruction_Accept) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("transferInstruction_rejectImpl")
+@DamlName("transferInstruction_rejectImpl", is_ledger_effect=True)
 def transfer_instruction_reject_impl(i: TransferInstruction, contract_id: ContractId[TransferInstruction], transfer_instruction_reject: TransferInstruction_Reject) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("transferInstruction_withdrawImpl")
+@DamlName("transferInstruction_withdrawImpl", is_ledger_effect=True)
 def transfer_instruction_withdraw_impl(i: TransferInstruction, contract_id: ContractId[TransferInstruction], transfer_instruction_withdraw: TransferInstruction_Withdraw) -> TransferInstructionResult:
     pass
 
@@ -152,13 +149,11 @@ def transfer_factory_transfer_extra_observers(i: TransferFactory, transfer_facto
     pass
 
 
-@ledger_effect
-@DamlName("transferFactory_transferImpl")
+@DamlName("transferFactory_transferImpl", is_ledger_effect=True)
 def transfer_factory_transfer_impl(i: TransferFactory, contract_id: ContractId[TransferFactory], transfer_factory_transfer: TransferFactory_Transfer) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("transferFactory_publicFetchImpl")
+@DamlName("transferFactory_publicFetchImpl", is_ledger_effect=True)
 def transfer_factory_public_fetch_impl(i: TransferFactory, contract_id: ContractId[TransferFactory], transfer_factory_public_fetch: TransferFactory_PublicFetch) -> TransferFactoryView:
     pass

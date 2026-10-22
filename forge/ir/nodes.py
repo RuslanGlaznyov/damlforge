@@ -273,6 +273,7 @@ class IRFunction:
     decorators: tuple[str, ...]
     body: tuple[IRStmt, ...]
     src: Optional[SourceSpan] = field(default=None, compare=False)
+    effectful: bool = False
 
 
 @dataclass(frozen=True)

@@ -43,6 +43,15 @@ def _str_arg(dec) -> Optional[str]:
     return args[0].value if args and isinstance(args[0], vy_ast.Str) else None
 
 
+def _bool_keyword(dec, name: str) -> bool:
+    return any(
+        keyword.arg == name
+        and isinstance(keyword.value, vy_ast.NameConstant)
+        and keyword.value.value is True
+        for keyword in getattr(dec, "keywords", ())
+    )
+
+
 def _annotated_name(annotation) -> Optional[str]:
     if getattr(getattr(annotation, "value", None), "id", None) != "Annotated":
         return None
@@ -96,7 +105,8 @@ class StubMetadata:
         self.names.add(fn.name)
         if (daml_name := _str_arg(_decorator(fn, "DamlName"))) is not None:
             self.function_renames[fn.name] = daml_name
-        if _decorator(fn, "ledger_effect") is not None:
+        daml_name_dec = _decorator(fn, "DamlName")
+        if daml_name_dec is not None and _bool_keyword(daml_name_dec, "is_ledger_effect"):
             self.ledger_effect_fns.add(fn.name)
         if (accessor := _decorator(fn, "DamlCaseAccessor")) is not None:
             arity = next((k.value.value for k in accessor.keywords if k.arg == "arity"), 1)

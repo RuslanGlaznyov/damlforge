@@ -438,8 +438,11 @@ class BidirectionalTypeChecker:
     ) -> TypeTerm | None:
         function_name = call.func.id if isinstance(call.func, vy_ast.Name) else None
 
+        if return_type := call._metadata.get("return_type"):
+            self._check_call_arguments(call, env, None)
+            return AppliedType(canonical_type_name(return_type))
+
         for metadata, type_name in (
-            ("datetime_now", "Time"),
             ("datetime_combine_arguments", "Time"),
             ("fromtimestamp_argument", "Time"),
             ("date_arguments", "Date"),

@@ -70,9 +70,6 @@ Python's `datetime`, `date`, and `timedelta` map to Daml `Time`, `Date`, and
 
 ```python
 from datetime import date, datetime, time, timedelta, timezone
-from forge.models import ledger_effect
-
-@ledger_effect
 def current_time() -> datetime:
     return datetime.now()
 
@@ -95,8 +92,8 @@ def from_seconds(seconds: int) -> datetime:
     return datetime.fromtimestamp(seconds, timezone.utc)
 ```
 
-`datetime.now()` lowers to the ledger effect `getTime`, so it may only be used
-inside a choice or a function marked `@ledger_effect`. `date(...)` accepts
+`datetime.now()` lowers to the Daml update operation `getTime`; DamlForge
+automatically infers the enclosing function as an update. `date(...)` accepts
 Python's integer month numbering (`1` through `12`) and automatically imports
 `DA.Date`. `datetime.combine(date_value, time(...))` lowers to DAML's pure
 `DA.Time.time`; a standalone `time(...)` has no DAML equivalent.
@@ -127,7 +124,7 @@ def f(x: FeaturedAppRightV1.FeaturedAppRight): ...
 Function and method decorators are ordinary Python objects and must be imported before use. An unimported decorator fails like any other unresolved name (`DF1219`, "not defined"). The `@template` and `@variant` class markers are the exception: the pre-parser consumes them, so they need no import.
 
 ```python
-from forge.models import choice, ledger_effect, variant_record, view
+from forge.models import choice, variant_record, view
 from forge.builtins import DamlName
 ```
 
@@ -135,7 +132,6 @@ from forge.builtins import DamlName
 |---|---|---|
 | `@choice(controller=..., consuming=..., observer=...)` | method inside `template`/`interface` | `controller` required (`DF1203`); `consuming` required, must be a literal `True`/`False` or one of `"preconsuming"`/`"consuming"`/`"nonconsuming"`/`"postconsuming"` (`DF1203`); name can't start with `_` (`DF1218`); `"preconsuming"`/`"postconsuming"` banned on interface choice declarations, and on a template's implementation of an interface choice (`DF1208`) |
 | `@view` | method inside `interface`, or a `template` that implements one | no args (`DF1206`); banned inside a `template` with no interface bases (`DF1207`) |
-| `@ledger_effect` | plain top-level `def` or method | bare only, no args (`DF1204`) |
 | `@variant_record` | constructor method inside an `@variant` class | bare only; emits a named-field Daml constructor using `with` instead of a positional payload |
 | `@DamlName("RealName")` | any function/choice | exactly one string-literal positional arg (`DF1221`); overrides the auto-derived Daml-side name |
 | `@template` | immediately before `class Foo:`, nothing else | import-free class marker; see §1 |
@@ -162,22 +158,27 @@ def f(cid: ContractId[Asset]) -> Asset:
     return fetch(cid)          # works with zero imports
 ```
 
-### Hidden ledger effects (`DF1205`)
+### Ledger-effect inference
 
-A plain `def` (not a `@choice`) that calls any of `fetch`/`exercise`/`create`/`archive`/`lookup` **must** be decorated `@ledger_effect`:
-
-```python
-@ledger_effect
-def replace(new_owner: Party) -> bool:
-    archive(self)          # OK - effect is declared
-```
+DamlForge automatically infers a plain function as an update when its body
+calls an update operation such as `fetch`, `exercise`, `create`, `archive`, or
+`lookup`. The inference is transitive, so a function that calls another
+inferred update function is also emitted with an update return type:
 
 ```python
 def replace(new_owner: Party) -> bool:
-    archive(self)          # DF1205 - hidden ledger effect
+    archive(self)
 ```
 
-Choice bodies are exempt - a `@choice` method may call ledger builtins directly with no extra marker.
+```python
+def move(new_owner: Party) -> bool:
+    replace(new_owner)     # also inferred as an update
+```
+
+Choice bodies are already update contexts and may call ledger operations
+directly. Imported Daml update helpers and declaration-only stubs carry
+compiler metadata so inference can recognize them even though their `.vy`
+declarations have no body to inspect.
 
 ## 5. Template fields
 
@@ -353,8 +354,6 @@ for _index: int in range(0, count):
 |---|---|
 | DF1201 | template missing `signatory` |
 | DF1203 | `@choice` missing `controller` or missing/invalid `consuming` |
-| DF1204 | `@ledger_effect` given arguments |
-| DF1205 | plain function has a hidden ledger effect (missing `@ledger_effect`), or `@template` given arguments |
 | DF1206 | `@view` given arguments |
 | DF1207 | `@view` used inside a `template` with no interface base |
 | DF1208 | `"preconsuming"`/`"postconsuming"` on an interface choice declaration or implementation |

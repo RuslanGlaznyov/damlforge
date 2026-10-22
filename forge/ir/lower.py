@@ -172,8 +172,8 @@ def _lower_expr_Call(node):
         if isinstance(value, IRConstant) and isinstance(value.value, Decimal):
             value = IRCall(IRName("Decimal"), (value,))
         return IRCall(IRName(converter), (value,))
-    if node._metadata.get("datetime_now"):
-        return IRCall(IRName("getTime"))
+    if daml_builtin := node._metadata.get("daml_builtin"):
+        return IRCall(IRName(daml_builtin))
     if "fromtimestamp_argument" in node._metadata:
         argument = node._metadata["fromtimestamp_argument"]
         microseconds = lower_expr(argument)
@@ -470,6 +470,7 @@ def lower_function(fn: vy_ast.FunctionDef) -> IRFunction:
         decorators=_decorator_names(fn),
         body=_lower_body(fn.body),
         src=_src(fn),
+        effectful=bool(fn._metadata.get("is_ledger_effect")),
     )
 
 
@@ -864,7 +865,7 @@ def _lower_module(module: vy_ast.Module, import_graph=None) -> IRModule:
         functions=tuple(functions),
         imports=_lower_imports(module.body, import_graph),
         required_modules=tuple(module._metadata.get("required_daml_modules", ())),
-        effect_functions=tuple(module._metadata.get("intrinsic_effect_fns", ())),
+        effect_functions=tuple(module._metadata.get("effect_functions", ())),
         aliases=_lower_aliases(module, type_vars),
     )
     return prepare_ir_module(ir_module)

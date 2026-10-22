@@ -115,8 +115,8 @@ def test_import_inside_function_is_rejected_before_lowering():
 def test_continue_is_rejected_before_lowering():
     with pytest.raises(DamlForgeException, match="`continue` is not supported"):
         _compile(
-            "from forge.models import Decimal, Party, ledger_effect, template\n"
-            "@ledger_effect\n"
+            "from forge.models import Decimal, Party, template\n"
+            ""
             "def verify(cids: list[Party], p: Party) -> Decimal:\n"
             "    continue\n"
             "@template\n"
@@ -142,8 +142,8 @@ def test_raise_is_rejected_before_lowering():
 def test_nested_function_is_rejected_before_lowering():
     with pytest.raises(DamlForgeException, match="Nested function definitions"):
         _compile(
-            "from forge.models import Decimal, Party, ledger_effect, template\n"
-            "@ledger_effect\n"
+            "from forge.models import Decimal, Party, template\n"
+            ""
             "def verify(cids: list[Party], p: Party) -> Decimal:\n"
             "    def Count(self, cids: list[Party]) -> int:\n"
             "        return 0\n"
@@ -203,8 +203,8 @@ def test_comprehension_like_for_syntax_is_reported_as_syntax_error():
 
 def test_annotation_only_local_does_not_reach_codegen_as_none():
     daml, _ = _compile(
-        "from forge.models import Decimal, Party, ledger_effect, template\n"
-        "@ledger_effect\n"
+        "from forge.models import Decimal, Party, template\n"
+        ""
         "def verify(cids: list[Party], p: Party) -> Decimal:\n"
         "    issuer: Party\n"
     )

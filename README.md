@@ -157,8 +157,8 @@ def from_seconds(seconds: int) -> datetime:
 ```
 
 `date`, `datetime`, and `timedelta` compile to Daml `Date`, `Time`, and
-`RelTime`. `datetime.now()` compiles to the ledger effect `getTime`, so use it
-only inside a choice or a function marked `@ledger_effect`.
+`RelTime`. `datetime.now()` compiles to the Daml update operation `getTime`; DamlForge
+infers the enclosing function's `Update` return type automatically.
 
 ## Upgrading
 

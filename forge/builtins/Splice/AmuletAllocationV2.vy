@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import ContractId, Decimal, ledger_effect, Optional, Party, template, TextMap
+from forge.models import ContractId, Decimal, Optional, Party, template, TextMap
 from forge.builtins import DamlName
 from Splice.Amulet import Amulet, LockedAmulet
 from Splice.AmuletConfig import TransferConfigV2
@@ -23,8 +23,7 @@ class AmuletAllocationV2:
     observer: list[Party] = settlement.executors
 
 
-@ledger_effect
-@DamlName("unlockAmuletAllocationV2")
+@DamlName("unlockAmuletAllocationV2", is_ledger_effect=True)
 def unlock_amulet_allocation_v2(amulet_allocation: AmuletAllocationV2, extra_args: ExtraArgs) -> TextMap[list[ContractId[Holding]]]:
     pass
 
@@ -34,14 +33,12 @@ def net_amulet_credit_amount(authorizer: Account, transfer_legs: list[TransferLe
     pass
 
 
-@ledger_effect
-@DamlName("validateAmuletNextIterationFunding")
+@DamlName("validateAmuletNextIterationFunding", is_ledger_effect=True)
 def validate_amulet_next_iteration_funding(optional: Optional[TextMap[Decimal]]) -> Decimal:
     pass
 
 
-@ledger_effect
-@DamlName("validateAmuletTransferLegSides")
+@DamlName("validateAmuletTransferLegSides", is_ledger_effect=True)
 def validate_amulet_transfer_leg_sides(transfer_legs: list[TransferLegSide]) -> None:
     pass
 
@@ -51,7 +48,6 @@ def compute_allocation_expiry_internal(transfer_config: TransferConfigV2[Amulet]
     pass
 
 
-@ledger_effect
-@DamlName("computeAllocationExpiry")
+@DamlName("computeAllocationExpiry", is_ledger_effect=True)
 def compute_allocation_expiry(transfer_config: TransferConfigV2[Amulet], old_expires_at: datetime, settlement_deadline: Optional[datetime]) -> datetime:
     pass

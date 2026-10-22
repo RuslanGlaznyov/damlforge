@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party, template
+from forge.models import choice, ContractId, Decimal, Optional, Party, template
 from forge.builtins import DamlName, no_derive
 from Splice.Amulet import Amulet, AmuletCreateSummary, LockedAmulet
 from Splice.AmuletRules import AppTransferContext, PaymentTransferContext, TransferInput, TransferOutput
@@ -218,14 +218,12 @@ def pay_data_is_valid(pay_data: SubscriptionPayData) -> bool:
     pass
 
 
-@ledger_effect
-@DamlName("lockAndMakeChange")
+@DamlName("lockAndMakeChange", is_ledger_effect=True)
 def lock_and_make_change(context: PaymentTransferContext, subscription_data: SubscriptionData, pay_data: SubscriptionPayData, inputs: list[TransferInput], now: datetime, wallet_provider: Party) -> tuple[ContractId[LockedAmulet], Optional[ContractId[Amulet]], Decimal, Round]:
     pass
 
 
-@ledger_effect
-@DamlName("unlockAndTransfer")
+@DamlName("unlockAndTransfer", is_ledger_effect=True)
 def unlock_and_transfer(transfer_context: AppTransferContext, subscription_data: SubscriptionData, target_amount: Decimal, locked_amulet: ContractId[LockedAmulet]) -> ContractId[Amulet]:
     pass
 

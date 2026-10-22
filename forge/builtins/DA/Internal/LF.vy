@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TypeVar
 
-from forge.models import ContractId, ledger_effect, Optional, Party
+from forge.models import ContractId, Optional, Party
 from forge.builtins import DamlName
 
 A = TypeVar("A")
@@ -23,7 +23,6 @@ def coerce_contract_id(contract_id: ContractId[A]) -> ContractId[B]:
     pass
 
 
-@ledger_effect
-@DamlName("getTime")
+@DamlName("getTime", is_ledger_effect=True)
 def get_time() -> datetime:
     pass

@@ -8,7 +8,7 @@ from forge.ir import lower_module
 from forge.semantics import analyze_module
 
 _DECORATOR_PREAMBLE = (
-    "from forge.models import choice, ledger_effect, template, view\n"
+    "from forge.models import choice, template, view\n"
     "from forge.builtins import DamlName\n"
 )
 
@@ -336,7 +336,7 @@ def test_python_datetime_now_lowers_to_get_time_ledger_effect():
 def test_qualified_python_datetime_now_lowers_to_get_time():
     daml = _compile(
         "import datetime as dt\n\n"
-        "@ledger_effect\n"
+        ""
         "def current_time() -> dt.datetime:\n"
         "    return dt.datetime.now()\n"
     )
@@ -346,24 +346,21 @@ def test_qualified_python_datetime_now_lowers_to_get_time():
     assert "import datetime" not in daml
 
 
-def test_python_datetime_now_requires_ledger_effect_context():
-    with pytest.raises(DamlForgeException, match="calls `datetime.now`"):
-        _compile(
-            "from datetime import datetime\n\n"
-            "@template\n"
-            "class Clock:\n"
-            "    owner: Party\n\n"
-            "    signatory: list[Party] = [owner]\n\n"
-            "    def read(self) -> datetime:\n"
-            "        return datetime.now()\n"
-        )
+def test_python_datetime_now_is_inferred_without_an_effect_marker():
+    daml = _compile(
+        "from datetime import datetime\n\n"
+        "def current_time() -> datetime:\n"
+        "    return datetime.now()\n"
+    )
+
+    assert "current_time : Update Time" in daml
 
 
 def test_python_datetime_now_rejects_arguments():
     with pytest.raises(DamlForgeException, match="does not accept arguments"):
         _compile(
             "from datetime import datetime\n\n"
-            "@ledger_effect\n"
+            ""
             "def current_time() -> datetime:\n"
             "    return datetime.now(None)\n"
         )

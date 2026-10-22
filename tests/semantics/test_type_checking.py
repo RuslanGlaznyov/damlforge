@@ -56,9 +56,9 @@ def test_function_keyword_arguments_are_type_checked():
 
 def test_builtin_exercise_argument_count_is_checked():
     source = (
-        "from forge.models import ledger_effect\n"
+        "\n"
         "from forge.builtins.daml_lang import exercise\n\n"
-        "@ledger_effect\n"
+        ""
         "def invalid(cid: ContractId[Int]) -> Int:\n"
         "    exercise(cid)\n"
         "    return 0\n"

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, TypeVar
 
-from forge.models import choice, ContractId, ledger_effect, Optional, Party, template, TextMap
+from forge.models import choice, ContractId, Optional, Party, template, TextMap
 from forge.builtins import DamlName
 from Splice.Api.Token.AllocationV1 import Allocation, AllocationSpecification, Allocation_CancelResult, Allocation_ExecuteTransferResult, Reference, SettlementInfo, TransferLeg
 from Splice.Api.Token.MetadataV1 import ExtraArgs
@@ -63,7 +63,7 @@ def trading_parties(text_map: TextMap[TransferLeg]) -> set[Party]:
     pass
 
 
-@ledger_effect
+@DamlName("require", is_ledger_effect=True)
 def require(msg: str, invariant: bool) -> None:
     pass
 

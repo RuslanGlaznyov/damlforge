@@ -2,7 +2,7 @@ import re
 from typing import Optional
 
 from forge.ast import nodes as vy_ast
-from forge.builtins import choice, collect_daml_builtins, ledger_effect
+from forge.builtins import choice, collect_daml_builtins
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 
@@ -215,10 +215,19 @@ def check_template_interface_choice_consuming_variants(
         )
 
 
+def _call_name(node) -> str | None:
+    if isinstance(node, vy_ast.Name):
+        return node.id
+    if isinstance(node, vy_ast.Attribute):
+        prefix = _call_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    return None
+
+
 def _ledger_effect_name(call: vy_ast.Call, ledger_effect_fns) -> str | None:
-    effect_name = (
-        call._metadata.get("intrinsic_name") if call._metadata.get("is_ledger_effect") else None
-    )
+    effect_name = _call_name(call.func) if call._metadata.get("is_ledger_effect") else None
+    if effect_name is None:
+        effect_name = call._metadata.get("daml_choice_call")
     if effect_name is None and (
         isinstance(call.func, vy_ast.Name) and call.func.id in ledger_effect_fns
     ):
@@ -226,33 +235,80 @@ def _ledger_effect_name(call: vy_ast.Call, ledger_effect_fns) -> str | None:
     return effect_name
 
 
-def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
-    # Check for functions that call ledger-effecting functions but are not decorated with
-    # @ledger_effect or @choice. This is a common source of bugs, and the compiler will not catch it, so we check for it here.
-
-    ledger_effect_fns = collect_daml_builtins().ledger_effect_fns
-    container_name = getattr(container, "name", None)
-    if container_name is None:
-        path = getattr(container, "path", None) or getattr(container, "resolved_path", None)
-        container_name = str(path).rsplit("/", 1)[-1].rsplit(".", 1)[0] if path else "module"
-    for fn in container.body:
-        if not isinstance(fn, vy_ast.FunctionDef):
+def _imported_effect_names(module: vy_ast.Module) -> set[str]:
+    effects: set[str] = set()
+    for stmt in module.body:
+        if not isinstance(stmt, (vy_ast.Import, vy_ast.ImportFrom)):
             continue
-
-        if _has_decorator(fn, ledger_effect.__name__) or _has_decorator(fn, choice.__name__):
-            continue
-
-        for call in fn.get_descendants(vy_ast.Call):
-            effect_name = _ledger_effect_name(call, ledger_effect_fns)
-            if effect_name is not None:
-                errors.append(
-                    DamlForgeException(
-                        f"`{container_name}.{fn.name}` calls `{effect_name}` but is not "
-                        f"decorated `@{ledger_effect.__name__}` and is not a `@{choice.__name__}`",
-                        call,
-                        code=ErrorCodes.DF1205.value,
-                    )
+        for info in stmt._metadata.get("import_infos", ()) or ():
+            imported = getattr(info, "ast", None)
+            if imported is None:
+                continue
+            imported_effects = set(imported._metadata.get("effect_functions", ()))
+            if isinstance(stmt, vy_ast.ImportFrom):
+                effects.update(
+                    alias.asname or alias.name
+                    for alias in stmt.names
+                    if alias.name in imported_effects
                 )
+            else:
+                module_alias = next(
+                    (
+                        alias.asname or alias.name
+                        for alias in stmt.names
+                        if alias.name == getattr(info, "alias", None)
+                    ),
+                    getattr(info, "alias", None),
+                )
+                if module_alias:
+                    effects.update(f"{module_alias}.{name}" for name in imported_effects)
+    return effects
+
+
+def _function_has_ledger_effect(fn: vy_ast.FunctionDef, known_effects: set[str]) -> bool:
+    # Daml's Update expressions are documented at:
+    # https://docs.digitalasset.com/build/3.4/reference/daml/structure.html
+    # Forge treats calls that construct or inspect an update (create, exercise, fetch,
+    # fetchByKey/lookupByKey, archive, getTime, and imported Daml update helpers),
+    # choice calls, and `assert` statements as ledger effects.  The effect is
+    # transitive: a function calling another inferred effectful function is effectful too.
+    if any(isinstance(node, vy_ast.Assert) for node in fn.get_descendants(vy_ast.Assert)):
+        return True
+    return any(
+        _ledger_effect_name(call, known_effects) is not None
+        for call in fn.get_descendants(vy_ast.Call)
+    )
+
+
+def infer_ledger_effects(module: vy_ast.Module) -> None:
+    """Infer which module-level functions return Daml ``Update`` actions.
+
+    User code does not need an effect marker.  External stub declarations may
+    still carry effect information in their ``DamlName`` metadata because a
+    declaration with a ``pass`` body contains no operation for inference to see.
+    """
+
+    known_effects = set(collect_daml_builtins().ledger_effect_fns)
+    known_effects.update(module._metadata.get("intrinsic_effect_fns", ()))
+    known_effects.update(_imported_effect_names(module))
+    functions = [node for node in module.body if isinstance(node, vy_ast.FunctionDef)]
+    inferred: set[str] = set()
+
+    changed = True
+    while changed:
+        changed = False
+        for fn in functions:
+            if fn.name in inferred or not _function_has_ledger_effect(fn, known_effects):
+                continue
+            inferred.add(fn.name)
+            known_effects.add(fn.name)
+            fn._metadata["is_ledger_effect"] = True
+            changed = True
+
+    effects = set(module._metadata.get("intrinsic_effect_fns", ()))
+    effects.update(_imported_effect_names(module))
+    effects.update(inferred)
+    module._metadata["effect_functions"] = tuple(sorted(effects))
 
 
 def check_local_imports(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
@@ -351,7 +407,7 @@ def check_template_methods(template: vy_ast.TemplateDef, errors: ExceptionList) 
             continue
         if fn.name == "__init__" or any(
             _has_decorator(fn, name)
-            for name in ("choice", "checked_fetch", "view", "ledger_effect")
+            for name in ("choice", "checked_fetch", "view")
         ):
             continue
         if any(
@@ -575,11 +631,9 @@ def check_container(
         check_template_key_maintainer(node, errors)
         check_template_ensure(node, errors)
         check_unknown_decorators(node, errors)
-        check_hidden_ledger_effects(node, errors)
         if node.bases:
             check_template_interface_bases(node, declarations or {}, errors)
             check_template_interface_choice_consuming_variants(node, declarations or {}, errors)
     elif isinstance(node, vy_ast.InterfaceDef):
         check_unknown_decorators(node, errors)
         check_consuming_variant_scope(node, errors)
-        check_hidden_ledger_effects(node, errors)

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TypeVar
 
-from forge.models import ContractId, ledger_effect, Optional, Party, TextMap
+from forge.models import ContractId, Optional, Party, TextMap
 from forge.builtins import DamlName
 from Splice.Api.Token.HoldingV2 import Account
 from Splice.Api.Token.MetadataV1 import AnyContract, Metadata
@@ -136,14 +136,12 @@ def drop_account_meta(field_name: str, meta: Metadata) -> Metadata:
     pass
 
 
-@ledger_effect
-@DamlName("ensureNoAccountMeta")
+@DamlName("ensureNoAccountMeta", is_ledger_effect=True)
 def ensure_no_account_meta(path: str, field_name: str, meta: Metadata) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("ensureBasicAccount")
+@DamlName("ensureBasicAccount", is_ledger_effect=True)
 def ensure_basic_account(field_name: str, account: Account) -> None:
     pass
 

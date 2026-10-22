@@ -1107,7 +1107,7 @@ class Emitter:
 
     def emit_function(self, fn: IRFunction) -> None:
         start = len(self.lines) + 1
-        in_update_block = "ledger_effect" in fn.decorators
+        in_update_block = fn.effectful
         return_type = (
             render_type(fn.return_type, as_arg=True) if fn.return_type is not None else "()"
         )
@@ -1344,8 +1344,7 @@ def generate_daml(
 ):
     with stub_scope(module.stub_scope):
         known_effect_fns = (
-            frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
-            | collect_daml_builtins().ledger_effect_fns
+            collect_daml_builtins().ledger_effect_fns
             | frozenset(module.effect_functions)
         )
         return Emitter(known_effect_fns, settings).generate(module, module_name)

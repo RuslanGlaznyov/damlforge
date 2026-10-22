@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional
-from forge.models import ContractId, Party, choice, ledger_effect, template
+from forge.models import ContractId, Party, choice, template
 from forge.builtins import DamlName
 from enum import Enum, auto
 from forge.builtins.daml_lang import archive, create, exercise, fetch
@@ -239,7 +239,6 @@ def calculate_num_holdings_needed(
     return ceil(target_amount / avg_amount_per_holding)
 
 
-@ledger_effect
 def verify_amulets(dso_party: Party, amulets: list[ContractId[Amulet]]) -> Decimal:
     total = Decimal(0)
     for amulet_cid in amulets:

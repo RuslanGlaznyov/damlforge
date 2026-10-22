@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party, template, variant, variant_record
+from forge.models import choice, ContractId, Decimal, Optional, Party, template, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName, no_derive
 from Splice.Amulet import Amulet, FeaturedAppRight
 from Splice.AmuletRules import AmuletRules, ExternalPartySetupProposal, InvalidTransferReason, PaymentTransferContext, Transfer, TransferInput, TransferPreapproval, TransferResult
@@ -444,8 +444,7 @@ def co_transfer_preapproval_send(value: AmuletOperation) -> Optional[tuple[Contr
     pass
 
 
-@ledger_effect
-@DamlName("executeAmuletOperationRec")
+@DamlName("executeAmuletOperationRec", is_ledger_effect=True)
 def execute_amulet_operation_rec(execution_context: ExecutionContext, inputs: list[TransferInput], prev_results: list[AmuletOperationOutcome], list_value: list[AmuletOperation]) -> list[AmuletOperationOutcome]:
     pass
 
@@ -455,14 +454,12 @@ def mk_merge_amulet_and_rewards_transfer(end_user_p: Party, inputs: list[Transfe
     pass
 
 
-@ledger_effect
-@DamlName("checkTransferInstructionV2")
+@DamlName("checkTransferInstructionV2", is_ledger_effect=True)
 def check_transfer_instruction_v2(party: Party, transfer_instruction_cid: ContractId[TransferInstructionV2.TransferInstruction], actors: list[Party], end_user_party: Party) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("checkAllocationSpecificationV2")
+@DamlName("checkAllocationSpecificationV2", is_ledger_effect=True)
 def check_allocation_specification_v2(allocation: AllocationV2.AllocationSpecification, end_user_party: Party) -> None:
     pass
 

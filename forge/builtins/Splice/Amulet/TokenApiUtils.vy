@@ -1,6 +1,6 @@
 from typing import TypeVar
 
-from forge.models import Decimal, ledger_effect, Optional, Party, TextMap, variant
+from forge.models import Decimal, Optional, Party, TextMap, variant
 from forge.builtins import DamlName, no_derive
 from DA.Types import Either
 from Splice.Api.FeaturedAppRightV1 import AppRewardBeneficiary
@@ -207,13 +207,11 @@ def get_from_context(context: ChoiceContext, k: str) -> Either[str, A]:
     pass
 
 
-@ledger_effect
-@DamlName("lookupFromContextU")
+@DamlName("lookupFromContextU", is_ledger_effect=True)
 def lookup_from_context_u(context: ChoiceContext, k: str) -> Optional[A]:
     pass
 
 
-@ledger_effect
-@DamlName("getFromContextU")
+@DamlName("getFromContextU", is_ledger_effect=True)
 def get_from_context_u(context: ChoiceContext, k: str) -> A:
     pass

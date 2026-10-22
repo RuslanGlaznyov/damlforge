@@ -1,6 +1,6 @@
 import pytest
 
-from forge.models import Consuming, choice, ledger_effect, view
+from forge.models import Consuming, choice, view
 
 
 def test_choice_preserves_function_behavior():
@@ -70,21 +70,13 @@ def test_choice_rejects_invalid_or_missing_consuming(kwargs):
         choice(**kwargs)
 
 
-@pytest.mark.parametrize("decorator", [ledger_effect, view])
+@pytest.mark.parametrize("decorator", [view])
 def test_bare_marker_decorators_preserve_function_behavior(decorator):
     @decorator
     def fn(x):
         return x * 2
 
     assert fn(3) == 6
-
-
-def test_ledger_effect_marks_function():
-    @ledger_effect
-    def replace():
-        pass
-
-    assert replace.__ledger_effect__ is True
 
 
 def test_view_marks_function():

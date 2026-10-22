@@ -14,7 +14,6 @@ from forge.models import (
     ContractId,
     Party,
     choice,
-    ledger_effect,
     template,
     variant,
     variant_record,
@@ -256,7 +255,6 @@ def mkMergeAmuletAndRewardsTransfer(
     )
 
 
-@ledger_effect
 def buy_member_traffic(
     executionContext: ExecutionContext,
     inputs: list[TransferInput],
@@ -333,7 +331,6 @@ def buy_member_traffic(
     return (result.purchased_traffic, result.sender_change_amulet)
 
 
-@ledger_effect
 def executeAmuletOperationRec(
     executionContext: ExecutionContext,
     inputs: list[TransferInput],
@@ -645,7 +642,6 @@ struct WalletAppInstall_TransferPreapprovalProposal_CreateResult:
     preapprovalProposalCid: ContractId[TransferPreapprovalProposal]
 
 
-@ledger_effect
 def checkTransferInstructionV2(
     dsoParty: Party,
     transferInstructionCid: ContractId[TransferInstructionV2.TransferInstruction],
@@ -666,7 +662,6 @@ def checkTransferInstructionV2(
     )
 
 
-@ledger_effect
 def checkAllocationSpecificationV2(
     allocation: AllocationV2.AllocationSpecification,
     endUserParty: Party,

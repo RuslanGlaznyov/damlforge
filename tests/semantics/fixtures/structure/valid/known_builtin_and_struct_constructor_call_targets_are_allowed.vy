@@ -1,4 +1,4 @@
-from forge.models import choice, ledger_effect, template, view, interface
+from forge.models import choice, template, view, interface
 from forge.builtins import DamlName
 
 struct Terms:

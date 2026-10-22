@@ -1,6 +1,6 @@
 from typing import TypeVar
 
-from forge.models import ContractId, ledger_effect, Optional, Party, TextMap
+from forge.models import ContractId, Optional, Party, TextMap
 from forge.builtins import DamlName
 
 A = TypeVar("A")
@@ -11,43 +11,37 @@ T = TypeVar("T")
 V = TypeVar("V")
 
 
-@ledger_effect
+@DamlName("require", is_ledger_effect=True)
 def require(msg: str, invariant: bool) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("requireMatchExpected")
+@DamlName("requireMatchExpected", is_ledger_effect=True)
 def require_match_expected(actual: tuple[str, A], expected: A) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("requireUnique")
+@DamlName("requireUnique", is_ledger_effect=True)
 def require_unique(description: str, xs: list[A]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("checkActor")
+@DamlName("checkActor", is_ledger_effect=True)
 def check_actor(actor: Party, allowed_actors: list[Party]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("checkActors")
+@DamlName("checkActors", is_ledger_effect=True)
 def check_actors(actors: list[Party], allowed_actors: list[list[Party]]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("archiveAndCheckActors")
+@DamlName("archiveAndCheckActors", is_ledger_effect=True)
 def archive_and_check_actors(cid: ContractId[I], arg: list[Party], allowed_actors: list[list[Party]]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("publicFetchDefaultImpl")
+@DamlName("publicFetchDefaultImpl", is_ledger_effect=True)
 def public_fetch_default_impl(this: T, contract_id: ContractId[I], arg: Arg) -> V:
     pass
 

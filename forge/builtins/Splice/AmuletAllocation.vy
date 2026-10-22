@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, ledger_effect, Optional, Party, template
+from forge.models import choice, ContractId, Optional, Party, template
 from forge.builtins import DamlName
 from Splice.Amulet import LockedAmulet
 from Splice.Amulet.TwoStepTransfer import TwoStepTransfer
@@ -44,13 +44,11 @@ def allocation_to_two_step_transfer(allocation: AllocationSpecification) -> TwoS
     pass
 
 
-@ledger_effect
-@DamlName("transferAmuletAllocation")
+@DamlName("transferAmuletAllocation", is_ledger_effect=True)
 def transfer_amulet_allocation(amulet_allocation: AmuletAllocation, extra_args: ExtraArgs) -> Allocation_ExecuteTransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("unlockAmuletAllocation")
+@DamlName("unlockAmuletAllocation", is_ledger_effect=True)
 def unlock_amulet_allocation(amulet_allocation: AmuletAllocation, extra_args: ExtraArgs) -> list[ContractId[Holding]]:
     pass

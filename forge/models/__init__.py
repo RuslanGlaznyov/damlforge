@@ -9,7 +9,6 @@ from forge.models.decorators import (
     choice,
     exception,
     interface,
-    ledger_effect,
     template,
     variant,
     variant_record,
@@ -20,7 +19,6 @@ from forge.models.types import ContractId, GenMap, Int, Party, TextMap
 __all__ = [
     "choice",
     "checked_fetch",
-    "ledger_effect",
     "view",
     "template",
     "variant",

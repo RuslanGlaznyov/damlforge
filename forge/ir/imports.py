@@ -175,10 +175,9 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
     effect_functions = (
         collect_daml_builtins().ledger_effect_fns
         | frozenset(module.effect_functions)
-        | frozenset(fn.name for fn in module.functions if "ledger_effect" in fn.decorators)
     )
     for fn in module.functions:
-        if "ledger_effect" in fn.decorators and LoopAnalysis.requires_foldl_a(
+        if fn.effectful and LoopAnalysis.requires_foldl_a(
             LoopAnalysis.normalize_for_analysis(fn.body, effect_functions), True, effect_functions
         ):
             add(IRImport("DA.Action", ("foldlA",)))

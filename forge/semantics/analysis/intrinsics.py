@@ -249,7 +249,9 @@ class DatetimeIntrinsicAnalyzer:
             )
             return False
         call._metadata.update(
-            datetime_now=True, is_ledger_effect=True, intrinsic_name="datetime.now"
+            daml_builtin="getTime",
+            return_type="Timestamp",
+            is_ledger_effect=True,
         )
         return True
 
@@ -375,7 +377,6 @@ class DatetimeIntrinsicAnalyzer:
         datetime_combine_used = False
         datetime_fromtimestamp_used = False
         timedelta_used = False
-        datetime_now_used = False
         consumed_time_calls: set[int] = set()
         calls = list(self.module.get_descendants(vy_ast.Call))
         local_names: dict[int, set[str]] = {}
@@ -383,7 +384,6 @@ class DatetimeIntrinsicAnalyzer:
             fn = call.get_ancestor(vy_ast.FunctionDef)
             names = local_names.setdefault(id(fn), self._local_names(fn))
             if self._analyze_datetime_now(call, names):
-                datetime_now_used = True
                 continue
             if self._is_datetime_combine(call.func, names):
                 if self._analyze_datetime_combine(call, names, consumed_time_calls):
@@ -453,7 +453,13 @@ class DatetimeIntrinsicAnalyzer:
                 required.add("DA.Time")
             self.module._metadata["required_daml_modules"] = tuple(sorted(required))
 
-        if datetime_now_used:
+        intrinsic_effects = {
+            daml_builtin
+            for call in calls
+            if call._metadata.get("is_ledger_effect")
+            and (daml_builtin := call._metadata.get("daml_builtin")) is not None
+        }
+        if intrinsic_effects:
             effects = set(self.module._metadata.get("intrinsic_effect_fns", ()))
-            effects.add("getTime")
+            effects.update(intrinsic_effects)
             self.module._metadata["intrinsic_effect_fns"] = tuple(sorted(effects))

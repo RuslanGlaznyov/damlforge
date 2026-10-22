@@ -1,4 +1,4 @@
-from forge.models import ContractId, ledger_effect, Party, template
+from forge.models import ContractId, Party, template
 from forge.builtins import DamlName
 from Splice.Api.Token.HoldingV2 import Account, HoldingView, InstrumentId
 
@@ -10,13 +10,11 @@ class Token:
     signatory: list[Party] = [holding.instrument_id.admin]
 
 
-@ledger_effect
-@DamlName("fetchAndArchiveLockedToken")
+@DamlName("fetchAndArchiveLockedToken", is_ledger_effect=True)
 def fetch_and_archive_locked_token(expected_instrument_id: InstrumentId, expected_owner: Account, token_cid: ContractId[Token]) -> Token:
     pass
 
 
-@ledger_effect
-@DamlName("fetchAndArchiveUnlockedToken")
+@DamlName("fetchAndArchiveUnlockedToken", is_ledger_effect=True)
 def fetch_and_archive_unlocked_token(expected_instrument_id: InstrumentId, expected_owner: Account, token_cid: ContractId[Token]) -> Token:
     pass

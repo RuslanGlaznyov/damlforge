@@ -1,6 +1,6 @@
 from typing import Annotated, Generic, TypeVar
 
-from forge.models import choice, ContractId, GenMap, ledger_effect, Optional, Party, template, TextMap, variant
+from forge.models import choice, ContractId, GenMap, Optional, Party, template, TextMap, variant
 from forge.builtins import DamlCaseAccessor, DamlName
 from Splice.Api.Token.AllocationInstructionV1 import AllocationFactory_Allocate, AllocationInstructionResult, AllocationInstruction_Withdraw
 from Splice.Api.Token.AllocationRequestV2 import AllocationRequest_Accept, AllocationRequest_AcceptResult, AllocationRequest_Reject, AllocationRequest_RejectResult
@@ -225,8 +225,7 @@ def get_holdings_for_instrument(account: Account, instrument_id: InstrumentId, h
     pass
 
 
-@ledger_effect
-@DamlName("executeTokenStandardAction")
+@DamlName("executeTokenStandardAction", is_ledger_effect=True)
 def execute_token_standard_action(actor: Party, acc: tuple[HoldingMap, list[TokenStandardActionResult]], action: TokenStandardAction) -> tuple[HoldingMap, list[TokenStandardActionResult]]:
     pass
 
@@ -261,13 +260,11 @@ def holding_map_from_allocation_instruction_v2(allocation: AllocationV2.Allocati
     pass
 
 
-@ledger_effect
-@DamlName("transferInstructionCallV1")
+@DamlName("transferInstructionCallV1", is_ledger_effect=True)
 def transfer_instruction_call_v1(call: ChoiceCall[Ch], acc: tuple[HoldingMap, list[TokenStandardActionResult]]) -> tuple[HoldingMap, list[TokenStandardActionResult]]:
     pass
 
 
-@ledger_effect
-@DamlName("transferInstructionCallV2")
+@DamlName("transferInstructionCallV2", is_ledger_effect=True)
 def transfer_instruction_call_v2(call: ChoiceCall[Ch], acc: tuple[HoldingMap, list[TokenStandardActionResult]]) -> tuple[HoldingMap, list[TokenStandardActionResult]]:
     pass

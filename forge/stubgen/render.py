@@ -34,7 +34,7 @@ _SOURCES = {
     **dict.fromkeys(("DamlName", "DamlCaseAccessor", "no_derive"), "forge.builtins"),
     **dict.fromkeys(
         ("Decimal", "Party", "ContractId", "Optional", "TextMap", "GenMap", "choice")
-        + ("template", "variant", "variant_record", "ledger_effect"),
+        + ("template", "variant", "variant_record"),
         "forge.models",
     ),
 }
@@ -316,14 +316,18 @@ class ModuleStub:
                 ty = self.type_ref(param)
                 args.append(f"{self._arg_name(binder, ty, seen)}: {ty}")
         lines = []
-        if _prim_name(result) == "UPDATE" or (result.var is not None and len(result.var.args) == 1):
+        is_effect = _prim_name(result) == "UPDATE" or (
+            result.var is not None and len(result.var.args) == 1
+        )
+        if is_effect:
             result = result.prim.args[0] if result.prim is not None else result.var.args[0]
-            lines.append(f"@{self._use('ledger_effect')}")
         py = snake(name)
         if not py.isidentifier():
             raise Unsupported(f"`{name}` is not a valid Python name")
-        if (py := _safe(py)) != name:
-            lines.append(f'@{self._use("DamlName")}("{name}")')
+        py = _safe(py)
+        if is_effect or py != name:
+            suffix = ", is_ledger_effect=True" if is_effect else ""
+            lines.append(f'@{self._use("DamlName")}("{name}"{suffix})')
         return lines + [f"def {py}({', '.join(args)}) -> {self.type_ref(result)}:", "    pass"]
 
     def _path_kind(self, roots: dict, ref):

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Party, variant
+from forge.models import choice, ContractId, Decimal, Party, variant
 from forge.builtins import DamlName, no_derive
 from Splice.Api.Token.HoldingV2 import Account, Holding
 from Splice.Api.Token.MetadataV1 import ExtraArgs, Metadata
@@ -37,7 +37,6 @@ interface EventLog(view=EventLogView):
         pass
 
 
-@ledger_effect
-@DamlName("eventLog_holdingsChangeImpl")
+@DamlName("eventLog_holdingsChangeImpl", is_ledger_effect=True)
 def event_log_holdings_change_impl(i: EventLog, contract_id: ContractId[EventLog], event_log_holdings_change: EventLog_HoldingsChange) -> EventLog_HoldingsChangeResult:
     pass

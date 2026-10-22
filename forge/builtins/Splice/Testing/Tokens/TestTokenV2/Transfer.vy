@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from forge.models import ContractId, Decimal, GenMap, ledger_effect, Optional, Party, template
+from forge.models import ContractId, Decimal, GenMap, Optional, Party, template
 from forge.builtins import DamlName
 from Splice.Api.Token.HoldingV2 import Account, Holding, HoldingView
 from Splice.Api.Token.MetadataV1 import ExtraArgs
@@ -20,44 +20,37 @@ class TokenTransferOffer:
     signatory: list[Party] = [transfer.instrument_id.admin]
 
 
-@ledger_effect
-@DamlName("token_transferInstruction_withdrawImplV2")
+@DamlName("token_transferInstruction_withdrawImplV2", is_ledger_effect=True)
 def token_transfer_instruction_withdraw_impl_v2(call_source: CallSource, this: TokenTransferOffer, self_: ContractId[TransferInstruction], arg: TransferInstruction_Withdraw) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("token_transferInstruction_acceptImplV2")
+@DamlName("token_transferInstruction_acceptImplV2", is_ledger_effect=True)
 def token_transfer_instruction_accept_impl_v2(call_source: CallSource, this: TokenTransferOffer, self_: ContractId[TransferInstruction], arg: TransferInstruction_Accept) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("token_transferInstruction_rejectImplV2")
+@DamlName("token_transferInstruction_rejectImplV2", is_ledger_effect=True)
 def token_transfer_instruction_reject_impl_v2(call_source: CallSource, this: TokenTransferOffer, self_: ContractId[TransferInstruction], arg: TransferInstruction_Reject) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("transferInstructionTransition")
+@DamlName("transferInstructionTransition", is_ledger_effect=True)
 def transfer_instruction_transition(this: TokenTransferOffer, optional: Optional[ContractId[TransferInstruction]], list_value: list[Party], gen_map: GenMap[Account, tuple[AccountConfig, Optional[ContractId[AccountConfig]]]], extra_args: ExtraArgs, transfer_instruction_state: TransferInstructionState, transfer_instruction_state_6: TransferInstructionState) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("applyTransferInstructionTransitions")
+@DamlName("applyTransferInstructionTransitions", is_ledger_effect=True)
 def apply_transfer_instruction_transitions(call_source: CallSource, this: TokenTransferOffer, o_self: Optional[ContractId[TransferInstruction]], actors: list[Party], action: TransferInstructionAction, extra_args: ExtraArgs) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("createLockedInputs")
+@DamlName("createLockedInputs", is_ledger_effect=True)
 def create_locked_inputs(transfer: Transfer) -> list[ContractId[Holding]]:
     pass
 
 
-@ledger_effect
-@DamlName("unlockTokenTransferOffer")
+@DamlName("unlockTokenTransferOffer", is_ledger_effect=True)
 def unlock_token_transfer_offer(reason: str, offer: TokenTransferOffer, extra_args: ExtraArgs) -> list[ContractId[Holding]]:
     pass
 

@@ -1,6 +1,6 @@
 from typing import Annotated, Generic, TypeVar
 
-from forge.models import choice, ContractId, ledger_effect, Party, template
+from forge.models import choice, ContractId, Party, template
 from forge.builtins import DamlName, no_derive
 from Splice.Api.FeaturedAppRightV1 import AppRewardBeneficiary, FeaturedAppRight, FeaturedAppRight_CreateActivityMarkerResult
 from Splice.Api.Token.AllocationInstructionV1 import AllocationFactory, AllocationFactory_Allocate, AllocationInstructionResult
@@ -58,12 +58,11 @@ class DelegateProxy:
         pass
 
 
-@ledger_effect
-@DamlName("exerciseProxyChoice")
+@DamlName("exerciseProxyChoice", is_ledger_effect=True)
 def exercise_proxy_choice(proxy: DelegateProxy, cid: ContractId[T], proxy_arg: ProxyArg[Ch]) -> ProxyResult[R]:
     pass
 
 
-@ledger_effect
+@DamlName("require", is_ledger_effect=True)
 def require(msg: str, invariant: bool) -> None:
     pass

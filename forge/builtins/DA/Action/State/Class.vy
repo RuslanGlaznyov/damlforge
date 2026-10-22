@@ -1,15 +1,14 @@
 from typing import TypeVar
 
-from forge.models import ledger_effect
 
 S = TypeVar("S")
 
 
-@ledger_effect
+@DamlName("get", is_ledger_effect=True)
 def get() -> S:
     pass
 
 
-@ledger_effect
+@DamlName("put", is_ledger_effect=True)
 def put(s: S) -> None:
     pass

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Party, template
+from forge.models import choice, ContractId, Decimal, Party, template
 from forge.builtins import DamlName, no_derive
 from Splice.Amulet import Amulet, AmuletCreateSummary
 from Splice.AmuletRules import AppTransferContext
@@ -153,20 +153,17 @@ class AnsEntry:
         pass
 
 
-@ledger_effect
-@DamlName("fetchAndValidateInitialPayment")
+@DamlName("fetchAndValidateInitialPayment", is_ledger_effect=True)
 def fetch_and_validate_initial_payment(cid: ContractId[SubscriptionInitialPayment], expected_payment: ExpectedPayment) -> SubscriptionInitialPayment:
     pass
 
 
-@ledger_effect
-@DamlName("fetchAndValidatePayment")
+@DamlName("fetchAndValidatePayment", is_ledger_effect=True)
 def fetch_and_validate_payment(cid: ContractId[SubscriptionPayment], expected_payment: ExpectedPayment) -> SubscriptionPayment:
     pass
 
 
-@ledger_effect
-@DamlName("fetchAndValidateEntryContext")
+@DamlName("fetchAndValidateEntryContext", is_ledger_effect=True)
 def fetch_and_validate_entry_context(cid: ContractId[AnsEntryContext], expected_entry_context: ExpectedEntryContext) -> AnsEntryContext:
     pass
 

@@ -5,6 +5,5 @@ class Asset:
 
     signatory: list[Party] = [owner]
 
-    @ledger_effect(True)
     def replace(new_owner: Party) -> bool:
         pass

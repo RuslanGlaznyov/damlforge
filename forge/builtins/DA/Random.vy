@@ -1,4 +1,3 @@
-from forge.models import ledger_effect
 from forge.builtins import DamlName
 from DA.Random.Types import Minstd
 
@@ -15,7 +14,6 @@ def minstd_init(int_value: int) -> Minstd:
     pass
 
 
-@ledger_effect
-@DamlName("minstd_initFromTime")
+@DamlName("minstd_initFromTime", is_ledger_effect=True)
 def minstd_init_from_time() -> Minstd:
     pass

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Generic, TypeVar
 
-from forge.models import ledger_effect, Optional
+from forge.models import Optional
 from forge.builtins import DamlName
 
 A = TypeVar("A")
@@ -18,8 +18,7 @@ def get_value_as_of(time: T, schedule: Schedule[T, A]) -> A:
     pass
 
 
-@ledger_effect
-@DamlName("getValueAsOfLedgerTime")
+@DamlName("getValueAsOfLedgerTime", is_ledger_effect=True)
 def get_value_as_of_ledger_time(schedule: Schedule[datetime, A]) -> A:
     pass
 

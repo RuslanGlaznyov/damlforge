@@ -10,9 +10,9 @@ from forge.semantics.analysis.typecheck import check_bidirectional_types
 from forge.semantics.analysis.structure import (
     _reachable_modules,
     check_container,
-    check_hidden_ledger_effects,
     check_local_imports,
     check_unsupported_control_flow,
+    infer_ledger_effects,
 )
 from forge.semantics.analysis.types import (
     ModuleScope,
@@ -238,12 +238,16 @@ class ModuleAnalyzer:
         # Top level analyzers that need to run before visiting the module body
         self._analyze_imports()
         self._check_enum_constructor_collisions()
-        check_hidden_ledger_effects(self.module, self.errors)
         DatetimeIntrinsicAnalyzer(self.module, self.errors).analyze()
+        infer_ledger_effects(self.module)
 
         # Run child level analyzing, i.e. body of the module, which will recursively
         for node in self.module.body:
             self.visit(node)
+
+        # Type checking annotates ContractId choice calls and other resolved
+        # operations, so run inference once more after child analysis.
+        infer_ledger_effects(self.module)
 
     def _analyze_imports(self) -> None:
         for node in self.module.body:

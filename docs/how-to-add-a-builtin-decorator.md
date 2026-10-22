@@ -1,6 +1,6 @@
 # How to add a new builtin `.vy` decorator
 
-This covers decorators like `@choice(...)`, `@ledger_effect`, `@view`,
+This covers decorators like `@choice(...)`, `@view`,
 `@DamlName(...)` — the closed set of names DamlForge recognizes when they
 appear in a `.vy` file's `decorator_list`. It does **not** cover registering
 a plain callable builtin function (e.g. `add_rel_time`) — see
@@ -69,29 +69,11 @@ class MyDecorator(VyDecorator):
         ...
 ```
 
-### Bare-marker style (no arguments): `ledger_effect`, `view`
+### Bare-marker style: `view`
 
-Used as `@ledger_effect` — no parens, so Python calls `ledger_effect(fn)`
-directly (the class *constructor*, not an instance's `__call__`). Override
-`__new__` to tag and return `fn` itself instead of creating an instance:
-
-```python
-class MyMarker(VyDecorator):
-    def __new__(cls, fn):
-        fn.__vy_decorator__ = True
-        fn.__my_marker__ = True
-        return fn
-
-    @classmethod
-    def __post_vy_check__(cls, container, fn, dec, errors):
-        from forge.models.error_codes import ErrorCodes
-
-        if isinstance(dec, vy_ast.Call):
-            errors.append(DamlForgeException(
-                f"`@{cls.__name__}` on `{container.name}.{fn.name}` takes no arguments",
-                fn, code=ErrorCodes.DF12XX.value,
-            ))
-```
+Used as `@view`, a bare marker can tag a function without arguments. Ledger
+effects do not use a source-level marker: DamlForge infers them from Daml
+`Update` operations and propagates the result through user-defined calls.
 
 ## `__post_vy_check__`: your decorator's own validation
 

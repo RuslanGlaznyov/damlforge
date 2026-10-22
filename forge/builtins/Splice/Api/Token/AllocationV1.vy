@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party
+from forge.models import choice, ContractId, Decimal, Optional, Party
 from forge.builtins import DamlName
 from Splice.Api.Token.HoldingV1 import Holding, InstrumentId
 from Splice.Api.Token.MetadataV1 import AnyContract, ExtraArgs, Metadata
@@ -76,19 +76,16 @@ def allocation_controllers(allocation_view: AllocationView) -> list[Party]:
     pass
 
 
-@ledger_effect
-@DamlName("allocation_executeTransferImpl")
+@DamlName("allocation_executeTransferImpl", is_ledger_effect=True)
 def allocation_execute_transfer_impl(i: Allocation, contract_id: ContractId[Allocation], allocation_execute_transfer: Allocation_ExecuteTransfer) -> Allocation_ExecuteTransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocation_cancelImpl")
+@DamlName("allocation_cancelImpl", is_ledger_effect=True)
 def allocation_cancel_impl(i: Allocation, contract_id: ContractId[Allocation], allocation_cancel: Allocation_Cancel) -> Allocation_CancelResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocation_withdrawImpl")
+@DamlName("allocation_withdrawImpl", is_ledger_effect=True)
 def allocation_withdraw_impl(i: Allocation, contract_id: ContractId[Allocation], allocation_withdraw: Allocation_Withdraw) -> Allocation_WithdrawResult:
     pass

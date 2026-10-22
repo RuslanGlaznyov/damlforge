@@ -1,6 +1,6 @@
 from typing import TypeVar
 
-from forge.models import ContractId, GenMap, ledger_effect, TextMap
+from forge.models import ContractId, GenMap, TextMap
 from forge.builtins import DamlName
 
 A = TypeVar("A")
@@ -12,13 +12,12 @@ K = TypeVar("K")
 T = TypeVar("T")
 
 
-@ledger_effect
-@DamlName("requireMatchingContract")
+@DamlName("requireMatchingContract", is_ledger_effect=True)
 def require_matching_contract(cid: ContractId[T], expected_co: T) -> None:
     pass
 
 
-@ledger_effect
+@DamlName("require", is_ledger_effect=True)
 def require(msg: str, invariant: bool) -> None:
     pass
 
@@ -28,68 +27,57 @@ def contract_group_id(t: T) -> Cgid:
     pass
 
 
-@ledger_effect
-@DamlName("fetchChecked")
+@DamlName("fetchChecked", is_ledger_effect=True)
 def fetch_checked(expectedcgid: Cgid, cid: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("fetchCheckedInterface")
+@DamlName("fetchCheckedInterface", is_ledger_effect=True)
 def fetch_checked_interface(cgid: Cgid, contract_id: ContractId[I]) -> I:
     pass
 
 
-@ledger_effect
-@DamlName("fetchAndArchive")
+@DamlName("fetchAndArchive", is_ledger_effect=True)
 def fetch_and_archive(cgid1: Cgid, cid: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("fetchReferenceData")
+@DamlName("fetchReferenceData", is_ledger_effect=True)
 def fetch_reference_data(cgid: Cgid, contract_id: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("fetchButArchiveLater")
+@DamlName("fetchButArchiveLater", is_ledger_effect=True)
 def fetch_but_archive_later(cgid: Cgid, contract_id: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("fetchPublicReferenceData")
+@DamlName("fetchPublicReferenceData", is_ledger_effect=True)
 def fetch_public_reference_data(expected_cgid: Cgid, cid: ContractId[T], arg: Ch) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("fetchUncheckedAndArchive")
+@DamlName("fetchUncheckedAndArchive", is_ledger_effect=True)
 def fetch_unchecked_and_archive(cid: ContractId[B]) -> B:
     pass
 
 
-@ledger_effect
-@DamlName("fetchUncheckedReferenceData")
+@DamlName("fetchUncheckedReferenceData", is_ledger_effect=True)
 def fetch_unchecked_reference_data(contract_id: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("fetchUncheckedButArchiveLater")
+@DamlName("fetchUncheckedButArchiveLater", is_ledger_effect=True)
 def fetch_unchecked_but_archive_later(contract_id: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("potentiallyUnsafeArchive")
+@DamlName("potentiallyUnsafeArchive", is_ledger_effect=True)
 def potentially_unsafe_archive(contract_id: ContractId[T]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("checkContractGroupId")
+@DamlName("checkContractGroupId", is_ledger_effect=True)
 def check_contract_group_id(cgid: Cgid, contract_id: ContractId[I], t: T) -> T:
     pass
 
@@ -123,7 +111,6 @@ def text_map_difference(text_map: TextMap[A], text_map_1: TextMap[A]) -> TextMap
     pass
 
 
-@ledger_effect
-@DamlName("deprecatedChoice")
+@DamlName("deprecatedChoice", is_ledger_effect=True)
 def deprecated_choice(package: str, version: str, choice: str) -> A:
     pass

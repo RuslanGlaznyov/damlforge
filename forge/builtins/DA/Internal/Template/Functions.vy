@@ -1,6 +1,6 @@
 from typing import TypeVar
 
-from forge.models import ContractId, ledger_effect, Optional, Party
+from forge.models import ContractId, Optional, Party
 from forge.builtins import DamlName
 from DA.Internal.Any import AnyChoice, AnyTemplate, TemplateTypeRep
 
@@ -23,29 +23,27 @@ def ensure(t: T) -> bool:
     pass
 
 
-@ledger_effect
+@DamlName("create", is_ledger_effect=True)
 def create(t: T) -> ContractId[T]:
     pass
 
 
-@ledger_effect
+@DamlName("fetch", is_ledger_effect=True)
 def fetch(contract_id: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("softFetch")
+@DamlName("softFetch", is_ledger_effect=True)
 def soft_fetch(contract_id: ContractId[T]) -> T:
     pass
 
 
-@ledger_effect
-@DamlName("softExercise")
+@DamlName("softExercise", is_ledger_effect=True)
 def soft_exercise(contract_id: ContractId[T], c: C) -> R:
     pass
 
 
-@ledger_effect
+@DamlName("archive", is_ledger_effect=True)
 def archive(contract_id: ContractId[T]) -> None:
     pass
 
@@ -54,7 +52,7 @@ def stakeholder(t1: T) -> list[Party]:
     pass
 
 
-@ledger_effect
+@DamlName("exercise", is_ledger_effect=True)
 def exercise(contract_id: ContractId[T], c: C) -> R:
     pass
 
@@ -67,8 +65,7 @@ def maintainer(k: K) -> list[Party]:
     pass
 
 
-@ledger_effect
-@DamlName("createAndExercise")
+@DamlName("createAndExercise", is_ledger_effect=True)
 def create_and_exercise(t1: T, c1: C) -> R:
     pass
 

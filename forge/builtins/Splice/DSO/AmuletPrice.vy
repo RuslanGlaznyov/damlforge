@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import ContractId, Decimal, ledger_effect, Optional, Party, template
+from forge.models import ContractId, Decimal, Optional, Party, template
 from forge.builtins import DamlName
 
 
@@ -15,8 +15,7 @@ class AmuletPriceVote:
     signatory: list[Party] = [dso]
 
 
-@ledger_effect
-@DamlName("fetchMedianAmuletPrice")
+@DamlName("fetchMedianAmuletPrice", is_ledger_effect=True)
 def fetch_median_amulet_price(party: Party, svs: list[Party], vote_cids: list[ContractId[AmuletPriceVote]]) -> Decimal:
     pass
 

@@ -1,6 +1,6 @@
 from typing import TypeVar
 
-from forge.models import Decimal, ledger_effect, Optional
+from forge.models import Decimal, Optional
 from forge.builtins import DamlName
 
 A = TypeVar("A")
@@ -8,8 +8,7 @@ B = TypeVar("B")
 C = TypeVar("C")
 
 
-@ledger_effect
-@DamlName("return")
+@DamlName("return", is_ledger_effect=True)
 def return_(a: A) -> A:
     pass
 
@@ -18,7 +17,7 @@ def identity(x: A) -> A:
     pass
 
 
-@ledger_effect
+@DamlName("guard", is_ledger_effect=True)
 def guard(bool_value: bool) -> None:
     pass
 
@@ -117,13 +116,12 @@ def trace_id(x: B) -> B:
     pass
 
 
-@ledger_effect
+@DamlName("debug", is_ledger_effect=True)
 def debug(x: B) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("debugRaw")
+@DamlName("debugRaw", is_ledger_effect=True)
 def debug_raw(str_value: str) -> None:
     pass
 

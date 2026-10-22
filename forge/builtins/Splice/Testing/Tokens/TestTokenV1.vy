@@ -1,4 +1,4 @@
-from forge.models import ContractId, Decimal, ledger_effect, Optional, Party, template
+from forge.models import ContractId, Decimal, Optional, Party, template
 from forge.builtins import DamlName
 from Splice.Api.Token.AllocationV1 import AllocationSpecification
 from Splice.Api.Token.HoldingV1 import Holding, HoldingView, InstrumentId
@@ -35,8 +35,7 @@ class TokenRules:
     signatory: list[Party] = [admin]
 
 
-@ledger_effect
-@DamlName("consumeHoldingAmount")
+@DamlName("consumeHoldingAmount", is_ledger_effect=True)
 def consume_holding_amount(sender: Party, input_cids: list[ContractId[Holding]], amount: Decimal, instrument_id: InstrumentId) -> Optional[ContractId[Holding]]:
     pass
 

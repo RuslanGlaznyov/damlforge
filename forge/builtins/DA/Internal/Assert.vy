@@ -1,28 +1,23 @@
 from datetime import datetime
 
-from forge.models import ledger_effect
 from forge.builtins import DamlName
 
 
-@ledger_effect
-@DamlName("assert")
+@DamlName("assert", is_ledger_effect=True)
 def assert_(bool_value: bool) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertMsg")
+@DamlName("assertMsg", is_ledger_effect=True)
 def assert_msg(str_value: str, bool_value: bool) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertAfter")
+@DamlName("assertAfter", is_ledger_effect=True)
 def assert_after(datetime_value: datetime) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertBefore")
+@DamlName("assertBefore", is_ledger_effect=True)
 def assert_before(datetime_value: datetime) -> None:
     pass

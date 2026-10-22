@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, GenMap, ledger_effect, Optional, Party, template, TextMap, variant, variant_record
+from forge.models import choice, ContractId, GenMap, Optional, Party, template, TextMap, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName, no_derive
 from Splice.Api.Token.AllocationInstructionV2 import AllocationFactory, AllocationFactory_Allocate, AllocationInstructionResult
 from Splice.Api.Token.AllocationV2 import Allocation, AllocationResult, AllocationSpecification, SettlementFactory, SettlementFactory_SettleBatchResult, SettlementInfo, TransferLeg, TransferLegSide
@@ -144,19 +144,16 @@ def expected_trade_allocations_v1(settlement_info: AllocationV1.SettlementInfo, 
     pass
 
 
-@ledger_effect
-@DamlName("extractAllocationCidFromResult")
+@DamlName("extractAllocationCidFromResult", is_ledger_effect=True)
 def extract_allocation_cid_from_result(result: AllocationInstructionResult) -> ContractId[Allocation]:
     pass
 
 
-@ledger_effect
-@DamlName("validateAllocationAsSender")
+@DamlName("validateAllocationAsSender", is_ledger_effect=True)
 def validate_allocation_as_sender(this: TradeSettlementAgreement, receiver_agreement_cid: ContractId[TradeSettlementAgreement], allocation_cid: ContractId[AllocationV1.Allocation]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("validateAllocationAsReceiver")
+@DamlName("validateAllocationAsReceiver", is_ledger_effect=True)
 def validate_allocation_as_receiver(this: TradeSettlementAgreement, sender: Party, allocation_cid: ContractId[AllocationV1.Allocation]) -> None:
     pass

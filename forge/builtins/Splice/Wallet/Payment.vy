@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party, template, variant
+from forge.models import choice, ContractId, Decimal, Optional, Party, template, variant
 from forge.builtins import DamlName, no_derive
 from Splice.Amulet import Amulet, AmuletCreateSummary, LockedAmulet
 from Splice.AmuletRules import AppTransferContext, PaymentTransferContext, TransferInput, TransferOutput
@@ -135,14 +135,12 @@ class AcceptedAppPayment:
         pass
 
 
-@ledger_effect
-@DamlName("paymentAmountToAmulet")
+@DamlName("paymentAmountToAmulet", is_ledger_effect=True)
 def payment_amount_to_amulet(party: Party, open_mining_round: OpenMiningRound, pq: PaymentAmount) -> Decimal:
     pass
 
 
-@ledger_effect
-@DamlName("receiverAmountToAmuletReceiverAmount")
+@DamlName("receiverAmountToAmuletReceiverAmount", is_ledger_effect=True)
 def receiver_amount_to_amulet_receiver_amount(party: Party, open_mining_round: OpenMiningRound, rq: ReceiverAmount) -> ReceiverAmuletAmount:
     pass
 

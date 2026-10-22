@@ -1,6 +1,6 @@
 from typing import Annotated, Generic, TypeVar
 
-from forge.models import choice, ContractId, Decimal, GenMap, ledger_effect, Optional, Party, template
+from forge.models import choice, ContractId, Decimal, GenMap, Optional, Party, template
 from forge.builtins import DamlName, no_derive
 from Splice.Api.FeaturedAppRightV1 import AppRewardBeneficiary, FeaturedAppRight, FeaturedAppRight_CreateActivityMarkerResult
 from Splice.Api.Token.AllocationInstructionV1 import AllocationFactory, AllocationFactory_Allocate, AllocationInstructionResult
@@ -87,32 +87,27 @@ def get_first_sender(list_value: list[TransferFactoryCall]) -> Party:
     pass
 
 
-@ledger_effect
-@DamlName("runBatch")
+@DamlName("runBatch", is_ledger_effect=True)
 def run_batch(proxy: WalletUserProxy, wallet_user_proxy_batch_transfer: WalletUserProxy_BatchTransfer) -> WalletUserProxy_BatchTransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("executeTransferCalls")
+@DamlName("executeTransferCalls", is_ledger_effect=True)
 def execute_transfer_calls(wallet_user_proxy: WalletUserProxy, party: Party, optional: Optional[ContractId[FeaturedAppRight]], list_value: list[TransferFactoryCall], holding_map: GenMap[InstrumentId, list[ContractId[Holding]]], results: list[TransferInstructionResult]) -> WalletUserProxy_BatchTransferResult:
     pass
 
 
-@ledger_effect
-@DamlName("validateAppRight")
+@DamlName("validateAppRight", is_ledger_effect=True)
 def validate_app_right(proxy: WalletUserProxy, featured_app_right_cid: ContractId[FeaturedAppRight]) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("checkAllowList")
+@DamlName("checkAllowList", is_ledger_effect=True)
 def check_allow_list(optional: Optional[list[Party]], party: Party) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("createAppMarker")
+@DamlName("createAppMarker", is_ledger_effect=True)
 def create_app_marker(proxy: WalletUserProxy, user: Party, featured_app_right_cid: ContractId[FeaturedAppRight]) -> FeaturedAppRight_CreateActivityMarkerResult:
     pass
 
@@ -127,6 +122,6 @@ def valid_proxy(wallet_user_proxy: WalletUserProxy) -> bool:
     pass
 
 
-@ledger_effect
+@DamlName("require", is_ledger_effect=True)
 def require(msg: str, invariant: bool) -> None:
     pass

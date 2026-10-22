@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Party, template
+from forge.models import choice, ContractId, Decimal, Party, template
 from forge.builtins import DamlName, no_derive
 from Splice.Api.FeaturedAppRightV1 import AppRewardBeneficiary, FeaturedAppRight, FeaturedAppRight_CreateActivityMarkerResult
 import Splice.Api.FeaturedAppRightV2 as FeaturedAppRightV2
@@ -42,6 +42,6 @@ class BatchedMarkersProxy:
         pass
 
 
-@ledger_effect
+@DamlName("require", is_ledger_effect=True)
 def require(msg: str, invariant: bool) -> None:
     pass

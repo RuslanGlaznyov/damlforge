@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import ContractId, Decimal, ledger_effect, Party
+from forge.models import ContractId, Decimal, Party
 from forge.builtins import DamlName, no_derive
 from Splice.Amulet import LockedAmulet
 from Splice.AmuletRules import ExternalPartyTransferContext, TransferInput
@@ -23,25 +23,21 @@ struct TwoStepTransfer:
     allow_featuring: Annotated[bool, DamlName("allowFeaturing")]
 
 
-@ledger_effect
-@DamlName("holdingToTransferInputs")
+@DamlName("holdingToTransferInputs", is_ledger_effect=True)
 def holding_to_transfer_inputs(for_owner: ForOwner, input_holding_cids: list[ContractId[Holding]]) -> list[TransferInput]:
     pass
 
 
-@ledger_effect
-@DamlName("prepareTwoStepTransfer")
+@DamlName("prepareTwoStepTransfer", is_ledger_effect=True)
 def prepare_two_step_transfer(two_step_transfer: TwoStepTransfer, requested_at: datetime, input_holding_cids: list[ContractId[Holding]], context: ExternalPartyTransferContext) -> tuple[ContractId[LockedAmulet], list[ContractId[Holding]], Metadata]:
     pass
 
 
-@ledger_effect
-@DamlName("executeTwoStepTransfer")
+@DamlName("executeTwoStepTransfer", is_ledger_effect=True)
 def execute_two_step_transfer(two_step_transfer: TwoStepTransfer, locked_amulet_cid: ContractId[LockedAmulet], transfer_meta: Metadata, extra_args: ExtraArgs) -> tuple[list[ContractId[Holding]], list[ContractId[Holding]], Metadata]:
     pass
 
 
-@ledger_effect
-@DamlName("abortTwoStepTransfer")
+@DamlName("abortTwoStepTransfer", is_ledger_effect=True)
 def abort_two_step_transfer(lock_expires_at: datetime, locked_amulet_cid: ContractId[LockedAmulet], extra_args: ExtraArgs) -> list[ContractId[Holding]]:
     pass

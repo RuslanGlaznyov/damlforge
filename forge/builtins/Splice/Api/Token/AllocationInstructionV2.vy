@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, GenMap, ledger_effect, Optional, Party, TextMap, variant, variant_record
+from forge.models import choice, ContractId, GenMap, Optional, Party, TextMap, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName
 from Splice.Api.Token.AllocationV2 import Allocation, AllocationSpecification, SettlementInfo
 from Splice.Api.Token.HoldingV2 import Holding
@@ -97,8 +97,7 @@ def aia_custom(value: AllocationInstructionAction) -> Optional[str]:
     pass
 
 
-@ledger_effect
-@DamlName("allocationInstruction_withdrawImpl")
+@DamlName("allocationInstruction_withdrawImpl", is_ledger_effect=True)
 def allocation_instruction_withdraw_impl(i: AllocationInstruction, contract_id: ContractId[AllocationInstruction], allocation_instruction_withdraw: AllocationInstruction_Withdraw) -> AllocationInstructionResult:
     pass
 
@@ -108,8 +107,7 @@ def allocation_instruction_withdraw_extra_observers(i: AllocationInstruction, al
     pass
 
 
-@ledger_effect
-@DamlName("allocationInstruction_acceptImpl")
+@DamlName("allocationInstruction_acceptImpl", is_ledger_effect=True)
 def allocation_instruction_accept_impl(i: AllocationInstruction, contract_id: ContractId[AllocationInstruction], allocation_instruction_accept: AllocationInstruction_Accept) -> AllocationInstructionResult:
     pass
 
@@ -124,13 +122,11 @@ def allocation_factory_allocate_extra_observers(i: AllocationFactory, allocation
     pass
 
 
-@ledger_effect
-@DamlName("allocationFactory_allocateImpl")
+@DamlName("allocationFactory_allocateImpl", is_ledger_effect=True)
 def allocation_factory_allocate_impl(i: AllocationFactory, contract_id: ContractId[AllocationFactory], allocation_factory_allocate: AllocationFactory_Allocate) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationFactory_publicFetchImpl")
+@DamlName("allocationFactory_publicFetchImpl", is_ledger_effect=True)
 def allocation_factory_public_fetch_impl(i: AllocationFactory, contract_id: ContractId[AllocationFactory], allocation_factory_public_fetch: AllocationFactory_PublicFetch) -> AllocationFactoryView:
     pass

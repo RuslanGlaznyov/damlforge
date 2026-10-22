@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, Decimal, ledger_effect, Optional, Party, template, variant, variant_record
+from forge.models import choice, ContractId, Decimal, Optional, Party, template, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName
 from Splice.Amulet import LockedAmulet
 from Splice.AmuletAllocation import AmuletAllocation, AmuletAllocation_DsoExpireResult
@@ -121,31 +121,26 @@ def transfer_command_result_success(value: TransferCommandResult) -> Optional[Tr
     pass
 
 
-@ledger_effect
-@DamlName("amulet_transferFactoryV1_transferImpl")
+@DamlName("amulet_transferFactoryV1_transferImpl", is_ledger_effect=True)
 def amulet_transfer_factory_v1_transfer_impl(this: ExternalPartyAmuletRules, actors: list[Party], arg: TransferFactory_Transfer) -> TransferInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("amulet_allocationFactoryV2_allocateImpl")
+@DamlName("amulet_allocationFactoryV2_allocateImpl", is_ledger_effect=True)
 def amulet_allocation_factory_v2_allocate_impl(external_amulet_rules: ExternalPartyAmuletRules, contract_id: ContractId[AllocationFactory], arg: AllocationFactory_Allocate) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("amulet_allocationFactoryV2_allocateImplCore")
+@DamlName("amulet_allocationFactoryV2_allocateImplCore", is_ledger_effect=True)
 def amulet_allocation_factory_v2_allocate_impl_core(external_amulet_rules: ExternalPartyAmuletRules, arg: AllocationFactory_Allocate, funding_amount: Decimal) -> tuple[Optional[ContractId[LockedAmulet]], list[ContractId[Holding]], datetime, Metadata]:
     pass
 
 
-@ledger_effect
-@DamlName("amulet_allocationFactoryV1_allocateImpl")
+@DamlName("amulet_allocationFactoryV1_allocateImpl", is_ledger_effect=True)
 def amulet_allocation_factory_v1_allocate_impl(external_amulet_rules: ExternalPartyAmuletRules, contract_id: ContractId[AllocationInstructionV1.AllocationFactory], arg: AllocationInstructionV1.AllocationFactory_Allocate) -> AllocationInstructionV1.AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("requireExpectedAdminMatch")
+@DamlName("requireExpectedAdminMatch", is_ledger_effect=True)
 def require_expected_admin_match(expected: Party, actual: Party) -> None:
     pass

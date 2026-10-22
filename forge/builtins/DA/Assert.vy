@@ -1,43 +1,36 @@
 from datetime import datetime
 from typing import TypeVar
 
-from forge.models import ledger_effect
 from forge.builtins import DamlName
 
 A = TypeVar("A")
 
 
-@ledger_effect
-@DamlName("assertEq")
+@DamlName("assertEq", is_ledger_effect=True)
 def assert_eq(a: A, a_1: A) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertNotEq")
+@DamlName("assertNotEq", is_ledger_effect=True)
 def assert_not_eq(a: A, a_1: A) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertAfterMsg")
+@DamlName("assertAfterMsg", is_ledger_effect=True)
 def assert_after_msg(str_value: str, datetime_value: datetime) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertBeforeMsg")
+@DamlName("assertBeforeMsg", is_ledger_effect=True)
 def assert_before_msg(str_value: str, datetime_value: datetime) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertWithinDeadline")
+@DamlName("assertWithinDeadline", is_ledger_effect=True)
 def assert_within_deadline(str_value: str, datetime_value: datetime) -> None:
     pass
 
 
-@ledger_effect
-@DamlName("assertDeadlineExceeded")
+@DamlName("assertDeadlineExceeded", is_ledger_effect=True)
 def assert_deadline_exceeded(str_value: str, datetime_value: datetime) -> None:
     pass

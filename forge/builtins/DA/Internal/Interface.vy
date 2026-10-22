@@ -1,6 +1,6 @@
 from typing import TypeVar
 
-from forge.models import ContractId, ledger_effect, Optional
+from forge.models import ContractId, Optional
 from forge.builtins import DamlName
 from DA.Internal.Any import TemplateTypeRep
 
@@ -45,8 +45,7 @@ def coerce_interface_contract_id(contract_id: ContractId[I]) -> ContractId[J]:
     pass
 
 
-@ledger_effect
-@DamlName("fetchFromInterface")
+@DamlName("fetchFromInterface", is_ledger_effect=True)
 def fetch_from_interface(cid: ContractId[I]) -> Optional[tuple[ContractId[T], T]]:
     pass
 

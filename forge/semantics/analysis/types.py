@@ -829,8 +829,8 @@ _TIME_ARITHMETIC_MARKERS = ("add_rel_time", "sub_time", "sub_rel_time")
 def _infer_expr_type(
     expr, enclosing_type, local_types: dict, field_types: dict, return_types: dict
 ):
-    if isinstance(expr, vy_ast.Call) and expr._metadata.get("datetime_now"):
-        return TypeRef("Timestamp")
+    if isinstance(expr, vy_ast.Call) and (return_type := expr._metadata.get("return_type")):
+        return TypeRef(return_type)
     if isinstance(expr, vy_ast.Call) and "datetime_combine_arguments" in expr._metadata:
         return TypeRef("Timestamp")
     if isinstance(expr, vy_ast.Call) and "fromtimestamp_argument" in expr._metadata:

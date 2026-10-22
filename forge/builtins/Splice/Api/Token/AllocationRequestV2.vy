@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import choice, ContractId, GenMap, ledger_effect, Optional, Party, variant, variant_record
+from forge.models import choice, ContractId, GenMap, Optional, Party, variant, variant_record
 from forge.builtins import DamlCaseAccessor, DamlName
 from Splice.Api.Token.AllocationV2 import AllocationSpecification, SettlementInfo
 from Splice.Api.Token.MetadataV1 import ExtraArgs, Metadata
@@ -66,20 +66,17 @@ def ara_custom(value: AllocationRequestAction) -> Optional[str]:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequest_acceptImpl")
+@DamlName("allocationRequest_acceptImpl", is_ledger_effect=True)
 def allocation_request_accept_impl(i: AllocationRequest, contract_id: ContractId[AllocationRequest], allocation_request_accept: AllocationRequest_Accept) -> AllocationRequest_AcceptResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequest_rejectImpl")
+@DamlName("allocationRequest_rejectImpl", is_ledger_effect=True)
 def allocation_request_reject_impl(i: AllocationRequest, contract_id: ContractId[AllocationRequest], allocation_request_reject: AllocationRequest_Reject) -> AllocationRequest_RejectResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocationRequest_withdrawImpl")
+@DamlName("allocationRequest_withdrawImpl", is_ledger_effect=True)
 def allocation_request_withdraw_impl(i: AllocationRequest, contract_id: ContractId[AllocationRequest], allocation_request_withdraw: AllocationRequest_Withdraw) -> AllocationRequest_WithdrawResult:
     pass
 

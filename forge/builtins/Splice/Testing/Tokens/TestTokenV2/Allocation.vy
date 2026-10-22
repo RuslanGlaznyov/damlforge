@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from forge.models import ContractId, Decimal, GenMap, ledger_effect, Optional, Party, template, TextMap, variant
+from forge.models import ContractId, Decimal, GenMap, Optional, Party, template, TextMap, variant
 from forge.builtins import DamlName, no_derive
 from Splice.Api.Token.AllocationInstructionV2 import AllocationInstruction, AllocationInstructionAction, AllocationInstructionResult, AllocationInstruction_Accept, AllocationInstruction_Withdraw
 from Splice.Api.Token.AllocationV2 import Allocation, AllocationAction, AllocationResult, AllocationSpecification, Allocation_Cancel, Allocation_Settle, Allocation_Withdraw, SettlementInfo
@@ -70,38 +70,32 @@ def valid_allocate_before(requested_at: datetime, opt_allocate_before: Optional[
     pass
 
 
-@ledger_effect
-@DamlName("applyAllocationInstructionTransitions")
+@DamlName("applyAllocationInstructionTransitions", is_ledger_effect=True)
 def apply_allocation_instruction_transitions(call_source: CallSource, allocation_kind: AllocationKind, this: TokenAllocationInstructionV2, o_self: Optional[ContractId[AllocationInstruction]], actors: list[Party], action: AllocationInstructionAction, extra_args: ExtraArgs) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("applyAllocationTransitions")
+@DamlName("applyAllocationTransitions", is_ledger_effect=True)
 def apply_allocation_transitions(call_source: CallSource, allocation_kind: AllocationKind, this: TokenAllocationV2, o_self: Optional[ContractId[Allocation]], actors: list[Party], action: AllocationAction, o_settle: Optional[Allocation_Settle], extra_args: ExtraArgs) -> AllocationResult:
     pass
 
 
-@ledger_effect
-@DamlName("allocateTokenAllocation")
+@DamlName("allocateTokenAllocation", is_ledger_effect=True)
 def allocate_token_allocation(event_log_cid: ContractId[EventLog], account_map: GenMap[Account, tuple[AccountConfig, Optional[ContractId[AccountConfig]]]], this: TokenAllocationInstructionV2, allocation_kind: AllocationKind) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("settleTokenAllocationV2")
+@DamlName("settleTokenAllocationV2", is_ledger_effect=True)
 def settle_token_allocation_v2(account_map: GenMap[Account, tuple[AccountConfig, Optional[ContractId[AccountConfig]]]], this: TokenAllocationV2, self_: ContractId[Allocation], arg: Allocation_Settle) -> AllocationResult:
     pass
 
 
-@ledger_effect
-@DamlName("lockAllocationFunds")
+@DamlName("lockAllocationFunds", is_ledger_effect=True)
 def lock_allocation_funds(settlement: SettlementInfo, settlement_deadline: Optional[datetime], admin: Party, authorizer: Account, input_amounts: TextMap[Decimal], lock_amounts: TextMap[Decimal]) -> tuple[TextMap[list[ContractId[Holding]]], TextMap[list[ContractId[Holding]]]]:
     pass
 
 
-@ledger_effect
-@DamlName("unlockTokenAllocationV2")
+@DamlName("unlockTokenAllocationV2", is_ledger_effect=True)
 def unlock_token_allocation_v2(reason: str, token_allocation: TokenAllocationV2, extra_args: ExtraArgs) -> TextMap[list[ContractId[Holding]]]:
     pass
 
@@ -111,43 +105,36 @@ def mk_available_allocation_actions(settlement: SettlementInfo, allocation: Allo
     pass
 
 
-@ledger_effect
-@DamlName("token_allocationInstruction_withdrawImplV2")
+@DamlName("token_allocationInstruction_withdrawImplV2", is_ledger_effect=True)
 def token_allocation_instruction_withdraw_impl_v2(call_source: CallSource, allocation_kind: AllocationKind, this: TokenAllocationInstructionV2, self_: ContractId[AllocationInstruction], arg: AllocationInstruction_Withdraw) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("token_allocationInstruction_acceptImplV2")
+@DamlName("token_allocationInstruction_acceptImplV2", is_ledger_effect=True)
 def token_allocation_instruction_accept_impl_v2(call_source: CallSource, allocation_kind: AllocationKind, this: TokenAllocationInstructionV2, self_: ContractId[AllocationInstruction], arg: AllocationInstruction_Accept) -> AllocationInstructionResult:
     pass
 
 
-@ledger_effect
-@DamlName("token_allocation_withdrawImplV2")
+@DamlName("token_allocation_withdrawImplV2", is_ledger_effect=True)
 def token_allocation_withdraw_impl_v2(call_source: CallSource, allocation_kind: AllocationKind, this: TokenAllocationV2, self_: ContractId[Allocation], arg: Allocation_Withdraw) -> AllocationResult:
     pass
 
 
-@ledger_effect
-@DamlName("token_allocation_cancelImplV2")
+@DamlName("token_allocation_cancelImplV2", is_ledger_effect=True)
 def token_allocation_cancel_impl_v2(call_source: CallSource, allocation_kind: AllocationKind, this: TokenAllocationV2, self_: ContractId[Allocation], arg: Allocation_Cancel) -> AllocationResult:
     pass
 
 
-@ledger_effect
-@DamlName("token_allocation_settleImplV2")
+@DamlName("token_allocation_settleImplV2", is_ledger_effect=True)
 def token_allocation_settle_impl_v2(call_source: CallSource, allocation_kind: AllocationKind, this: TokenAllocationV2, self_: ContractId[Allocation], arg: Allocation_Settle) -> AllocationResult:
     pass
 
 
-@ledger_effect
-@DamlName("createTokenAllocation")
+@DamlName("createTokenAllocation", is_ledger_effect=True)
 def create_token_allocation(allocation_kind: AllocationKind, allocation_v2: TokenAllocationV2) -> ContractId[Allocation]:
     pass
 
 
-@ledger_effect
-@DamlName("createTokenAllocationInstruction")
+@DamlName("createTokenAllocationInstruction", is_ledger_effect=True)
 def create_token_allocation_instruction(allocation_kind: AllocationKind, allocation_instruction_v2: TokenAllocationInstructionV2) -> ContractId[AllocationInstruction]:
     pass
