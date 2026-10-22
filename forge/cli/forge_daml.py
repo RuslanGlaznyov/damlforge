@@ -1,3 +1,4 @@
+from forge.ir.nodes import IRModule
 import json
 from pathlib import Path
 
@@ -22,9 +23,8 @@ def _compile_one(
     source = file.read_text()
     module = parse_to_ast(source, module_path=path.name, resolved_path=str(path))
     with tag_exceptions(module):
-        import_graph = analyze_module(module)
-        ir = lower_module(module, import_graph=import_graph)
-        module_name = daml_module_name(path.stem)
+        ir: IRModule = lower_module(module, import_graph=analyze_module(module))
+        module_name: str = daml_module_name(path.stem)
         daml_source, source_map = generate_daml(ir, module_name=module_name, settings=settings)
         source_map = with_source_file(source_map, file)
 

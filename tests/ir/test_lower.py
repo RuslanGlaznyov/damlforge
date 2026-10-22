@@ -4,6 +4,7 @@ import pytest
 
 from forge.ast.parse import parse_to_ast
 from forge.ir import lower_module
+from forge.ir.lower import LIST_SET_HELPER
 from forge.ir.imports import _walk_ir
 from forge.ir.nodes import (
     Field,
@@ -141,6 +142,59 @@ def test_unvalidated_attribute_access_lowers_to_ir_attribute():
 
     (fn,) = ir.functions
     assert fn.body[0] == IRReturn(IRAttribute(IRName("x"), "PENDING"))
+
+
+def test_list_subscript_assignment_lowers_to_immutable_update():
+    ir = _analyze_and_lower(
+        "def reset_first(xs: list[int]) -> list[int]:\n" "    xs[0] = 0\n" "    return xs\n"
+    )
+
+    (fn,) = ir.functions
+    assignment, result = fn.body
+    assert assignment == IRAssign(
+        IRName("xs"), IRCall(IRName(LIST_SET_HELPER), (IRConstant(0), IRConstant(0), IRName("xs")))
+    )
+    assert isinstance(result, IRReturn)
+    assert isinstance(result.value, IRName)
+    assert result.value.id == "xs"
+
+
+def test_dynamic_list_subscript_assignment_uses_the_same_update_helper():
+    ir = _analyze_and_lower(
+        "def set_at(xs: list[int], index: int, value: int) -> list[int]:\n"
+        "    xs[index] = value\n"
+        "    return xs\n"
+    )
+
+    (fn,) = ir.functions
+    assignment = fn.body[0]
+    assert isinstance(assignment, IRAssign)
+    assert isinstance(assignment.value, IRCall)
+    assert assignment.value.func == IRName(LIST_SET_HELPER)
+    assert assignment.value.args[0] == IRName("index")
+
+
+def test_template_list_field_assignment_lowers_to_record_field_update():
+    ir = _analyze_and_lower(
+        "from forge.models import Party\n"
+        "@template\n"
+        "class Box:\n"
+        "    owner: Party\n"
+        "    items: list[int]\n"
+        "    signatory: Party = owner\n\n"
+        "    @choice(controller=owner, consuming=True)\n"
+        "    def set_first(self, value: int) -> int:\n"
+        "        self.items[0] = value\n"
+        "        return value\n"
+    )
+
+    choice = ir.templates[0].choices[0]
+    assignment = choice.body[0]
+    assert isinstance(assignment, IRAssign)
+    assert isinstance(assignment.target, IRAttribute)
+    assert assignment.target.attr == "items"
+    assert isinstance(assignment.value, IRCall)
+    assert assignment.value.func == IRName(LIST_SET_HELPER)
 
 
 def test_bare_value_assigned_to_optional_field_auto_wraps_in_some():
@@ -368,6 +422,7 @@ def test_create_infers_bare_contract_id_result_type():
         "    signatory: list[Party] = [owner]\n\n"
         "struct Holder:\n"
         "    tracker_cid: Optional[ContractId[Tracker]]\n\n"
+        "@ledger_effect\n"
         "def build(owner: Party) -> Holder:\n"
         "    new_cid = create(Tracker(owner=owner))\n"
         "    return Holder(tracker_cid=new_cid)\n"

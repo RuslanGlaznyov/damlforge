@@ -47,6 +47,7 @@ from forge.ir.nodes import (
 )
 from forge.ir.imports import prepare_ir_module
 from forge.builtins import DamlName, choice
+from forge.builtins.maps import known_map_types
 from forge.models.decorators import Consuming
 
 
@@ -59,19 +60,13 @@ def _src(node: vy_ast.VyperNode) -> SourceSpan:
     )
 
 
-_BIN_OPS = {
-    "Add": "+",
-    "Sub": "-",
-    "Mult": "*",
-    "Div": "/",
-    "Mod": "%",
-    "Pow": "**",
-}
+_BIN_OPS = {"Add": "+", "Sub": "-", "Mult": "*", "Div": "/", "Mod": "%", "Pow": "**"}
 
 _CONCAT_OPS = {"Text": "<>", "list": "++"}
 
 FLOOR_DIV_HELPER = "_damlforge_floorDiv"
 FLOOR_DIV_DECIMAL_HELPER = "_damlforge_floorDivDecimal"
+LIST_SET_HELPER = "_damlforge_listSet"
 
 _BOOL_OPS = {"And": "and", "Or": "or"}
 
@@ -112,9 +107,7 @@ def lower_type(node: vy_ast.VyperNode) -> TypeRef:
         else:
             args = (lower_type(node.slice),)
         return TypeRef(base.name, args)
-    raise CompilerPanic(
-        f"lower_type: unsupported type expression {type(node).__name__}", node
-    )
+    raise CompilerPanic(f"lower_type: unsupported type expression {type(node).__name__}", node)
 
 
 def lower_expr(node: vy_ast.VyperNode):
@@ -134,9 +127,7 @@ def _inferred_type(node: vy_ast.VyperNode) -> TypeRef | None:
 def _lower_expr_inner(node: vy_ast.VyperNode):
     handler = globals().get(f"_lower_expr_{type(node).__name__}")
     if handler is None:
-        raise CompilerPanic(
-            f"lower_expr: unsupported expression node {type(node).__name__}", node
-        )
+        raise CompilerPanic(f"lower_expr: unsupported expression node {type(node).__name__}", node)
     return handler(node)
 
 
@@ -244,6 +235,13 @@ def _lower_expr_Call(node):
                 "TextMap": "TextMap.size",
             }.get(argument_type.name, function_name)
         return IRCall(IRName(function_name), (lower_expr(argument),))
+    if isinstance(node.func, vy_ast.Attribute):
+        receiver_type = _inferred_type(node.func.value)
+        map_type = known_map_types().get(receiver_type.name) if receiver_type is not None else None
+        if map_type is not None and node.func.attr in map_type.method_names():
+            receiver = lower_expr(node.func.value)
+            args = tuple(lower_expr(a) for a in node.args)
+            return IRCall(IRName(f"{map_type.module}.{node.func.attr}"), args + (receiver,))
     args = tuple(lower_expr(a) for a in node.args)
     owner = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
     keywords = tuple(
@@ -253,7 +251,7 @@ def _lower_expr_Call(node):
 
 
 def _lower_expr_literal(node):
-    return IRConstant(node.value)
+    return IRConstant(node.value, _inferred_type(node))
 
 
 _lower_expr_NameConstant = _lower_expr_literal
@@ -323,9 +321,7 @@ def _lower_expr_IfExp(node):
 def lower_stmt(node: vy_ast.VyperNode):
     handler = globals().get(f"_lower_stmt_{type(node).__name__}")
     if handler is None:
-        raise CompilerPanic(
-            f"lower_stmt: unsupported statement node {type(node).__name__}", node
-        )
+        raise CompilerPanic(f"lower_stmt: unsupported statement node {type(node).__name__}", node)
     return handler(node)
 
 
@@ -335,6 +331,10 @@ def _lower_stmt_Assert(node):
 
 
 def _lower_stmt_AnnAssign(node):
+    if node.value is None:
+        # A local annotation without an initializer has no Daml statement
+        # equivalent, but it is valid Python syntax and has no runtime effect.
+        return IRPass(src=_src(node))
     value = lower_expr(node.value) if node.value is not None else None
     target_type = lower_type(node.annotation)
     target = lower_expr(node.target)
@@ -344,7 +344,14 @@ def _lower_stmt_AnnAssign(node):
 
 
 def _lower_stmt_Assign(node):
-    return IRAssign(lower_expr(node.target), lower_expr(node.value), src=_src(node))
+    target = lower_expr(node.target)
+    value = lower_expr(node.value)
+    if isinstance(target, IRSubscript) and target.is_list:
+        subscript = target
+        receiver = subscript.value
+        target = receiver
+        value = IRCall(IRName(LIST_SET_HELPER), (subscript.index, value, receiver))
+    return IRAssign(target, value, src=_src(node))
 
 
 def _lower_stmt_AugAssign(node):
@@ -378,7 +385,16 @@ def _lower_stmt_For(node):
     annotation = getattr(node.target, "annotation", None)
     target_type = lower_type(annotation) if annotation else None
     body = tuple(lower_stmt(s) for s in node.body)
-    return IRFor(target.id, target_type, lower_expr(node.iter), body, src=_src(node))
+    iterator = lower_expr(node.iter)
+    iterator_type = _inferred_type(node.iter)
+    if iterator_type is not None and iterator_type.name == "TextMap":
+        # Python iteration over a mapping visits keys; Daml maps expose that
+        # operation explicitly rather than implementing list-like iteration.
+        iterator = IRCall(IRName("TextMap.keys"), (iterator,))
+    elif iterator_type is not None and iterator_type.name == "Text":
+        # Daml.Text exposes the character sequence as a list for folding.
+        iterator = IRCall(IRName("Text.explode"), (iterator,))
+    return IRFor(target.id, target_type, iterator, body, src=_src(node))
 
 
 def _lower_stmt_Return(node):

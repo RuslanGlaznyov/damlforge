@@ -113,7 +113,15 @@ class ImportsBuilder:
         if not isinstance(node, vy_ast.ImportFrom):
             return
 
-        mod = cls._import_real_module(node.module)
+        try:
+            mod = cls._import_real_module(node.module)
+        except ModuleNotFoundError:
+            errors.append(
+                DamlForgeException(
+                    f"No module named `{node.module}`", node, code=ErrorCodes.DF1213.value
+                )
+            )
+            return
         if mod is None:
             return
 

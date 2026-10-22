@@ -7,7 +7,13 @@ from forge.models.error_codes import ErrorCodes
 from forge.semantics.analysis.intrinsics import DatetimeIntrinsicAnalyzer
 from forge.semantics.analysis.primitive_values import check_primitive_policies
 from forge.semantics.analysis.typecheck import check_bidirectional_types
-from forge.semantics.analysis.structure import _reachable_modules, check_container
+from forge.semantics.analysis.structure import (
+    _reachable_modules,
+    check_container,
+    check_hidden_ledger_effects,
+    check_local_imports,
+    check_unsupported_control_flow,
+)
 from forge.semantics.analysis.types import (
     ModuleScope,
     check_call_arity,
@@ -229,8 +235,12 @@ class ModuleAnalyzer:
             return
         self.analyzed.add(marker)
 
+        # Top level analyzers that need to run before visiting the module body
         self._analyze_imports()
+        self._check_enum_constructor_collisions()
+        check_hidden_ledger_effects(self.module, self.errors)
         DatetimeIntrinsicAnalyzer(self.module, self.errors).analyze()
+        
         for node in self.module.body:
             self.visit(node)
 
@@ -243,6 +253,32 @@ class ModuleAnalyzer:
                 if imported_module is None:
                     continue
                 ModuleAnalyzer(imported_module, self.errors, self.analyzed).analyze()
+                
+    def _check_enum_constructor_collisions(self) -> None:
+        """Daml constructors share one module-level namespace.
+
+        Vyper permits the same member spelling in different enums, but emitting
+        both as unqualified Daml constructors makes damlc reject the module.
+        Report it at the source declaration instead.
+        """
+        seen: dict[str, str] = {}
+        for enum in (node for node in self.module.body if isinstance(node, vy_ast.EnumDef)):
+            for stmt in enum.body:
+                name = vy_ast.enum_member_name(stmt)
+                if name is None:
+                    continue
+                previous = seen.get(name)
+                if previous is not None and previous != enum.name:
+                    self.errors.append(
+                        DamlForgeException(
+                            f"Enum member `{name}` conflicts with enum `{previous}`; Daml "
+                            "constructors must be unique within a module",
+                            stmt,
+                            code=ErrorCodes.DF1231.value,
+                        )
+                    )
+                else:
+                    seen[name] = enum.name
 
     def visit(self, node: vy_ast.TopLevel) -> None:
         visitor = getattr(self, f"visit_{type(node).__name__}", self.visit_top_level)
@@ -256,6 +292,8 @@ class ModuleAnalyzer:
 
     def visit_top_level(self, node: vy_ast.TopLevel) -> None:
         check_container(node, self.errors, self.scope.declarations)
+        check_local_imports(node, self.errors)
+        check_unsupported_control_flow(node, self.errors)
         check_container_type_annotations(node, self.scope.type_names, self.errors)
         check_primitive_policies(
             node,

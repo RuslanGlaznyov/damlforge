@@ -58,6 +58,7 @@ class IRCall:
 @dataclass(frozen=True)
 class IRConstant:
     value: Any
+    type: Optional[TypeRef] = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -184,6 +185,11 @@ class IRFold:
     accumulators: tuple[str, ...]
     captured: tuple[str, ...]
     in_update_block: bool
+    # Names introduced by the Python loop whose value is read after the loop.
+    # They are carried as Maybe values because Python leaves a loop target/local
+    # unbound when the iterable is empty.
+    post_loop: tuple[str, ...] = ()
+    post_loop_initially_bound: tuple[bool, ...] = ()
     src: Optional[SourceSpan] = field(default=None, compare=False)
 
 

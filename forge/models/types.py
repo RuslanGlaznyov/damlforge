@@ -2,14 +2,7 @@ from typing import Generic, NewType, TypeVar
 
 from forge.builtins.maps import GenMap, TextMap
 
-__all__ = (
-    "GenMap",
-    "TextMap",
-    "Party",
-    "Text",
-    "Int",
-    "ContractId",
-)
+__all__ = ("GenMap", "TextMap", "Party", "Text", "Int", "ContractId")
 
 Party = NewType("Party", str)
 Text = NewType("Text", str)

@@ -62,7 +62,11 @@ def module_assigns(module: vy_ast.Module) -> dict:
 
 
 def type_var_names(module: vy_ast.Module) -> set:
-    return {name for name, value in module_assigns(module).items() if isinstance(value, vy_ast.Call) and getattr(value.func, "id", None) == "TypeVar"}
+    return {
+        name
+        for name, value in module_assigns(module).items()
+        if isinstance(value, vy_ast.Call) and getattr(value.func, "id", None) == "TypeVar"
+    }
 
 
 def type_aliases(module: vy_ast.Module) -> dict:

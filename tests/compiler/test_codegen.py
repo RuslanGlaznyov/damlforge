@@ -282,6 +282,54 @@ def test_render_stmt_for_with_single_assert_uses_all():
     assert hoisted == []
 
 
+def test_early_return_loop_binds_effect_before_wrapping_return_in_some():
+    stmt = IRFor(
+        "k",
+        TypeRef("int"),
+        IRCall(IRName("range"), (IRConstant(0), IRConstant(2))),
+        (IRReturn(IRCall(IRName("create"), (IRName("p"),))),),
+    )
+    hoisted = []
+    lines = render_body(
+        [stmt],
+        indent=0,
+        in_update_block=True,
+        known={"p"},
+        hoisted=hoisted,
+        known_effect_fns=frozenset({"create"}),
+        return_type=TypeRef("ContractId", (TypeRef("Payout"),)),
+    )
+
+    helper = "\n".join(hoisted)
+    assert "<- create p" in helper
+    assert "Some _damlforge_effect" in helper
+    assert "Some (create p)" not in helper
+    assert 'pure (error "Function did not return a value")' in "\n".join(lines)
+
+
+def test_assertion_binds_nested_effect_before_accessing_result():
+    stmt = IRAssert(
+        IRCompare(
+            IRAttribute(IRCall(IRName("fetch"), (IRName("cid"),)), "issuer"), "==", IRName("party")
+        ),
+        IRConstant("issuer"),
+    )
+    hoisted = []
+
+    lines = render_body(
+        [stmt],
+        indent=0,
+        in_update_block=True,
+        known={"cid", "party"},
+        hoisted=hoisted,
+        known_effect_fns=frozenset({"fetch"}),
+    )
+
+    assert "_damlforge_effect1 <- fetch cid" in "\n".join(lines)
+    assert 'assertMsg "issuer" (_damlforge_effect1.issuer == party)' in "\n".join(lines)
+    assert "fetch cid" not in "\n".join(lines[1:])
+
+
 def test_render_stmt_for_with_multiple_asserts_uses_action_fold():
     stmt = IRFor(
         "item",

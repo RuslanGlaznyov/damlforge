@@ -90,6 +90,14 @@ class SelfFieldRewriter:
                 type=s.type,
                 src=s.src,
             )
+        if isinstance(s, IRExprStmt) and cls._self_append(s.value, field_types):
+            receiver, item = s.value.func.value, s.value.args[0]
+            return cls._self_update(
+                receiver.attr,
+                IRBinOp(
+                    "<>", receiver, IRList((cls.rewrite_expr(item, field_types, local_types),))
+                ),
+            )
         if isinstance(s, IRIf):
             return IRIf(
                 cls.rewrite_expr(s.test, field_types, local_types),
@@ -228,6 +236,18 @@ class SelfFieldRewriter:
             if e.attr in field_types:
                 return e.attr, field_types[e.attr]
         return None
+
+    @classmethod
+    def _self_append(cls, e, field_types):
+        return (
+            isinstance(e, IRCall)
+            and isinstance(e.func, IRAttribute)
+            and e.func.attr == "append"
+            and len(e.args) == 1
+            and not e.keywords
+            and cls._self_field(e.func.value, field_types) is not None
+            and cls._self_field(e.func.value, field_types)[1].name == "list"
+        )
 
     @classmethod
     def _receiver_type(cls, e, field_types, local_types):

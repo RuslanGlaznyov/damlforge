@@ -15,13 +15,7 @@ from forge.models.decorators import (
     variant_record,
     view,
 )
-from forge.models.types import (
-    ContractId,
-    GenMap,
-    Int,
-    Party,
-    TextMap,
-)
+from forge.models.types import ContractId, GenMap, Int, Party, TextMap
 
 __all__ = [
     "choice",

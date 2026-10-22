@@ -1,10 +1,6 @@
 from typing import Optional, TypeVar
 
-from forge.models.types import (
-    ContractId,
-    Party,
-    Text,
-)
+from forge.models.types import ContractId, Party, Text
 from . import DamlName
 
 _T1 = TypeVar("_T1")

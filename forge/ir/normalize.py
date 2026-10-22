@@ -1,6 +1,6 @@
 from dataclasses import dataclass, fields, is_dataclass, replace
 
-from forge.exceptions import CompilerPanic
+from forge.exceptions import CompilerPanic, DamlForgeException
 from forge.ir.nodes import (
     IRAssert,
     IRAssertLoop,
@@ -12,6 +12,7 @@ from forge.ir.nodes import (
     IRCompare,
     IRConstant,
     IRDict,
+    IRExpr,
     IRExprStmt,
     IRFold,
     IRFor,
@@ -29,6 +30,7 @@ from forge.ir.nodes import (
     IRTuple,
     IRUnaryOp,
 )
+from forge.models.error_codes import ErrorCodes
 
 
 @dataclass(frozen=True)
@@ -79,21 +81,48 @@ class LoopAnalysis:
                     )
                 )
             elif cls._is_append_call(s):
-                target_name = s.value.func.value.id
-                target_type = s.value.func.value.type
+                receiver = s.value.func.value
                 item = s.value.args[0]
+                update: IRExpr
+                if isinstance(receiver, IRAttribute) and isinstance(receiver.value, IRName):
+                    target_name = receiver.value.id
+                    target_type = receiver.value.type
+                    target = IRName(target_name, target_type)
+                    current = receiver
+                    field = receiver.attr
+                    update = IRRecordUpdate(
+                        target, ((field, IRBinOp("<>", current, IRList((item,)))),)
+                    )
+                elif isinstance(receiver, IRName):
+                    target_name = receiver.id
+                    target_type = receiver.type
+                    target = IRName(target_name, target_type)
+                    update = IRBinOp("<>", target, IRList((item,)))
+                else:
+                    rewritten.append(s)
+                    continue
                 if namer is not None and cls.is_effect_call(item, known_effect_fns):
                     temp = namer.next_rebind(f"{target_name}_item")
                     item_type = item.type if isinstance(item, IRName) else None
                     rewritten.append(IRAssign(IRName(temp, item_type), item, src=s.src))
                     item = IRName(temp, item_type)
-                rewritten.append(
-                    IRAssign(
-                        IRName(target_name, target_type),
-                        IRBinOp("<>", IRName(target_name, target_type), IRList((item,))),
-                        src=s.src,
+                    if isinstance(receiver, IRAttribute) and isinstance(receiver.value, IRName):
+                        update = IRRecordUpdate(
+                            target, ((field, IRBinOp("<>", current, IRList((item,)))),)
+                        )
+                    else:
+                        update = IRBinOp("<>", target, IRList((item,)))
+                rewritten.append(IRAssign(target, update, src=s.src))
+            elif isinstance(s, IRAssign) and isinstance(s.target, IRAttribute):
+                # Daml records are immutable. Turn `a.field = value` into a
+                # rebinding of `a`, so loop planning can carry the record.
+                if isinstance(s.target.value, IRName):
+                    base = s.target.value
+                    rewritten.append(
+                        IRAssign(base, IRRecordUpdate(base, ((s.target.attr, s.value),)), src=s.src)
                     )
-                )
+                else:
+                    rewritten.append(s)
             else:
                 rewritten.append(s)
         return rewritten
@@ -105,7 +134,13 @@ class LoopAnalysis:
             and isinstance(stmt.value, IRCall)
             and isinstance(stmt.value.func, IRAttribute)
             and stmt.value.func.attr == "append"
-            and isinstance(stmt.value.func.value, IRName)
+            and (
+                isinstance(stmt.value.func.value, IRName)
+                or (
+                    isinstance(stmt.value.func.value, IRAttribute)
+                    and isinstance(stmt.value.func.value.value, IRName)
+                )
+            )
             and len(stmt.value.args) == 1
             and not stmt.value.keywords
         )
@@ -115,9 +150,10 @@ class LoopAnalysis:
         if acc is None:
             acc = []
         for s in stmts:
-            if isinstance(s, IRAssign) and s.type is None and isinstance(s.target, IRName):
-                if s.target.id in known and s.target.id not in acc:
-                    acc.append(s.target.id)
+            if isinstance(s, IRAssign):
+                for name in cls._target_names(s.target):
+                    if name in known and name not in acc:
+                        acc.append(name)
             elif isinstance(s, IRIf):
                 cls.collect_accumulators(s.body, known, acc)
                 cls.collect_accumulators(s.orelse, known, acc)
@@ -125,13 +161,21 @@ class LoopAnalysis:
                 cls.collect_accumulators(s.body, known, acc)
         return acc
 
+    @staticmethod
+    def _target_names(target) -> tuple[str, ...]:
+        if isinstance(target, IRName):
+            return (target.id,)
+        if isinstance(target, IRTuple):
+            return tuple(item.id for item in target.elements if isinstance(item, IRName))
+        return ()
+
     @classmethod
     def collect_assigned_names(cls, stmts, acc=None) -> set:
         if acc is None:
             acc = set()
         for s in stmts:
-            if isinstance(s, IRAssign) and isinstance(s.target, IRName):
-                acc.add(s.target.id)
+            if isinstance(s, IRAssign):
+                acc.update(cls._target_names(s.target))
             elif isinstance(s, IRIf):
                 cls.collect_assigned_names(s.body, acc)
                 cls.collect_assigned_names(s.orelse, acc)
@@ -144,6 +188,12 @@ class LoopAnalysis:
         result: list[IRStmt] = []
         for s in stmts:
             if isinstance(s, IRIf):
+                if cls._contains_effect(s.test, known_effect_fns):
+                    expanded = cls._expand_effectful_condition(
+                        s.test, s.body, s.orelse, namer, known_effect_fns
+                    )
+                    result.extend(cls.hoist_nested_effects(expanded, namer, known_effect_fns))
+                    continue
                 test_lifted: list[tuple[str, IRCall]] = []
                 test = cls._lift_effects(s.test, test_lifted, namer, known_effect_fns, top=True)
                 result.extend(IRAssign(IRName(name), call, src=s.src) for name, call in test_lifted)
@@ -157,13 +207,137 @@ class LoopAnalysis:
                 s = replace(
                     s, body=tuple(cls.hoist_nested_effects(s.body, namer, known_effect_fns))
                 )
+            elif (
+                isinstance(s, IRAssign)
+                and cls._find_effectful_ifexp(s.value, known_effect_fns) is not None
+            ):
+                # An effectful conditional expression cannot be kept inside a
+                # pure `let`. Split it into statement-level control flow so
+                # the effect is executed only in the selected branch.
+                conditional = cls._find_effectful_ifexp(s.value, known_effect_fns)
+                assert conditional is not None
+                expanded = cls._expand_effectful_condition(
+                    conditional.test,
+                    (
+                        IRAssign(
+                            s.target,
+                            cls._replace_expr(s.value, conditional, conditional.body),
+                            s.type,
+                            src=s.src,
+                        ),
+                    ),
+                    (
+                        IRAssign(
+                            s.target,
+                            cls._replace_expr(s.value, conditional, conditional.orelse),
+                            s.type,
+                            src=s.src,
+                        ),
+                    ),
+                    namer,
+                    known_effect_fns,
+                )
+                result.extend(cls.hoist_nested_effects(expanded, namer, known_effect_fns))
+                continue
             elif isinstance(s, (IRReturn, IRAssign, IRExprStmt)) and s.value is not None:
                 lifted: list[tuple[str, IRCall]] = []
                 value = cls._lift_effects(s.value, lifted, namer, known_effect_fns, top=True)
                 result.extend(IRAssign(IRName(name), call, src=s.src) for name, call in lifted)
                 s = replace(s, value=value)
+            elif isinstance(s, IRAssert):
+                assert_lifted: list[tuple[str, IRCall]] = []
+                test = cls._lift_effects(s.test, assert_lifted, namer, known_effect_fns, top=True)
+                msg = (
+                    None
+                    if s.msg is None
+                    else cls._lift_effects(s.msg, assert_lifted, namer, known_effect_fns, top=True)
+                )
+                result.extend(
+                    IRAssign(IRName(name), call, src=s.src) for name, call in assert_lifted
+                )
+                s = replace(s, test=test, msg=msg)
             result.append(s)
         return result
+
+    @classmethod
+    def _contains_effect(cls, expr, known_effect_fns: frozenset) -> bool:
+        if cls.is_effect_call(expr, known_effect_fns):
+            return True
+        if isinstance(expr, (IRName, IRConstant)) or not is_dataclass(expr):
+            return False
+        for field in fields(expr):
+            value = getattr(expr, field.name)
+            values = value if isinstance(value, tuple) else (value,)
+            if any(cls._contains_effect(item, known_effect_fns) for item in values):
+                return True
+        return False
+
+    @classmethod
+    def _find_effectful_ifexp(cls, expr, known_effect_fns):
+        if isinstance(expr, IRIfExp) and (
+            cls._contains_effect(expr.body, known_effect_fns)
+            or cls._contains_effect(expr.orelse, known_effect_fns)
+            or cls._contains_effect(expr.test, known_effect_fns)
+        ):
+            return expr
+        if isinstance(expr, (IRName, IRConstant)) or not is_dataclass(expr):
+            return None
+        for field in fields(expr):
+            value = getattr(expr, field.name)
+            values = value if isinstance(value, tuple) else (value,)
+            for item in values:
+                found = cls._find_effectful_ifexp(item, known_effect_fns)
+                if found is not None:
+                    return found
+        return None
+
+    @classmethod
+    def _replace_expr(cls, expr, target, replacement):
+        if expr is target:
+            return replacement
+        if isinstance(expr, (IRName, IRConstant)) or not is_dataclass(expr):
+            return expr
+        changes = {}
+        for field in fields(expr):
+            value = getattr(expr, field.name)
+            if isinstance(value, tuple):
+                changes[field.name] = tuple(
+                    cls._replace_expr(item, target, replacement) for item in value
+                )
+            else:
+                changes[field.name] = cls._replace_expr(value, target, replacement)
+        return replace(expr, **changes)
+
+    @classmethod
+    def _expand_effectful_condition(
+        cls, test, body, orelse, namer, known_effect_fns
+    ) -> tuple[IRStmt, ...]:
+        """Convert lazy boolean conditions into nested statement-level ifs.
+
+        This preserves Python's short-circuit behavior while allowing an
+        effectful operand such as `fetch(cid).value` to be bound with `<-` in
+        the branch where it is actually evaluated.
+        """
+        if isinstance(test, IRBoolOp) and len(test.values) > 1:
+            first, rest = test.values[0], test.values[1:]
+            remainder = rest[0] if len(rest) == 1 else IRBoolOp(test.op, rest)
+            if test.op == "and":
+                nested = cls._expand_effectful_condition(
+                    remainder, body, orelse, namer, known_effect_fns
+                )
+                return cls._expand_effectful_condition(
+                    first, nested, orelse, namer, known_effect_fns
+                )
+            if test.op == "or":
+                nested = cls._expand_effectful_condition(
+                    remainder, body, orelse, namer, known_effect_fns
+                )
+                return cls._expand_effectful_condition(first, body, nested, namer, known_effect_fns)
+
+        lifted: list[tuple[str, IRCall]] = []
+        pure_test = cls._lift_effects(test, lifted, namer, known_effect_fns, top=True)
+        prefix = [IRAssign(IRName(name), call) for name, call in lifted]
+        return tuple(prefix) + (IRIf(pure_test, tuple(body), tuple(orelse)),)
 
     @classmethod
     def _lift_effects(cls, expr, lifted, namer, known_effect_fns, top=False):
@@ -347,8 +521,8 @@ class LoopAnalysis:
                     f"collect_free_names: unsupported IR statement {type(s).__name__}"
                 )
             acc |= names - bound
-            if isinstance(s, IRAssign) and isinstance(s.target, IRName):
-                bound = bound | {s.target.id}
+            if isinstance(s, IRAssign):
+                bound = bound | set(cls._target_names(s.target))
         return acc
 
     @classmethod
@@ -461,15 +635,22 @@ class LoopAnalyzer:
         rewritten = LoopAnalysis.rewrite_appends(stmts, self.namer, self.known_effect_fns)
         return LoopAnalysis.hoist_nested_effects(rewritten, self.namer, self.known_effect_fns)
 
-    def plan(self, node: IRFor, known: frozenset, in_update_block: bool) -> LoopPlan:
+    def plan(
+        self, node: IRFor, known: frozenset, in_update_block: bool, post_loop: tuple[str, ...] = ()
+    ) -> LoopPlan:
         body = tuple(node.body)
-        accumulators = tuple(LoopAnalysis.collect_accumulators(body, known))
+        # A Python loop target shadows an outer binding for the duration of the
+        # loop. It must therefore not accidentally become a fold accumulator.
+        loop_known = known - {node.target}
+        accumulators = tuple(LoopAnalysis.collect_accumulators(body, loop_known))
         assertion: IRAssert | None = None
         if LoopAnalysis.is_assertion_only_loop(body) and isinstance(body[0], IRAssert):
             assertion = body[0]
         captured = tuple(
             sorted(
-                (LoopAnalysis.collect_free_names(body) & known) - set(accumulators) - {node.target}
+                (LoopAnalysis.collect_free_names(body) & loop_known)
+                - set(accumulators)
+                - set(post_loop)
             )
         )
         has_return = LoopAnalysis.body_has_return(body)
@@ -484,7 +665,7 @@ class LoopAnalyzer:
             strategy = "early_return"
         elif assertion is not None:
             strategy = "assertion"
-        elif accumulators or update_loop:
+        elif accumulators or post_loop or update_loop:
             strategy = "fold"
         elif LoopAnalysis.body_has_assertion(body):
             strategy = "pure_assertion"
@@ -500,20 +681,27 @@ class LoopAnalyzer:
             strategy=strategy,
         )
 
-    def lower_loop(self, node: IRFor, known: frozenset, in_update_block: bool):
+    def lower_loop(
+        self, node: IRFor, known: frozenset, in_update_block: bool, post_loop: tuple[str, ...] = ()
+    ):
         """Convert a raw loop into an explicit normalized IR loop node."""
-        plan = self.plan(node, known, in_update_block)
+        plan = self.plan(node, known, in_update_block, post_loop)
         if plan.strategy == "unsupported_return_with_accumulator":
-            raise CompilerPanic(
+            raise DamlForgeException(
                 "IR loop with both loop-carried accumulator mutation and an early "
-                "return is not supported"
+                "return is not supported",
+                code=ErrorCodes.DF1230.value,
             )
         if plan.strategy == "early_return":
+            wrapped_body = LoopAnalysis.wrap_returns_as_some(plan.body)
+            wrapped_body = LoopAnalysis.hoist_nested_effects(
+                wrapped_body, self.namer, self.known_effect_fns
+            )
             return IREarlyReturnLoop(
                 node.target,
                 node.target_type,
                 node.iter,
-                tuple(LoopAnalysis.wrap_returns_as_some(plan.body)),
+                tuple(wrapped_body),
                 plan.captured,
                 in_update_block,
                 src=node.src,
@@ -537,6 +725,8 @@ class LoopAnalyzer:
                 plan.accumulators,
                 plan.captured,
                 plan.in_update_block,
+                post_loop,
+                tuple(name in known for name in post_loop),
                 src=node.src,
             )
         if plan.strategy == "pure_assertion":

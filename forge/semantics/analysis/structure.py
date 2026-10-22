@@ -41,9 +41,7 @@ def check_unknown_decorators(container: vy_ast.TopLevel, errors: ExceptionList) 
     marker = (
         "template"
         if isinstance(container, vy_ast.TemplateDef)
-        else "variant"
-        if isinstance(container, vy_ast.VariantDef)
-        else None
+        else "variant" if isinstance(container, vy_ast.VariantDef) else None
     )
     if marker is not None and marker not in imported_names:
         errors.append(
@@ -217,8 +215,26 @@ def check_template_interface_choice_consuming_variants(
         )
 
 
+def _ledger_effect_name(call: vy_ast.Call, ledger_effect_fns) -> str | None:
+    effect_name = (
+        call._metadata.get("intrinsic_name") if call._metadata.get("is_ledger_effect") else None
+    )
+    if effect_name is None and (
+        isinstance(call.func, vy_ast.Name) and call.func.id in ledger_effect_fns
+    ):
+        effect_name = call.func.id
+    return effect_name
+
+
 def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    # Check for functions that call ledger-effecting functions but are not decorated with
+    # @ledger_effect or @choice. This is a common source of bugs, and the compiler will not catch it, so we check for it here.
+
     ledger_effect_fns = collect_daml_builtins().ledger_effect_fns
+    container_name = getattr(container, "name", None)
+    if container_name is None:
+        path = getattr(container, "path", None) or getattr(container, "resolved_path", None)
+        container_name = str(path).rsplit("/", 1)[-1].rsplit(".", 1)[0] if path else "module"
     for fn in container.body:
         if not isinstance(fn, vy_ast.FunctionDef):
             continue
@@ -227,24 +243,60 @@ def check_hidden_ledger_effects(container: vy_ast.TopLevel, errors: ExceptionLis
             continue
 
         for call in fn.get_descendants(vy_ast.Call):
-            effect_name = (
-                call._metadata.get("intrinsic_name")
-                if call._metadata.get("is_ledger_effect")
-                else None
-            )
-            if effect_name is None and (
-                isinstance(call.func, vy_ast.Name) and call.func.id in ledger_effect_fns
-            ):
-                effect_name = call.func.id
+            effect_name = _ledger_effect_name(call, ledger_effect_fns)
             if effect_name is not None:
                 errors.append(
                     DamlForgeException(
-                        f"`{container.name}.{fn.name}` calls `{effect_name}` but is not "
+                        f"`{container_name}.{fn.name}` calls `{effect_name}` but is not "
                         f"decorated `@{ledger_effect.__name__}` and is not a `@{choice.__name__}`",
                         call,
                         code=ErrorCodes.DF1205.value,
                     )
                 )
+
+
+def check_local_imports(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    """Reject imports in function bodies before lowering encounters them."""
+    functions = (
+        [container]
+        if isinstance(container, vy_ast.FunctionDef)
+        else container.get_descendants(vy_ast.FunctionDef)
+    )
+    for fn in functions:
+        for import_node in fn.get_descendants((vy_ast.Import, vy_ast.ImportFrom)):
+            errors.append(
+                DamlForgeException(
+                    "Imports are only supported at module scope",
+                    import_node,
+                    code=ErrorCodes.DF1213.value,
+                )
+            )
+
+
+def check_unsupported_control_flow(container: vy_ast.TopLevel, errors: ExceptionList) -> None:
+    """Reject control-flow statements that have no DamlForge IR equivalent."""
+    functions = (
+        [container]
+        if isinstance(container, vy_ast.FunctionDef)
+        else container.get_descendants(vy_ast.FunctionDef)
+    )
+    for fn in functions:
+        for stmt in fn.get_descendants((vy_ast.Break, vy_ast.Continue, vy_ast.Raise)):
+            errors.append(
+                DamlForgeException(
+                    f"`{type(stmt).__name__.lower()}` is not supported",
+                    stmt,
+                    code=ErrorCodes.DF1230.value,
+                )
+            )
+        for nested in fn.get_descendants(vy_ast.FunctionDef):
+            errors.append(
+                DamlForgeException(
+                    "Nested function definitions are not supported",
+                    nested,
+                    code=ErrorCodes.DF1230.value,
+                )
+            )
 
 
 def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
@@ -263,6 +315,59 @@ def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList
             code=ErrorCodes.DF1201.value,
         )
     )
+
+
+def check_template_reserved_declarations(
+    template: vy_ast.TemplateDef, errors: ExceptionList
+) -> None:
+    """Reject duplicate template clauses before lowering keeps only the first one."""
+    first_by_name: dict[str, object] = {}
+    reserved_names = {"signatory", "observer", "key", "maintainer", "ensure"}
+
+    for stmt in template.body:
+        if not isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)):
+            continue
+        target = stmt.target
+        if not isinstance(target, vy_ast.Name) or target.id not in reserved_names:
+            continue
+
+        previous = first_by_name.setdefault(target.id, stmt)
+        if previous is not stmt:
+            errors.append(
+                DamlForgeException(
+                    f"Template `{template.name}` declares `{target.id}` more than once",
+                    stmt,
+                    prev_decl=previous,
+                    code=ErrorCodes.DF1232.value,
+                )
+            )
+
+
+def check_template_methods(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
+    """Reject template methods that lowering would otherwise silently discard."""
+    ledger_effect_fns = collect_daml_builtins().ledger_effect_fns
+    for fn in template.body:
+        if not isinstance(fn, vy_ast.FunctionDef):
+            continue
+        if fn.name == "__init__" or any(
+            _has_decorator(fn, name)
+            for name in ("choice", "checked_fetch", "view", "ledger_effect")
+        ):
+            continue
+        if any(
+            _ledger_effect_name(call, ledger_effect_fns) is not None
+            for call in fn.get_descendants(vy_ast.Call)
+        ):
+            continue
+
+        errors.append(
+            DamlForgeException(
+                f"Template method `{template.name}.{fn.name}` is not supported; "
+                "decorate it with `@choice` or move it to module scope",
+                fn,
+                code=ErrorCodes.DF1233.value,
+            )
+        )
 
 
 def _find_reserved_declaration(template: vy_ast.TemplateDef, name: str):
@@ -464,6 +569,8 @@ def check_container(
                         )
                     )
     elif isinstance(node, vy_ast.TemplateDef):
+        check_template_reserved_declarations(node, errors)
+        check_template_methods(node, errors)
         check_template_signatory(node, errors)
         check_template_key_maintainer(node, errors)
         check_template_ensure(node, errors)

@@ -521,9 +521,11 @@ def _collect_daml_builtins(scope) -> BuiltinMetadata:
                 function_param_names[name] = tuple(signature.parameters)
                 is_ledger_effect = getattr(obj, "__daml_ledger_effect__", False)
                 function_param_types[name] = tuple(
-                    None
-                    if is_ledger_effect
-                    else _python_type_to_type_ref(hints.get(parameter.name))
+                    (
+                        None
+                        if is_ledger_effect
+                        else _python_type_to_type_ref(hints.get(parameter.name))
+                    )
                     for parameter in signature.parameters.values()
                 )
                 required_module = getattr(obj, "__daml_module__", None)
@@ -535,9 +537,7 @@ def _collect_daml_builtins(scope) -> BuiltinMetadata:
             case_constructor = getattr(obj, "__daml_case_accessor__", None)
             if case_constructor is not None and callable(obj):
                 arity = getattr(obj, "__daml_case_accessor_arity__", 1)
-                result_constructor = getattr(
-                    obj, "__daml_case_accessor_result_constructor__", None
-                )
+                result_constructor = getattr(obj, "__daml_case_accessor_result_constructor__", None)
                 field_names = getattr(obj, "__daml_case_accessor_field_names__", ())
                 if result_constructor is not None:
                     case_accessors[name] = (

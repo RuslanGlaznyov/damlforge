@@ -162,12 +162,8 @@ def build_dar(
         text=True,
     )
     if result.returncode != 0:
-        dpm_output = annotate_daml_output(
-            f"{result.stdout}\n{result.stderr}", source_maps
-        )
-        raise RuntimeError(
-            f"dpm build failed (exit {result.returncode}):\n{dpm_output}"
-        )
+        dpm_output = annotate_daml_output(f"{result.stdout}\n{result.stderr}", source_maps)
+        raise RuntimeError(f"dpm build failed (exit {result.returncode}):\n{dpm_output}")
     logger.info(result.stdout.strip())
 
     if not resolved_output.is_file():

@@ -11,7 +11,7 @@ from forge.codegen.optional import is_optional_type, render_optional_type
 from forge.codegen.sets import is_set_type, render_set_type
 from forge.exceptions import CompilerPanic
 from forge.utils import daml_choice_name
-from forge.ir.lower import FLOOR_DIV_DECIMAL_HELPER, FLOOR_DIV_HELPER
+from forge.ir.lower import FLOOR_DIV_DECIMAL_HELPER, FLOOR_DIV_HELPER, LIST_SET_HELPER
 from forge.ir.nodes import (
     IRAssert,
     IRAssertLoop,
@@ -32,6 +32,7 @@ from forge.ir.nodes import (
     IRFunction,
     IRIf,
     IRIfExp,
+    IRImport,
     IREarlyReturnLoop,
     IRInterface,
     IRInterfaceInstance,
@@ -94,6 +95,12 @@ _HELPER_DEFINITIONS = {
         f"{FLOOR_DIV_DECIMAL_HELPER} : Decimal -> Decimal -> Decimal",
         f"{FLOOR_DIV_DECIMAL_HELPER} a b =",
         "  intToDecimal (floor (a / b))",
+    ),
+    LIST_SET_HELPER: (
+        f"{LIST_SET_HELPER} : Int -> a -> [a] -> [a]",
+        f"{LIST_SET_HELPER} 0 value (_ :: xs) = value :: xs",
+        f"{LIST_SET_HELPER} index value (x :: xs) = x :: {LIST_SET_HELPER} (index - 1) value xs",
+        f'{LIST_SET_HELPER} _ _ [] = error "List index out of bounds"',
     ),
 }
 _UNARY_OP_MAP = {"not": "not ", "-": "-"}
@@ -159,7 +166,7 @@ def _type_ref_references_non_derivable_type(t: TypeRef) -> bool:
     return any(_type_ref_references_non_derivable_type(a) for a in t.args)
 
 
-def render_constant(value) -> str:
+def render_constant(value, type_ref=None) -> str:
     if value is None:
         return "None"
     if isinstance(value, bool):
@@ -167,12 +174,14 @@ def render_constant(value) -> str:
     if isinstance(value, str):
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
+    if type_ref is not None and type_ref.name == "Decimal" and isinstance(value, int):
+        return _render_decimal_literal(value)
     if isinstance(value, Decimal):
         return str(value)
     return str(value)
 
 
-_NEEDS_PARENS_AS_INFIX_OPERAND = (IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp)
+_NEEDS_PARENS_AS_INFIX_OPERAND = (IRBinOp, IRBoolOp, IRUnaryOp, IRCompare, IRIfExp, IRSubscript)
 _NEEDS_PARENS_AS_CALL_ARG = (
     IRCall,
     IRDict,
@@ -239,7 +248,7 @@ def render_expr(e) -> str:
     if isinstance(e, IRCall):
         return _render_call(e)
     if isinstance(e, IRConstant):
-        return render_constant(e.value)
+        return render_constant(e.value, e.type)
     if isinstance(e, IRList):
         return "[" + ", ".join(render_expr(el) for el in e.elements) + "]"
     if isinstance(e, IRTuple):
@@ -294,7 +303,7 @@ def _render_subscript(e: IRSubscript) -> str:
 
 
 def _render_decimal_literal(value) -> str:
-    text = str(value)
+    text = format(value, "f") if isinstance(value, Decimal) else str(value)
     text = text if "." in text else f"{text}.0"
     return f"({text} : Decimal)"
 
@@ -309,6 +318,15 @@ def _render_record_field_value(v) -> str:
 def _render_call(e: IRCall) -> str:
     if (
         isinstance(e.func, IRName)
+        and e.func.id in ("TextMap.keys", "TextMap.values")
+        and len(e.args) == 1
+        and not e.keywords
+    ):
+        projection = "fst" if e.func.id.endswith("keys") else "snd"
+        return f"map {projection} (TextMap.toList {_render_call_arg(e.args[0])})"
+
+    if (
+        isinstance(e.func, IRName)
         and e.func.id == "Decimal"
         and len(e.args) == 1
         and not e.keywords
@@ -321,11 +339,19 @@ def _render_call(e: IRCall) -> str:
         isinstance(e.func, IRName)
         and e.func.id == "range"
         and not e.keywords
-        and len(e.args) in (1, 2)
+        and len(e.args) in (1, 2, 3)
     ):
-        start = e.args[0] if len(e.args) == 2 else IRConstant(0)
-        stop = e.args[-1]
-        return f"[{render_expr(start)} .. ({render_expr(stop)}) - 1]"
+        start = e.args[0] if len(e.args) >= 2 else IRConstant(0)
+        stop = e.args[1] if len(e.args) >= 2 else e.args[0]
+        if len(e.args) < 3:
+            return f"[{render_expr(start)} .. ({render_expr(stop)}) - 1]"
+        step = e.args[2]
+        step_text = _render_call_arg(step)
+        start_text = _render_call_arg(start)
+        stop_text = _render_call_arg(stop)
+        positive = f"[{start_text}, {start_text} + {step_text} .. ({stop_text}) - 1]"
+        negative = f"[{start_text}, {start_text} + {step_text} .. ({stop_text}) + 1]"
+        return f'if {step_text} > 0 then {positive} else if {step_text} < 0 then {negative} else error "range() arg 3 must not be zero"'
 
     if isinstance(e.func, IRName) and not e.keywords and len(e.args) == 1:
         constructor = _case_accessors().get(e.func.id)
@@ -367,11 +393,13 @@ class BodyTranslator:
         hoisted: list,
         known_effect_fns: frozenset = frozenset(),
         self_type: Optional[str] = None,
+        return_type: Optional[TypeRef] = None,
     ):
         self.namer = namer
         self.hoisted = hoisted
         self.known_effect_fns = known_effect_fns
         self.self_type = self_type
+        self.return_type = return_type
         self.loop_analyzer = LoopAnalyzer(namer, known_effect_fns)
 
     def render_body(
@@ -387,10 +415,16 @@ class BodyTranslator:
     def render_stmt(self, stmt, indent: int, in_update_block: bool = True) -> list:
         return self.render_body([stmt], indent, in_update_block)
 
-    @staticmethod
-    def _final_tail(i: int, in_update_block: bool) -> list:
+    def _final_tail(self, i: int, in_update_block: bool) -> list:
         pad = "  " * i
-        return [f"{pad}pure ()"] if in_update_block else [f"{pad}()"]
+        is_unit = self.return_type is None or (
+            self.return_type.name == "None"
+            or (self.return_type.name == "tuple" and not self.return_type.args)
+        )
+        if is_unit:
+            return [f"{pad}pure ()"] if in_update_block else [f"{pad}()"]
+        failure = 'error "Function did not return a value"'
+        return [f"{pad}pure ({failure})"] if in_update_block else [f"{pad}{failure}"]
 
     @staticmethod
     def _resolve_all(names, renames: dict) -> list:
@@ -475,7 +509,10 @@ class BodyTranslator:
                     inline_rest = True
 
                     def branch_tail(i, extra_known=frozenset(), br_renames=None):
-                        return self._final_tail(i, in_update_block)
+                        # The branch is followed by `rest`; it only needs to
+                        # close its do block, not synthesize the function's
+                        # missing-return error.
+                        return [f"{'  ' * i}{'pure ()' if in_update_block else '()'}"]
 
                 else:
                     cont_name = self.namer.next_cont()
@@ -530,12 +567,23 @@ class BodyTranslator:
 
         if isinstance(first, IRFor):
 
+            free_after = LoopAnalysis.collect_free_names(rest)
+            loop_defined = LoopAnalysis.collect_assigned_names(first.body)
+            post_loop_names = set(free_after & loop_defined - set(known))
+            # The for-target always shadows an outer name while the loop runs,
+            # so it is a separate post-loop value even when it was bound before.
+            if first.target in free_after:
+                post_loop_names.add(first.target)
+            post_loop = tuple(sorted(post_loop_names))
+
             def rest_tail(i, extra_known=frozenset(), for_renames=None):
                 return self._translate(
                     rest, i, in_update_block, make_tail, known | extra_known, for_renames or {}
                 )
 
-            return self._translate_for(first, indent, in_update_block, rest_tail, known, renames)
+            return self._translate_for(
+                first, indent, in_update_block, rest_tail, known, renames, post_loop
+            )
 
         if isinstance(first, IRAssert):
             test = render_expr(LoopAnalysis.apply_renames(first.test, renames))
@@ -548,6 +596,32 @@ class BodyTranslator:
                 msg,
                 in_update_block,
                 lambda i: self._translate(rest, i, in_update_block, make_tail, known, renames),
+            )
+
+        if isinstance(first, IRAssign) and isinstance(first.target, IRTuple):
+            targets = [target for target in first.target.elements if isinstance(target, IRName)]
+            if not targets or len(targets) != len(first.target.elements):
+                raise CompilerPanic("tuple assignment targets must be names")
+            if not isinstance(first.value, IRTuple) or len(targets) != len(first.value.elements):
+                raise CompilerPanic("tuple assignment requires matching tuple values")
+            tuple_name = self.namer.next_rebind("tuple")
+            value = render_expr(LoopAnalysis.apply_renames(first.value, renames))
+            bind = f"let {tuple_name} = {value}"
+            lines = [f"{pad}{bind}" if in_update_block else f"{pad}{bind} in"]
+            new_renames = dict(renames)
+            for index, target in enumerate(targets):
+                fresh = self.namer.next_rebind(target.id)
+                projected = f"{tuple_name}._{index + 1}"
+                binding = f"let {fresh} = {projected}"
+                lines.append(f"{pad}{binding}" if in_update_block else f"{pad}{binding} in")
+                new_renames[target.id] = fresh
+            return lines + self._translate(
+                rest,
+                indent,
+                in_update_block,
+                make_tail,
+                known | set(target.id for target in targets),
+                new_renames,
             )
 
         if isinstance(first, IRAssign) and isinstance(first.target, IRName):
@@ -575,10 +649,17 @@ class BodyTranslator:
         )
 
     def _translate_for(
-        self, node: IRFor, indent, in_update_block, make_tail, known=frozenset(), renames=None
+        self,
+        node: IRFor,
+        indent,
+        in_update_block,
+        make_tail,
+        known=frozenset(),
+        renames=None,
+        post_loop=(),
     ) -> list:
         renames = renames or {}
-        normalized = self.loop_analyzer.lower_loop(node, known, in_update_block)
+        normalized = self.loop_analyzer.lower_loop(node, known, in_update_block, post_loop)
         if normalized is None:
             return make_tail(indent, frozenset(), renames)
         return self._translate_normalized_loop(
@@ -629,16 +710,44 @@ class BodyTranslator:
     ) -> list:
         pad = "  " * indent
         accumulators = list(node.accumulators)
-        inner_known = known | {node.target} | set(accumulators)
-        fresh_here = set(accumulators) | set(node.captured) | {node.target}
+        post_loop = list(node.post_loop)
+        post_state_names = [self.namer.next_rebind(f"post_{name}") for name in post_loop]
+        inner_known = known | {node.target} | set(accumulators) | set(post_loop)
+        fresh_here = set(accumulators) | {node.target} | set(post_loop)
         inner_renames = {k: v for k, v in renames.items() if k not in fresh_here}
-        state_pattern = self._loop_state(accumulators)
-        initial_state = self._loop_state(accumulators, renames)
-        iter_expr = render_expr(LoopAnalysis.apply_renames(node.iter, renames))
+        state_names = accumulators + post_state_names
+        state_pattern = self._loop_state(state_names)
+        initial_values = [renames.get(name, name) for name in accumulators]
+        for name, initially_bound in zip(post_loop, node.post_loop_initially_bound):
+            initial_values.append(f"Some {renames.get(name, name)}" if initially_bound else "None")
+        initial_state = (
+            "()"
+            if not initial_values
+            else (
+                f"({initial_values[0]})"
+                if len(initial_values) == 1 and post_loop
+                else (
+                    initial_values[0]
+                    if len(initial_values) == 1
+                    else f"({', '.join(initial_values)})"
+                )
+            )
+        )
+        iter_expr = _render_call_arg(LoopAnalysis.apply_renames(node.iter, renames))
 
         def fold_tail(i, extra_known=frozenset(), fold_renames=None):
-            state = self._loop_state(accumulators, fold_renames or {})
-            return [f"{'  ' * i}{'pure ' if node.in_update_block else ''}{state}"]
+            current = fold_renames or {}
+            values = [current.get(name, name) for name in accumulators]
+            values.extend(f"Some {current.get(name, name)}" for name in post_loop)
+            state = (
+                "()"
+                if not values
+                else (values[0] if len(values) == 1 else f"({', '.join(values)})")
+            )
+            if node.in_update_block:
+                value = f"({state})" if len(values) == 1 and post_loop else state
+                return [f"{'  ' * i}pure {value}"]
+            return [f"{'  ' * i}{state}"]
 
         body_indent = indent + (3 if node.in_update_block else 5)
         body_lines = self._translate(
@@ -650,7 +759,7 @@ class BodyTranslator:
             inner_renames,
         )
         body_lines[-1] += ")"
-        fresh_names = [self.namer.next_rebind(name) for name in accumulators]
+        fresh_names = [self.namer.next_rebind(name) for name in state_names]
         bind_target = self._loop_state(fresh_names) if fresh_names else "_"
 
         if node.in_update_block:
@@ -671,8 +780,13 @@ class BodyTranslator:
             ]
             if not surrounding_in_update_block:
                 lines.append(f"{pad}in")
-        post_renames = {**renames, **dict(zip(accumulators, fresh_names))}
-        lines.extend(make_tail(indent, set(accumulators), post_renames))
+        post_renames = {**renames}
+        post_renames.update(dict(zip(accumulators, fresh_names)))
+        post_renames.update(
+            (name, f"fromSome {fresh}")
+            for name, fresh in zip(post_loop, fresh_names[len(accumulators) :])
+        )
+        lines.extend(make_tail(indent, set(accumulators) | set(post_loop), post_renames))
         return lines
 
     def _translate_early_return_loop(
@@ -781,10 +895,11 @@ def render_body(
     namer: LoopNamer = None,
     self_type: str = None,
     known_effect_fns: frozenset = frozenset(),
+    return_type: TypeRef = None,
 ) -> list:
     namer = namer if namer is not None else LoopNamer()
     translator = BodyTranslator(
-        namer, hoisted if hoisted is not None else [], known_effect_fns, self_type
+        namer, hoisted if hoisted is not None else [], known_effect_fns, self_type, return_type
     )
     return translator.render_body(stmts, indent, in_update_block, known)
 
@@ -829,8 +944,12 @@ class Emitter:
             }
         )
 
-    def _translator(self, self_type: Optional[str] = None) -> BodyTranslator:
-        return BodyTranslator(self.namer, self.hoisted, self.known_effect_fns, self_type)
+    def _translator(
+        self, self_type: Optional[str] = None, return_type: Optional[TypeRef] = None
+    ) -> BodyTranslator:
+        return BodyTranslator(
+            self.namer, self.hoisted, self.known_effect_fns, self_type, return_type
+        )
 
     def _derivations(self, can_derive_eq_show: bool) -> list[str]:
         derivations = ["Eq", "Show"] if can_derive_eq_show else []
@@ -962,7 +1081,10 @@ class Emitter:
         self.lines_block(render(concat(parts), initial_indent=indent * 2))
 
         body_lines = [f"{'  ' * indent}    let {SELF} = this"] if is_template_choice else []
-        translator = self._translator(self_type=container_name if is_template_choice else None)
+        translator = self._translator(
+            self_type=container_name if is_template_choice else None,
+            return_type=display_return_type,
+        )
         body_lines.extend(translator.render_body(body, indent + 2, known=known))
         self.lines_block(body_lines)
         self.record(c.src, "choice", f"{container_name}.{c.name}", start)
@@ -978,7 +1100,7 @@ class Emitter:
         body = SelfFieldRewriter.rewrite_stmts(list(c.body), field_types)
         known = frozenset(arg_names) | {SELF}
         body_lines = [f"{'  ' * indent}    let {SELF} = this"]
-        translator = self._translator(self_type=container_name)
+        translator = self._translator(self_type=container_name, return_type=c.return_type)
         body_lines.extend(translator.render_body(body, indent + 2, known=known))
         self.lines_block(body_lines)
         self.record(c.src, "interface_choice_impl", f"{container_name}.{c.name}Impl", start)
@@ -996,7 +1118,7 @@ class Emitter:
         self.line(f"{fn.name} : {' -> '.join(arg_types + [full_return])}")
         header = f"{fn.name} {' '.join(a.name for a in fn.args)}".rstrip()
         self.line(f"{header} = do" if in_update_block else f"{header} =")
-        translator = self._translator()
+        translator = self._translator(return_type=fn.return_type)
         self.lines_block(
             translator.render_body(
                 fn.body,
@@ -1192,7 +1314,13 @@ class Emitter:
 
         body_source = "\n".join(self.lines).rstrip("\n") + "\n"
         mappings = self.mappings
-        header = self._render_header(module.imports, module_name)
+        header_imports = module.imports
+        if "fromSome " in body_source and not any(
+            imp.module == "DA.Optional" and imp.names and "fromSome" in imp.names
+            for imp in header_imports
+        ):
+            header_imports = (*header_imports, IRImport("DA.Optional", ("fromSome",)))
+        header = self._render_header(header_imports, module_name)
         if header:
             offset = header.count("\n")
             mappings = [

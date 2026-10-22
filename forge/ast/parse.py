@@ -20,35 +20,37 @@ PYTHON_AST_SINGLETONS = (
     python_ast.expr_context,
 )
 
+LINE_INFO_FIELDS = ("lineno", "col_offset", "end_lineno", "end_col_offset")
+
 
 def parse_to_ast(
-    vyper_source: str,
+    source: str,
     source_id: int = 0,
     module_path: Optional[str] = None,
     resolved_path: Optional[str] = None,
     is_interface: bool = False,
 ) -> vy_ast.Module:
     try:
-        return _parse_to_ast(vyper_source, source_id, module_path, resolved_path, is_interface)
+        return _parse_to_ast(source, source_id, module_path, resolved_path, is_interface)
     except SyntaxException as e:
         e.resolved_path = resolved_path
         raise e
 
 
 def _parse_to_ast(
-    vyper_source: str,
+    source: str,
     source_id: int = 0,
     module_path: Optional[str] = None,
     resolved_path: Optional[str] = None,
     is_interface: bool = False,
 ) -> vy_ast.Module:
     """
-    Parses a Vyper source string and generates basic Vyper AST nodes.
+    Parses a Vyper/DamlForge source string and generates basic DamlForge AST nodes.
 
     Parameters
     ----------
-    vyper_source: str
-        The Vyper source code to parse.
+    source: str
+        The source code to parse.
     source_id : int, optional
         Source id to use in the `src` member of each node.
     contract_name: str, optional
@@ -71,10 +73,10 @@ def _parse_to_ast(
     list
         Untyped, unoptimized Vyper AST nodes.
     """
-    if "\x00" in vyper_source:
+    if "\x00" in source:
         raise ParserException("No null bytes (\\x00) allowed in the source code.")
     pre_parser = PreParser(is_interface)
-    pre_parser.parse(vyper_source)
+    pre_parser.parse(source)
 
     try:
         py_ast = python_ast.parse(pre_parser.reformatted_code)
@@ -89,27 +91,32 @@ def _parse_to_ast(
             if e.lineno is not None:  # help mypy
                 offset += pre_parser.adjustments.get((e.lineno, offset), 0)
 
-        new_e = SyntaxException(str(e), vyper_source, e.lineno, offset)
+        new_e = SyntaxException(str(e), source, e.lineno, offset)
 
         raise new_e from None
 
     annotate_python_ast(
         py_ast,
-        vyper_source,
+        source,
         pre_parser,
         source_id=source_id,
         module_path=module_path,
         resolved_path=resolved_path,
     )
 
-    # postcondition: consumed all the for loop annotations
-    assert len(pre_parser.for_loop_annotations) == 0
+    # A malformed comprehension or loop can leave the Vyper-specific
+    # annotation pre-parser in a partial state. Report it as source syntax
+    # instead of leaking an internal assertion to the caller.
+    if pre_parser.for_loop_annotations:
+        lineno, col = next(iter(pre_parser.for_loop_annotations))
+        raise SyntaxException("Invalid for-loop syntax", source, lineno, col)
 
     # postcondition: we have used all the hex strings found by the
     # pre-parser
-    assert len(pre_parser.hex_string_locations) == 0
+    if pre_parser.hex_string_locations:
+        lineno, col = pre_parser.hex_string_locations[0]
+        raise SyntaxException("Invalid hex string syntax", source, lineno, col)
 
-    # Convert to Vyper AST.
     module = vy_ast.get_node(py_ast)
     assert isinstance(module, vy_ast.Module)  # mypy hint
     module.is_interface = is_interface
@@ -119,12 +126,9 @@ def _parse_to_ast(
     return module
 
 
-LINE_INFO_FIELDS = ("lineno", "col_offset", "end_lineno", "end_col_offset")
-
-
 def annotate_python_ast(
     parsed_ast: python_ast.Module,
-    vyper_source: str,
+    source: str,
     pre_parser: PreParser,
     source_id: int = 0,
     module_path: Optional[str] = None,
@@ -137,8 +141,8 @@ def annotate_python_ast(
     ----------
     parsed_ast : AST
         The AST to be annotated and optimized.
-    vyper_source: str
-        The original vyper source code
+    source: str
+        The original source code
     pre_parser: PreParser
         PreParser object.
 
@@ -147,7 +151,7 @@ def annotate_python_ast(
         The annotated and optimized AST.
     """
     visitor = AnnotatingVisitor(
-        vyper_source, pre_parser, source_id, module_path=module_path, resolved_path=resolved_path
+        source, pre_parser, source_id, module_path=module_path, resolved_path=resolved_path
     )
     visitor.visit(parsed_ast)
 
@@ -411,8 +415,6 @@ class AnnotatingVisitor(python_ast.NodeTransformer):
             and all(isinstance(k, python_ast.Name) for k in node.args[0].keys)
         ):
             msg = "Instantiating a struct using a dictionary is deprecated "
-            msg += "as of v0.4.0 and will be disallowed in a future release. "
-            msg += "Use kwargs instead e.g. Foo(a=1, b=2)"
 
             # add full_source_code so that str(VyperException(msg, node)) works
             node.full_source_code = self._source_code

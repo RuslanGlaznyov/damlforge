@@ -23,12 +23,7 @@ from forge.exceptions import (
     VariableDeclarationException,
     ZeroDivisionException,
 )
-from forge.utils import (
-    annotate_source_code,
-    evm_div,
-    quantize,
-    sha256sum,
-)
+from forge.utils import annotate_source_code, evm_div, quantize, sha256sum
 
 NODE_BASE_ATTRIBUTES = (
     "_children",
@@ -112,9 +107,9 @@ def get_node(
         if ast_struct["ast_type"] == "Delete":
             _raise_syntax_exc("Deleting is not supported", ast_struct)
         elif ast_struct["ast_type"] in ("ExtSlice", "Slice"):
-            _raise_syntax_exc("Vyper does not support slicing", ast_struct)
+            _raise_syntax_exc("DamlFroge does not support slicing", ast_struct)
         elif ast_struct["ast_type"] == "UAdd":
-            _raise_syntax_exc("Vyper does not support + as a unary operator", parent)
+            _raise_syntax_exc("DamlFroge does not support + as a unary operator", parent)
         else:
             _raise_syntax_exc(
                 f"Invalid syntax (unsupported '{ast_struct['ast_type']}' Python AST node)",
@@ -635,6 +630,7 @@ class Module(TopLevel):
     @property
     def source_sha256sum(self):
         return sha256sum(self.full_source_code)
+
 
 class FunctionDef(TopLevel):
     __slots__ = ("args", "returns", "decorator_list")

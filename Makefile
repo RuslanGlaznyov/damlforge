@@ -1,4 +1,4 @@
-VERSION ?= 0.0.11
+VERSION ?= 0.0.12
 PYTHON ?= python3
 
 .PHONY: test daml-test-legacy daml-test-example daml-test-all dev dev-deps lint clean clean-pyc clean-build clean-test build release

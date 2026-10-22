@@ -54,12 +54,7 @@ _RANGE_RE = re.compile(
     r"-(?P<end_line>\d+):(?P<end_column>\d+)\s*$"
 )
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-_MESSAGE_CONTEXT_PREFIXES = (
-    "in ",
-    "probable cause:",
-    "expected type:",
-    "actual type:",
-)
+_MESSAGE_CONTEXT_PREFIXES = ("in ", "probable cause:", "expected type:", "actual type:")
 
 
 def _as_int(value) -> Optional[int]:
@@ -77,9 +72,7 @@ def _source_location(source: Mapping, source_file: Optional[str]) -> SourceLocat
         ),
         end_line=_as_int(source.get("endLine")),
         end_column=(
-            int(source["endColumn"]) + 1
-            if _as_int(source.get("endColumn")) is not None
-            else None
+            int(source["endColumn"]) + 1 if _as_int(source.get("endColumn")) is not None else None
         ),
     )
 
@@ -109,8 +102,10 @@ def _mappings(source_map: Mapping) -> tuple[_Mapping, ...]:
 def _file_matches(diagnostic_file: str, mapped_file: str) -> bool:
     diagnostic = diagnostic_file.replace("\\", "/")
     mapped = mapped_file.replace("\\", "/")
-    return diagnostic == mapped or diagnostic.endswith(f"/{mapped}") or mapped.endswith(
-        f"/{diagnostic}"
+    return (
+        diagnostic == mapped
+        or diagnostic.endswith(f"/{mapped}")
+        or mapped.endswith(f"/{diagnostic}")
     )
 
 
@@ -137,7 +132,9 @@ def map_daml_location(
         candidates = [
             mapping
             for mapping in mappings
-            if mapping.generated_start_line <= diagnostic_range.start_line <= mapping.generated_end_line
+            if mapping.generated_start_line
+            <= diagnostic_range.start_line
+            <= mapping.generated_end_line
         ]
         if candidates:
             return min(candidates, key=lambda mapping: mapping.generated_width).source
@@ -157,9 +154,7 @@ def _diagnostic_blocks(output: str):
         end = starts[index + 1] if index + 1 < len(starts) else len(lines)
         block = lines[start:end]
         file_match = _FILE_RE.match(block[0])
-        range_match = next(
-            (match for line in block[1:] if (match := _RANGE_RE.match(line))), None
-        )
+        range_match = next((match for line in block[1:] if (match := _RANGE_RE.match(line))), None)
         if file_match is None or range_match is None:
             continue
         groups = range_match.groupdict()
@@ -188,9 +183,7 @@ def _diagnostic_explanation(message: str) -> Optional[str]:
     message_lines = clean_message.splitlines()
     try:
         message_start = next(
-            index
-            for index, line in enumerate(message_lines)
-            if line.strip().startswith("Message:")
+            index for index, line in enumerate(message_lines) if line.strip().startswith("Message:")
         )
     except StopIteration:
         return None
@@ -232,12 +225,7 @@ def annotate_daml_output(output: str, source_maps: Mapping[str, Mapping]) -> str
         if source is None:
             continue
         explanation = _diagnostic_explanation(message)
-        annotation = (
-            diagnostic_file,
-            diagnostic_range.start_line,
-            source.format(),
-            explanation,
-        )
+        annotation = (diagnostic_file, diagnostic_range.start_line, source.format(), explanation)
         if annotation in seen:
             continue
         seen.add(annotation)

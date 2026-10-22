@@ -12,7 +12,7 @@ Every element is checked against the same expected type or inference variable.
 from dataclasses import dataclass, field
 
 from forge.ast import nodes as vy_ast
-from forge.exceptions import DamlForgeException, ExceptionList
+from forge.exceptions import CompilerPanic, DamlForgeException, ExceptionList
 from forge.ir.lower import lower_type
 from forge.ir.nodes import TypeRef
 from forge.models.error_codes import ErrorCodes
@@ -42,6 +42,13 @@ _CONVERSIONS = {
 }
 _COLLECTION_TYPES = {"list", "set", "frozenset", "Optional"}
 _MAP_TYPES = {"TextMap", "GenMap"}
+
+
+def _safe_lower_type(node) -> TypeRef:
+    try:
+        return lower_type(node)
+    except CompilerPanic:
+        return TypeRef(f"<invalid:{type(node).__name__}>")
 
 
 @dataclass(frozen=True)
@@ -342,6 +349,8 @@ class BidirectionalTypeChecker:
             return None
         if value.name in _COLLECTION_TYPES and value.args:
             return value.args[0]
+        if value.name == "TextMap":
+            return AppliedType("Text")
         if value.name in _MAP_TYPES and value.args:
             return value.args[-1]
         return None
@@ -448,11 +457,13 @@ class BidirectionalTypeChecker:
                     return None
             receiver = self.check_expr(call.func.value, None, env)
             receiver_name = self._name(receiver)
-            if receiver_name == "ContractId" and isinstance(receiver, AppliedType) and receiver.args:
+            if (
+                receiver_name == "ContractId"
+                and isinstance(receiver, AppliedType)
+                and receiver.args
+            ):
                 receiver_name = self._name(receiver.args[0])
-            method_name = (
-                f"{receiver_name}.{call.func.attr}" if receiver_name is not None else None
-            )
+            method_name = f"{receiver_name}.{call.func.attr}" if receiver_name is not None else None
             if method_name is not None and method_name in self.function_param_types:
                 self._check_call_arguments(call, env, method_name)
                 choice_name = self.choice_names.get(method_name)
@@ -524,6 +535,21 @@ class BidirectionalTypeChecker:
             return AppliedType("RelTime")
 
         op_type = type(expr.op)
+        supported = (
+            vy_ast.Add,
+            vy_ast.Sub,
+            vy_ast.Mult,
+            vy_ast.Div,
+            vy_ast.FloorDiv,
+            vy_ast.Mod,
+            vy_ast.Pow,
+        )
+        if op_type not in supported:
+            operator = getattr(expr.op, "_pretty", op_type.__name__)
+            self._error(expr, f"operator `{operator}` is not supported", call=False)
+            self.check_expr(expr.left, None, env)
+            self.check_expr(expr.right, None, env)
+            return None
         if op_type in (vy_ast.Add, vy_ast.Sub, vy_ast.Mult, vy_ast.Div):
             operand_expected = expected if self._is_numeric(self._name(expected)) else None
             if op_type is vy_ast.Sub and self._name(expected) == "RelTime":
@@ -702,7 +728,7 @@ class BidirectionalTypeChecker:
     ) -> None:
         for stmt in statements:
             if isinstance(stmt, vy_ast.AnnAssign):
-                expected = self._term(lower_type(stmt.annotation))
+                expected = self._term(_safe_lower_type(stmt.annotation))
                 if stmt.value is not None:
                     self.check_expr(stmt.value, expected, env)
                 if isinstance(stmt.target, vy_ast.Name) and expected is not None:
@@ -745,7 +771,7 @@ class BidirectionalTypeChecker:
                 body_env = env.child()
                 target = stmt.target.target if hasattr(stmt.target, "target") else stmt.target
                 annotation = getattr(stmt.target, "annotation", None)
-                target_type = self._term(lower_type(annotation)) if annotation else element
+                target_type = self._term(_safe_lower_type(annotation)) if annotation else element
                 if isinstance(target, vy_ast.Name) and target_type is not None:
                     body_env.bind(target.id, target_type)
                 self._check_statements(stmt.body, body_env, return_type)
@@ -773,10 +799,10 @@ class BidirectionalTypeChecker:
             if argument.arg == "self":
                 continue
             if argument.annotation is not None:
-                term = self._term(lower_type(argument.annotation))
+                term = self._term(_safe_lower_type(argument.annotation))
                 if term is not None:
                     env.bind(argument.arg, term)
-        return_type = self._term(lower_type(fn.returns)) if fn.returns is not None else None
+        return_type = self._term(_safe_lower_type(fn.returns)) if fn.returns is not None else None
         if any(
             (isinstance(decorator, vy_ast.Name) and decorator.id == "choice")
             or (
@@ -841,7 +867,7 @@ def _type_aliases(node) -> dict:
     local = type_aliases(module) if module is not None else {}
     return {
         **collect_daml_builtins().type_aliases,
-        **{name: lower_type(value) for name, value in local.items()},
+        **{name: _safe_lower_type(value) for name, value in local.items()},
     }
 
 

@@ -37,10 +37,7 @@ def _source_map():
 
 def test_map_daml_range_prefers_most_specific_ir_mapping():
     location = map_daml_location(
-        "daml/Earnout/Earnout.daml",
-        DamlRange(111, 17, 111, 186),
-        "missing field",
-        _source_map(),
+        "daml/Earnout/Earnout.daml", DamlRange(111, 17, 111, 186), "missing field", _source_map()
     )
 
     assert location is not None

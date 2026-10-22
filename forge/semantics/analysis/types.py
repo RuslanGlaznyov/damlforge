@@ -2,13 +2,21 @@ from functools import cached_property
 
 from forge.ast import nodes as vy_ast
 from forge.ast.utils import module_assigns
-from forge.exceptions import DamlForgeException, ExceptionList
+from forge.exceptions import CompilerPanic, DamlForgeException, ExceptionList
 from forge.ir.lower import lower_type
 from forge.ir.nodes import TypeRef
 from forge.models.error_codes import ErrorCodes
 from forge.semantics.analysis.imports import ImportsBuilder
 from forge.semantics.analysis.structure import _reachable_modules
 from forge.semantics.primitive_specs import generic_spec, type_is_ordered
+
+
+def _safe_lower_type(node) -> TypeRef:
+    """Keep malformed annotations in semantic analysis as normal diagnostics."""
+    try:
+        return lower_type(node)
+    except CompilerPanic:
+        return TypeRef(f"<invalid:{type(node).__name__}>")
 
 
 class _PrimT:
@@ -425,7 +433,7 @@ def known_function_param_types(modules) -> dict:
     for node in _scope_nodes(modules):
         if isinstance(node, vy_ast.FunctionDef):
             types[node.name] = tuple(
-                lower_type(a.annotation) if a.annotation is not None else None
+                _safe_lower_type(a.annotation) if a.annotation is not None else None
                 for a in node.args.args
                 if a.arg != "self"
             )
@@ -434,7 +442,7 @@ def known_function_param_types(modules) -> dict:
                 if not isinstance(constructor, vy_ast.FunctionDef):
                     continue
                 types[constructor.name] = tuple(
-                    lower_type(a.annotation) if a.annotation is not None else None
+                    _safe_lower_type(a.annotation) if a.annotation is not None else None
                     for a in constructor.args.args
                     if a.arg != "self"
                 )
@@ -443,7 +451,7 @@ def known_function_param_types(modules) -> dict:
                 if not isinstance(function, vy_ast.FunctionDef):
                     continue
                 signature = tuple(
-                    lower_type(a.annotation) if a.annotation is not None else None
+                    _safe_lower_type(a.annotation) if a.annotation is not None else None
                     for a in function.args.args
                     if a.arg != "self"
                 )
@@ -458,9 +466,7 @@ def known_function_param_names(modules) -> dict:
     names = dict(collect_daml_builtins().function_param_names)
     for node in _scope_nodes(modules):
         if isinstance(node, vy_ast.FunctionDef):
-            names[node.name] = tuple(
-                a.arg for a in node.args.args if a.arg != "self"
-            )
+            names[node.name] = tuple(a.arg for a in node.args.args if a.arg != "self")
         elif isinstance(node, vy_ast.VariantDef):
             for constructor in node.body:
                 if not isinstance(constructor, vy_ast.FunctionDef):
@@ -472,9 +478,7 @@ def known_function_param_names(modules) -> dict:
             for function in node.body:
                 if not isinstance(function, vy_ast.FunctionDef):
                     continue
-                signature = tuple(
-                    a.arg for a in function.args.args if a.arg != "self"
-                )
+                signature = tuple(a.arg for a in function.args.args if a.arg != "self")
                 names[function.name] = signature
                 names[f"{node.name}.{function.name}"] = signature
     return names
@@ -568,14 +572,19 @@ def _assigns_list_value(value, list_returning_fns: frozenset, list_names: set) -
     return False
 
 
-def _mark_list_subscripts_in_body(stmts, list_returning_fns: frozenset, list_names: set) -> None:
+def _mark_list_subscripts_in_body(
+    stmts, list_returning_fns: frozenset, list_names: set, list_self_fields: set
+) -> None:
     for stmt in stmts:
         for sub in stmt.get_descendants(vy_ast.Subscript, include_self=True):
-            if (
-                isinstance(sub.value, vy_ast.Name)
-                and sub.value.id in list_names
-                and isinstance(sub.slice, vy_ast.Int)
-            ):
+            is_list_name = isinstance(sub.value, vy_ast.Name) and sub.value.id in list_names
+            is_list_self_field = (
+                isinstance(sub.value, vy_ast.Attribute)
+                and isinstance(sub.value.value, vy_ast.Name)
+                and sub.value.value.id == "self"
+                and sub.value.attr in list_self_fields
+            )
+            if is_list_name or is_list_self_field:
                 sub._metadata["is_list_value"] = True
         if isinstance(stmt, vy_ast.Assign) and isinstance(stmt.target, vy_ast.Name):
             if _assigns_list_value(stmt.value, list_returning_fns, list_names):
@@ -589,7 +598,23 @@ def mark_list_subscripts(node: vy_ast.TopLevel, list_returning_fns: frozenset) -
         [node] if isinstance(node, vy_ast.FunctionDef) else node.get_descendants(vy_ast.FunctionDef)
     )
     for fn in fns:
-        _mark_list_subscripts_in_body(fn.body, list_returning_fns, set())
+        list_names = {
+            arg.arg
+            for arg in fn.args.args
+            if arg.annotation is not None and _is_list_type_annotation(arg.annotation)
+        }
+        template = fn.get_ancestor(vy_ast.TemplateDef)
+        if isinstance(template, vy_ast.TemplateDef):
+            list_self_fields = {
+                stmt.target.id
+                for stmt in template.body
+                if isinstance(stmt, vy_ast.AnnAssign)
+                and isinstance(stmt.target, vy_ast.Name)
+                and _is_list_type_annotation(stmt.annotation)
+            }
+        else:
+            list_self_fields = set()
+        _mark_list_subscripts_in_body(fn.body, list_returning_fns, list_names, list_self_fields)
 
 
 _UNMAPPABLE_PYTHON_TYPES = frozenset(
@@ -624,7 +649,7 @@ def _walk_type_ref(
 def check_type_annotation(node, known_names: set, context: str, errors: ExceptionList) -> None:
     if node is None:
         return
-    type_ref = lower_type(node)
+    type_ref = _safe_lower_type(node)
     _walk_type_ref(type_ref, known_names, node, context, errors)
     _check_generic_policy(type_ref, node, context, errors)
 
@@ -686,6 +711,13 @@ def check_function_type_annotations(
         )
     if fn.returns is not None:
         check_type_annotation(fn.returns, known_names, f"return type of `{fn.name}`", errors)
+    for stmt in fn.get_descendants(vy_ast.AnnAssign):
+        check_type_annotation(
+            stmt.annotation,
+            known_names,
+            f"local variable `{getattr(stmt.target, 'id', '<expression>')}` in `{fn.name}`",
+            errors,
+        )
 
 
 def check_struct_type_annotations(
@@ -701,14 +733,20 @@ def check_struct_type_annotations(
 def check_template_field_type_annotations(
     node: vy_ast.TemplateDef, known_names: set, errors: ExceptionList
 ) -> None:
-    reserved = ("signatory", "observer", "key", "maintainer", "ensure")
     for stmt in node.body:
         if not isinstance(stmt, vy_ast.AnnAssign):
             continue
-        if isinstance(stmt.target, vy_ast.Name) and stmt.target.id in reserved:
-            continue
+        if not isinstance(stmt.target, vy_ast.Name):
+            errors.append(
+                DamlForgeException(
+                    f"Template field target must be a name, got `{type(stmt.target).__name__}`",
+                    stmt.target,
+                    code=ErrorCodes.DF1213.value,
+                )
+            )
+        field_name = getattr(stmt.target, "id", "<expression>")
         check_type_annotation(
-            stmt.annotation, known_names, f"field `{stmt.target.id}` of `{node.name}`", errors
+            stmt.annotation, known_names, f"field `{field_name}` of `{node.name}`", errors
         )
 
 
@@ -747,7 +785,7 @@ def known_field_types(modules) -> dict:
                 if not isinstance(constructor, vy_ast.FunctionDef):
                     continue
                 registry[constructor.name] = {
-                    arg.arg: lower_type(arg.annotation)
+                    arg.arg: _safe_lower_type(arg.annotation)
                     for arg in constructor.args.args
                     if arg.arg != "self" and arg.annotation is not None
                 }
@@ -757,7 +795,7 @@ def known_field_types(modules) -> dict:
         fields = {}
         for stmt in node.body:
             if isinstance(stmt, vy_ast.AnnAssign) and isinstance(stmt.target, vy_ast.Name):
-                fields[stmt.target.id] = lower_type(stmt.annotation)
+                fields[stmt.target.id] = _safe_lower_type(stmt.annotation)
         registry[node.name] = fields
     return registry
 
@@ -769,11 +807,11 @@ def known_return_types(modules, field_types: dict) -> dict:
     types.update(collect_daml_builtins().function_return_types)
     for node in _scope_nodes(modules):
         if isinstance(node, vy_ast.FunctionDef) and node.returns is not None:
-            types[node.name] = lower_type(node.returns)
+            types[node.name] = _safe_lower_type(node.returns)
         elif isinstance(node, (vy_ast.InterfaceDef, vy_ast.TemplateDef)):
             for function in node.body:
                 if isinstance(function, vy_ast.FunctionDef) and function.returns is not None:
-                    types[f"{node.name}.{function.name}"] = lower_type(function.returns)
+                    types[f"{node.name}.{function.name}"] = _safe_lower_type(function.returns)
         elif isinstance(node, vy_ast.VariantDef):
             types.update(
                 {
@@ -964,7 +1002,7 @@ def _mark_stmts_optional_conversions(
             _mark_expr_optional_conversions(
                 stmt.value, enclosing_type, local_types, field_types, return_types
             )
-            target_type = lower_type(stmt.annotation)
+            target_type = _safe_lower_type(stmt.annotation)
             _mark_dict_kind(stmt.value, target_type)
             if stmt.value is not None and target_type.name != "Optional":
                 value_type = _infer_expr_type(
@@ -1018,7 +1056,7 @@ def _mark_stmts_optional_conversions(
             target = stmt.target.target if hasattr(stmt.target, "target") else stmt.target
             annotation = getattr(stmt.target, "annotation", None)
             if isinstance(target, vy_ast.Name) and annotation is not None:
-                body_types[target.id] = lower_type(annotation)
+                body_types[target.id] = _safe_lower_type(annotation)
             _mark_stmts_optional_conversions(
                 stmt.body, enclosing_type, body_types, field_types, return_types, return_type
             )
@@ -1057,8 +1095,8 @@ def mark_optional_conversions(node: vy_ast.TopLevel, field_types: dict, return_t
         for arg in fn.args.args:
             if arg.arg == "self" or arg.annotation is None:
                 continue
-            local_types[arg.arg] = lower_type(arg.annotation)
-        return_type = lower_type(fn.returns) if fn.returns is not None else None
+            local_types[arg.arg] = _safe_lower_type(arg.annotation)
+        return_type = _safe_lower_type(fn.returns) if fn.returns is not None else None
         _mark_stmts_optional_conversions(
             fn.body, enclosing_type, local_types, field_types, return_types, return_type
         )

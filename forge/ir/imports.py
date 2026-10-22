@@ -9,6 +9,7 @@ from forge.ir.nodes import (
     IRConstant,
     IRDict,
     IRExpr,
+    IRFold,
     IRIfExp,
     IRImport,
     IRModule,
@@ -119,6 +120,8 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
             imports.append(import_)
 
     for value in _walk_ir(module):
+        if isinstance(value, IRFold) and value.post_loop:
+            add(IRImport("DA.Optional", ("fromSome",)))
         if isinstance(value, TypeRef):
             if value.name == "GenMap":
                 add(IRImport("DA.Map", alias="Map", qualified=False))
@@ -132,7 +135,7 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
         elif isinstance(value, IRName):
             if value.id == "foldlA":
                 add(IRImport("DA.Action", ("foldlA",)))
-            elif value.id == "Text.length":
+            elif value.id.startswith("Text."):
                 add(IRImport("DA.Text", alias="Text"))
             elif value.id in _OPTIONAL_METHODS or value.id == "DA.Optional":
                 add(IRImport("DA.Optional"))

@@ -27,11 +27,20 @@ def test_simple():
 
 
 def test_burn_mint_interface():
-    source_path = Path(__file__).resolve().parents[2] / "examples" / "splice-api-token-burn-mint-v1" / "daml" / "Splice"  / "Api"  / "Token"  / "burn_mint_v1.vy"
+    source_path = (
+        Path(__file__).resolve().parents[2]
+        / "examples"
+        / "splice-api-token-burn-mint-v1"
+        / "daml"
+        / "Splice"
+        / "Api"
+        / "Token"
+        / "burn_mint_v1.vy"
+    )
     source = source_path.read_text()
     assert source is not None
     assert source != ""
-    
+
     ast_tree = parse_to_ast(source, module_path="burn_mint_v1.vy", resolved_path=str(source_path))
     analyze_module(ast_tree)
     lowered = lower_module(ast_tree)

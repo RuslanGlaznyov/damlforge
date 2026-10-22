@@ -42,14 +42,14 @@ def _read_dar(dar: Path):
             break
     if not main_dalf:
         raise ValueError(f"{dar} has no Main-Dalf entry in its manifest")
-    
+
     main_id = Path(main_dalf).stem.rsplit("-", 1)[-1]
     with _dar_file()(dar) as df:
         archives = df.archives()
     main = next((a for a in archives if a.hash == main_id), None)
     if main is None:
         raise ValueError(f"{dar} does not contain its main package {main_id}")
-    
+
     sources = {}
     root = main_dalf.split("/", 1)[0]
     with zipfile.ZipFile(dar) as zf:
@@ -57,7 +57,7 @@ def _read_dar(dar: Path):
             if name.startswith(f"{root}/") and name.endswith(".daml"):
                 module = name[len(root) + 1 : -len(".daml")].replace("/", ".")
                 sources[module] = zf.read(name).decode()
-                    
+
     return main, archives, sources
 
 

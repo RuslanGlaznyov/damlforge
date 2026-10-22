@@ -143,7 +143,8 @@ class ForParser:
             return False
 
         # slurp the token
-        self._current_annotation.append(token)
+        if self._current_annotation is not None:
+            self._current_annotation.append(token)
         return True
 
 
@@ -186,52 +187,8 @@ class HexStringParser:
         return True
 
 
-def _get_bare_decorated_class_type(token_list: list[TokenInfo], class_index: int) -> str | None:
-    if class_index < 3:
-        return None
-    newline_tok, name_tok, at_tok = (
-        token_list[class_index - 1],
-        token_list[class_index - 2],
-        token_list[class_index - 3],
-    )
-    if not (
-        newline_tok.type == NEWLINE
-        and name_tok.type == NAME
-        and at_tok.type == OP
-        and at_tok.string == "@"
-        and at_tok.start[1] == 0
-    ):
-        return None
-
-    return DECORATED_CLASS_TYPES.get(name_tok.string)
-
-
-def _is_enum_class(token_list: list[TokenInfo], class_index: int) -> bool:
-    """Return whether ``class Name(Enum):`` starts at ``class_index``."""
-
-    tokens = token_list[class_index + 1 :]
-    if len(tokens) < 5:
-        return False
-    if tokens[0].type != NAME or tokens[1].string != "(":
-        return False
-
-    if tokens[2].type == NAME and tokens[2].string == "Enum":
-        return tokens[3].string == ")" and tokens[4].string == ":"
-
-    return (
-        len(tokens) >= 7
-        and tokens[2].type == NAME
-        and tokens[3].string == "."
-        and tokens[4].type == NAME
-        and tokens[4].string == "Enum"
-        and tokens[5].string == ")"
-        and tokens[6].string == ":"
-    )
-
-
 # compound statements that are replaced with `class`
 VYPER_CLASS_TYPES = {
-    "event": "EventDef",
     "error": "ErrorDef",
     "interface": "InterfaceDef",
     "struct": "StructDef",
@@ -272,7 +229,6 @@ class PreParser:
 
         * Translates Vyper-style container keywords into Python-compatible syntax
         * Validates "@version" pragma against current compiler version
-        * Prevents direct use of python "class" keyword
         * Prevents use of python semi-colon statement separator
         * Extracts type annotation of for loop iterators into a separate dictionary
 
@@ -283,12 +239,56 @@ class PreParser:
         Parameters
         ----------
         code : str
-            The vyper source code to be re-formatted.
+            The source code to be re-formatted.
         """
         try:
             self._parse(code)
+        except IndentationError as e:
+            offset = e.offset - 1 if e.offset is not None else None
+            raise SyntaxException(str(e), code, e.lineno, offset) from e
         except TokenError as e:
             raise SyntaxException(e.args[0], code, e.args[1][0], e.args[1][1]) from e
+
+    def _is_enum_class(self, token_list: list[TokenInfo], class_index: int) -> bool:
+        """Return whether ``class Name(Enum):`` starts at ``class_index``."""
+
+        tokens = token_list[class_index + 1 :]
+        if len(tokens) < 5:
+            return False
+        if tokens[0].type != NAME or tokens[1].string != "(":
+            return False
+
+        if tokens[2].type == NAME and tokens[2].string == "Enum":
+            return tokens[3].string == ")" and tokens[4].string == ":"
+
+        return (
+            len(tokens) >= 7
+            and tokens[2].type == NAME
+            and tokens[3].string == "."
+            and tokens[4].type == NAME
+            and tokens[4].string == "Enum"
+            and tokens[5].string == ")"
+            and tokens[6].string == ":"
+        )
+
+    def _get_bare_decorated_class_type(self, token_list: list[TokenInfo], class_index: int) -> str | None:
+        if class_index < 3:
+            return None
+        newline_tok, name_tok, at_tok = (
+            token_list[class_index - 1],
+            token_list[class_index - 2],
+            token_list[class_index - 3],
+        )
+        if not (
+            newline_tok.type == NEWLINE
+            and name_tok.type == NAME
+            and at_tok.type == OP
+            and at_tok.string == "@"
+            and at_tok.start[1] == 0
+        ):
+            return None
+
+        return DECORATED_CLASS_TYPES.get(name_tok.string)
 
     def _parse(self, code: str):
         adjustments: dict = {}
@@ -318,6 +318,7 @@ class PreParser:
             newstart = lineno, col - adj
             adjustments[lineno, col - adj] = adj
 
+            # TODO: addapt to daml versioning
             if typ == COMMENT:
                 contents = string[1:].strip()
                 if contents.startswith("@version"):
@@ -331,10 +332,12 @@ class PreParser:
                     _parse_pragma(contents, settings, self._is_interface, code, start)
 
             if typ == NAME and string == "class":
-                decorated_class_type = _get_bare_decorated_class_type(token_list, i)
+                # validating if its bare template or variant and replacing with the correct class 
+                # type, i.e. TemplateDef or VariantDef
+                decorated_class_type = self._get_bare_decorated_class_type(token_list, i)
                 if decorated_class_type is not None:
                     keyword_translations[newstart] = decorated_class_type
-                elif _is_enum_class(token_list, i):
+                elif self._is_enum_class(token_list, i):
                     keyword_translations[newstart] = "EnumDef"
                 else:
                     raise SyntaxException(
@@ -386,4 +389,8 @@ class PreParser:
         self.keyword_translations = keyword_translations
         self.for_loop_annotations = for_loop_annotations
         self.hex_string_locations = hex_string_parser.locations
-        self.reformatted_code = untokenize(result).decode("utf-8")  # type: ignore[union-attr]
+        try:
+            self.reformatted_code = untokenize(result).decode("utf-8")  # type: ignore[union-attr]
+        except (IndexError, ValueError) as e:
+            syntax_line, syntax_col = for_parser._current_for_loop or (1, 0)
+            raise SyntaxException("Invalid for-loop syntax", code, syntax_line, syntax_col) from e

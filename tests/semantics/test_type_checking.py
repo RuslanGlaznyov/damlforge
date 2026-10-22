@@ -151,8 +151,7 @@ def test_power_rejects_negative_literal_exponent(exponent, valid):
 )
 def test_datetime_subtraction_yields_timedelta(signature, body, valid):
     source = (
-        "from datetime import datetime, timedelta\n\n"
-        f"def f{signature}:\n    return {body}\n"
+        "from datetime import datetime, timedelta\n\n" f"def f{signature}:\n    return {body}\n"
     )
     if valid:
         _analyze(source)
@@ -171,8 +170,7 @@ def test_datetime_subtraction_yields_timedelta(signature, body, valid):
 )
 def test_datetime_minus_timedelta_yields_datetime(signature, body, valid):
     source = (
-        "from datetime import datetime, timedelta\n\n"
-        f"def f{signature}:\n    return {body}\n"
+        "from datetime import datetime, timedelta\n\n" f"def f{signature}:\n    return {body}\n"
     )
     if valid:
         _analyze(source)

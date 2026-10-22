@@ -75,10 +75,7 @@ def test_int_power_folding_is_bounded(expr, valid):
         _assert_policy_error(source)
 
 
-@pytest.mark.parametrize(
-    "year",
-    ["99999999999", "2147483648", "-99999999999"],
-)
+@pytest.mark.parametrize("year", ["99999999999", "2147483648", "-99999999999"])
 def test_date_with_oversized_year_is_a_policy_error(year):
     _assert_policy_error(
         f"from datetime import date\n\ndef f() -> date:\n    return date({year}, 1, 1)\n"

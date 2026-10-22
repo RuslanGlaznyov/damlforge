@@ -265,11 +265,7 @@ def test_qualified_python_datetime_combine_uses_time_defaults():
 
 def test_python_time_rejects_standalone_use():
     with pytest.raises(DamlForgeException, match="no standalone Daml equivalent"):
-        _compile(
-            "from datetime import time\n\n"
-            "def noon():\n"
-            "    return time(12)\n"
-        )
+        _compile("from datetime import time\n\n" "def noon():\n" "    return time(12)\n")
 
 
 def test_python_fromtimestamp_lowers_seconds_to_epoch_offset():
@@ -280,9 +276,7 @@ def test_python_fromtimestamp_lowers_seconds_to_epoch_offset():
     )
 
     assert "from_seconds : Int -> Time" in daml
-    assert (
-        "addRelTime (time (date 1970 Jan 1) 0 0 0) (microseconds (seconds * 1000000))" in daml
-    )
+    assert "addRelTime (time (date 1970 Jan 1) 0 0 0) (microseconds (seconds * 1000000))" in daml
     assert daml.count("import DA.Time") == 1
     assert daml.count("import DA.Date") == 1
 
@@ -430,12 +424,7 @@ def test_python_int_rejects_unsupported_source_type():
             "_damlforge_floorDivDecimal a b",
             ["_damlforge_floorDivDecimal"],
         ),
-        (
-            "(a: int) -> int",
-            "-a // -2",
-            "_damlforge_floorDiv (-a) (-2)",
-            ["_damlforge_floorDiv"],
-        ),
+        ("(a: int) -> int", "-a // -2", "_damlforge_floorDiv (-a) (-2)", ["_damlforge_floorDiv"]),
         ("(a: int, b: int) -> int", "a / b", "a / b", []),
     ],
 )
@@ -481,6 +470,19 @@ def test_python_int_conversion_inside_datetime_intrinsics(returns, body, expecte
 )
 def test_python_int_of_decimal_literal_is_annotated(literal, expected):
     assert expected in _compile(f"def f() -> int:\n    return int({literal})\n")
+
+
+def test_integer_literal_expected_as_decimal_is_annotated():
+    daml = _compile(
+        "@template\n"
+        "class Asset:\n"
+        "    owner: Party\n"
+        "    amount: Decimal\n"
+        "    signatory: list[Party] = [owner]\n"
+        "    ensure: bool = amount > 0\n"
+    )
+
+    assert "ensure amount > (0.0 : Decimal)" in daml
 
 
 @pytest.mark.parametrize(
