@@ -330,6 +330,8 @@ class BidirectionalTypeChecker:
         return None
 
     def _attribute_type(self, expr, env: TypeEnvironment) -> TypeTerm | None:
+        if expr._metadata.get("is_enum_value") and isinstance(expr.value, vy_ast.Name):
+            return AppliedType(expr.value.id)
         if (
             isinstance(expr.value, vy_ast.Name)
             and (primitive_spec(expr.value.id) is not None or generic_spec(expr.value.id) is not None)

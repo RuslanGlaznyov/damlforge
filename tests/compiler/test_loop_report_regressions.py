@@ -97,6 +97,36 @@ class Box:
     assert "if total >= 0 then (fetch c).value" not in daml
 
 
+def test_effectful_if_expression_branches_are_lowered_as_updates():
+    daml = _compile("""
+def check(v: int) -> int:
+    assert v > 0, "negative"
+    return v
+
+def f(condition: bool, value: int) -> int:
+    return 5 if condition else check(value)
+""")
+    assert "if condition" in daml
+    assert "pure (if condition then 5 else check value)" not in daml
+
+
+def test_effectful_boolean_operands_preserve_short_circuiting():
+    daml = _compile("""
+def check(v: int) -> int:
+    assert v > 0, "negative"
+    return v
+
+def f(condition: bool, value: int) -> bool:
+    return condition and check(value) > 0
+
+def g(condition: bool, value: int) -> bool:
+    return condition or check(value) > 0
+""")
+    assert "if condition" in daml
+    assert "pure (condition && (check value > 0))" not in daml
+    assert "pure (condition || (check value > 0))" not in daml
+
+
 def test_effectful_helper_in_range_iterable_is_bound_before_loop():
     daml = _compile("""
 def check(v: int) -> int:

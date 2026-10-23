@@ -302,6 +302,40 @@ def test_ledger_effect_in_template_field_value_is_rejected():
         )
 
 
+def test_enum_member_is_wrapped_when_optional_value_is_expected():
+    daml, _ = _compile(
+        "from enum import Enum, auto\n"
+        "from forge.models import Optional\n"
+        "class E(Enum):\n"
+        "    A = auto()\n"
+        "    B = auto()\n"
+        "def accept(value: Optional[E]) -> Optional[E]:\n"
+        "    return value\n"
+        "def direct() -> Optional[E]:\n"
+        "    return E.A\n"
+        "def f() -> Optional[E]:\n"
+        "    value: Optional[E] = E.A\n"
+        "    return accept(E.B)\n"
+    )
+
+    assert "Some A" in daml
+    assert "Some B" in daml
+
+
+def test_enum_member_list_literal_uses_list_indexing():
+    daml, _ = _compile(
+        "from enum import Enum, auto\n"
+        "class E(Enum):\n"
+        "    A = auto()\n"
+        "    B = auto()\n"
+        "def f() -> E:\n"
+        "    return [E.A, E.B][0]\n"
+    )
+
+    assert "!!" in daml
+    assert "._1" not in daml
+
+
 def test_bare_undefined_name_is_rejected_before_daml_generation():
     with pytest.raises(DamlForgeException, match="`missing` is not defined"):
         _compile(

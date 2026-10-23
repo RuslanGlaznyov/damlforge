@@ -217,39 +217,14 @@ class LoopAnalysis:
                     iter=iterator,
                     body=tuple(cls.hoist_nested_effects(s.body, namer, known_effect_fns)),
                 )
-            elif (
-                isinstance(s, IRAssign)
-                and cls._find_effectful_ifexp(s.value, known_effect_fns) is not None
-            ):
-                # An effectful conditional expression cannot be kept inside a
-                # pure `let`. Split it into statement-level control flow so
-                # the effect is executed only in the selected branch.
-                conditional = cls._find_effectful_ifexp(s.value, known_effect_fns)
-                assert conditional is not None
-                expanded = cls._expand_effectful_condition(
-                    conditional.test,
-                    (
-                        IRAssign(
-                            s.target,
-                            cls._replace_expr(s.value, conditional, conditional.body),
-                            s.type,
-                            src=s.src,
-                        ),
-                    ),
-                    (
-                        IRAssign(
-                            s.target,
-                            cls._replace_expr(s.value, conditional, conditional.orelse),
-                            s.type,
-                            src=s.src,
-                        ),
-                    ),
-                    namer,
-                    known_effect_fns,
-                )
-                result.extend(cls.hoist_nested_effects(expanded, namer, known_effect_fns))
-                continue
             elif isinstance(s, (IRReturn, IRAssign, IRExprStmt)) and s.value is not None:
+                lazy = cls._find_effectful_lazy(s.value, known_effect_fns)
+                if lazy is not None:
+                    expanded = cls._expand_effectful_value(
+                        s, lazy, namer, known_effect_fns
+                    )
+                    result.extend(cls.hoist_nested_effects(expanded, namer, known_effect_fns))
+                    continue
                 lifted: list[tuple[str, IRCall]] = []
                 value = cls._lift_effects(s.value, lifted, namer, known_effect_fns, top=True)
                 result.extend(IRAssign(IRName(name), call, src=s.src) for name, call in lifted)
@@ -283,20 +258,39 @@ class LoopAnalysis:
         return False
 
     @classmethod
-    def _find_effectful_ifexp(cls, expr, known_effect_fns):
-        if isinstance(expr, IRIfExp) and (
-            cls._contains_effect(expr.body, known_effect_fns)
-            or cls._contains_effect(expr.orelse, known_effect_fns)
-            or cls._contains_effect(expr.test, known_effect_fns)
-        ):
-            return expr
+    def _find_effectful_lazy(cls, expr, known_effect_fns):
+        """Find the first expression whose effect is evaluated lazily.
+
+        Effects in an ``if`` branch or in a non-first boolean operand cannot
+        remain inside a pure Daml expression. They must be represented as
+        statement-level branches so the selected ``Update`` action executes
+        only when Python would evaluate it.
+        """
+        if isinstance(expr, IRIfExp):
+            if cls._contains_effect(expr.body, known_effect_fns) or cls._contains_effect(
+                expr.orelse, known_effect_fns
+            ):
+                return expr
+            for child in (expr.test, expr.body, expr.orelse):
+                found = cls._find_effectful_lazy(child, known_effect_fns)
+                if found is not None:
+                    return found
+            return None
+        if isinstance(expr, IRBoolOp):
+            for index, value in enumerate(expr.values):
+                if index > 0 and cls._contains_effect(value, known_effect_fns):
+                    return expr
+                found = cls._find_effectful_lazy(value, known_effect_fns)
+                if found is not None:
+                    return found
+            return None
         if isinstance(expr, (IRName, IRConstant)) or not is_dataclass(expr):
             return None
         for field in fields(expr):
             value = getattr(expr, field.name)
             values = value if isinstance(value, tuple) else (value,)
             for item in values:
-                found = cls._find_effectful_ifexp(item, known_effect_fns)
+                found = cls._find_effectful_lazy(item, known_effect_fns)
                 if found is not None:
                     return found
         return None
@@ -317,6 +311,64 @@ class LoopAnalysis:
             else:
                 changes[field.name] = cls._replace_expr(value, target, replacement)
         return replace(expr, **changes)
+
+    @classmethod
+    def _expand_effectful_value(cls, statement, lazy, namer, known_effect_fns):
+        """Turn a lazy effect inside a statement value into control flow.
+
+        Duplicate the statement into branches with the lazy expression
+        replaced by the value Python would produce on that branch. Later
+        normalization handles any effectful calls inside those branch values.
+        """
+        if isinstance(lazy, IRIfExp):
+            body = (
+                replace(
+                    statement,
+                    value=cls._replace_expr(statement.value, lazy, lazy.body),
+                ),
+            )
+            orelse = (
+                replace(
+                    statement,
+                    value=cls._replace_expr(statement.value, lazy, lazy.orelse),
+                ),
+            )
+            return cls._expand_effectful_condition(
+                lazy.test, body, orelse, namer, known_effect_fns
+            )
+
+        if isinstance(lazy, IRBoolOp) and len(lazy.values) > 1:
+            first = lazy.values[0]
+            remainder = (
+                lazy.values[1]
+                if len(lazy.values) == 2
+                else IRBoolOp(lazy.op, lazy.values[1:])
+            )
+            if lazy.op == "and":
+                true_value, false_value = remainder, IRConstant(False)
+            elif lazy.op == "or":
+                true_value, false_value = IRConstant(True), remainder
+            else:
+                raise CompilerPanic(f"_expand_effectful_value: unsupported BoolOp {lazy.op}")
+            body = (
+                replace(
+                    statement,
+                    value=cls._replace_expr(statement.value, lazy, true_value),
+                ),
+            )
+            orelse = (
+                replace(
+                    statement,
+                    value=cls._replace_expr(statement.value, lazy, false_value),
+                ),
+            )
+            return cls._expand_effectful_condition(
+                first, body, orelse, namer, known_effect_fns
+            )
+
+        raise CompilerPanic(
+            f"_expand_effectful_value: unsupported lazy expression {type(lazy).__name__}"
+        )
 
     @classmethod
     def _expand_effectful_condition(
@@ -345,7 +397,7 @@ class LoopAnalysis:
                 return cls._expand_effectful_condition(first, body, nested, namer, known_effect_fns)
 
         lifted: list[tuple[str, IRCall]] = []
-        pure_test = cls._lift_effects(test, lifted, namer, known_effect_fns, top=True)
+        pure_test = cls._lift_effects(test, lifted, namer, known_effect_fns)
         prefix = [IRAssign(IRName(name), call) for name, call in lifted]
         return tuple(prefix) + (IRIf(pure_test, tuple(body), tuple(orelse)),)
 

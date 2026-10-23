@@ -150,7 +150,7 @@ def _receiver_type(node) -> "str | None":
 
 def _lower_expr_Attribute(node):
     if node._metadata.get("is_enum_value"):
-        return IRName(node.attr, _inferred_type(node))
+        return IRName(node.attr)
     attr = fields.current().attribute(_receiver_type(node), node.attr)
     return IRAttribute(lower_expr(node.value), attr)
 

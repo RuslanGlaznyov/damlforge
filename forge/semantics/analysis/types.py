@@ -636,6 +636,7 @@ def _mark_list_subscripts_in_body(
 ) -> None:
     for stmt in stmts:
         for sub in stmt.get_descendants(vy_ast.Subscript, include_self=True):
+            is_list_literal = isinstance(sub.value, vy_ast.List)
             is_list_name = isinstance(sub.value, vy_ast.Name) and sub.value.id in list_names
             is_list_self_field = (
                 isinstance(sub.value, vy_ast.Attribute)
@@ -643,7 +644,7 @@ def _mark_list_subscripts_in_body(
                 and sub.value.value.id == "self"
                 and sub.value.attr in list_self_fields
             )
-            if is_list_name or is_list_self_field:
+            if is_list_literal or is_list_name or is_list_self_field:
                 sub._metadata["is_list_value"] = True
         if isinstance(stmt, vy_ast.Assign) and isinstance(stmt.target, vy_ast.Name):
             if _assigns_list_value(stmt.value, list_returning_fns, list_names):
