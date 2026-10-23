@@ -166,6 +166,18 @@ def test_non_name_template_field_target_is_rejected_without_attribute_error():
     assert not isinstance(exc_info.value, AttributeError)
 
 
+def test_non_name_struct_field_target_is_rejected_without_attribute_error():
+    with pytest.raises(Exception) as exc_info:
+        _compile(
+            "from forge.models import Party, struct\n"
+            "@struct\n"
+            "class Lot:\n"
+            "    tuple[int, str]: Party\n"
+        )
+
+    assert not isinstance(exc_info.value, AttributeError)
+
+
 def test_missing_annotation_only_module_is_reported_as_damlforge_error():
     with pytest.raises(DamlForgeException, match="No module named `forge.Iou`"):
         _compile(
@@ -174,6 +186,45 @@ def test_missing_annotation_only_module_is_reported_as_damlforge_error():
             "class Iou:\n"
             "    issuer: Party\n"
         )
+
+
+def test_relative_import_is_reported_as_damlforge_error():
+    with pytest.raises(DamlForgeException, match="Relative imports are not supported"):
+        _compile(
+            "from . import models\n"
+            "from forge.models import Party, template\n"
+            "@template\n"
+            "class Iou:\n"
+            "    issuer: Party\n"
+        )
+
+
+def test_missing_annotation_only_import_is_reported_as_damlforge_error():
+    with pytest.raises(DamlForgeException, match="No module named `forge.DA.Map`"):
+        _compile(
+            "import forge.DA.Map as M\n"
+            "from forge.models import Party, template\n"
+            "@template\n"
+            "class Iou:\n"
+            "    issuer: Party\n"
+        )
+
+
+def test_lowercase_module_alias_is_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="Module alias `m` must start with an uppercase"):
+        _compile(
+            "import DA.Map as m\n"
+            "from forge.models import Party, template\n"
+            "@template\n"
+            "class Iou:\n"
+            "    issuer: Party\n"
+            "    signatory: list[Party] = [issuer]\n"
+        )
+
+
+def test_missing_builtin_stub_is_reported_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="No module named `DA.int`"):
+        _compile("import DA.int as M\n")
 
 
 def test_malformed_for_syntax_is_reported_as_syntax_error():
@@ -185,8 +236,96 @@ def test_unsupported_bitwise_operator_is_rejected_before_lowering():
     with pytest.raises(DamlForgeException, match="operator `&` is not supported"):
         _compile(
             "from forge.models import Decimal\n"
-            "def total_of(xs: list[Decimal]) -> Decimal:\n"
-            "    total = total & x\n"
+            "def total_of(total: Decimal) -> Decimal:\n"
+            "    return total & total\n"
+        )
+
+
+def test_unsupported_unary_operator_is_rejected_before_lowering():
+    with pytest.raises(DamlForgeException, match="operator `~` is not supported"):
+        _compile(
+            "from forge.models import ContractId, Party, choice, template\n"
+            "@template\n"
+            "class Iou:\n"
+            "    owner: Party\n"
+            "    signatory: list[Party] = [owner]\n"
+            "    @choice(controller=owner, consuming=False)\n"
+            "    def Many(self, owners: list[Party]) -> list[ContractId[Iou]]:\n"
+            "        return ~owners\n"
+        )
+
+
+def test_uppercase_member_on_expression_is_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="Uppercase member `CASH`"):
+        _compile(
+            "from forge.models import Party\n"
+            "def f() -> str:\n"
+            "    return \"\".CASH\n"
+        )
+
+
+def test_qualified_access_on_primitive_type_is_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="`Party` is a type name, not a value"):
+        _compile(
+            "from forge.models import Party\n"
+            "def f() -> str:\n"
+            "    return Party.amount\n"
+        )
+
+
+def test_qualified_method_call_on_contract_id_type_is_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="`ContractId` is a type name, not a value"):
+        _compile(
+            "from forge.models import ContractId\n"
+            "def f() -> int:\n"
+            "    return ContractId.now()\n"
+        )
+
+
+def test_uppercase_method_on_expression_is_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="Uppercase member `Note`"):
+        _compile(
+            "def f() -> int:\n"
+            "    return [].Note()\n"
+        )
+
+
+def test_ledger_effect_in_template_field_value_is_rejected():
+    with pytest.raises(Exception, match="Ledger effect `fetch` cannot be used"):
+        _compile(
+            "from forge.models import ContractId, Party, template\n"
+            "@template\n"
+            "class Iou:\n"
+            "    owner: Party\n"
+            "    source: ContractId[Iou]\n"
+            "    signatory: list[Party] = [fetch(source)]\n"
+        )
+
+
+def test_bare_undefined_name_is_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="`missing` is not defined"):
+        _compile(
+            "def f() -> int:\n"
+            "    return missing\n"
+        )
+
+
+def test_duplicate_top_level_functions_are_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="Function `f` is defined more than once"):
+        _compile(
+            "def f() -> int:\n"
+            "    return 1\n"
+            "def f() -> int:\n"
+            "    return 2\n"
+        )
+
+
+def test_duplicate_struct_fields_are_rejected_before_daml_generation():
+    with pytest.raises(DamlForgeException, match="declares field `kind` more than once"):
+        _compile(
+            "struct Lot:\n"
+            "    kind: str\n"
+            "    kind: str\n"
         )
 
 

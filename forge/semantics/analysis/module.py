@@ -238,6 +238,7 @@ class ModuleAnalyzer:
         # Top level analyzers that need to run before visiting the module body
         self._analyze_imports()
         self._check_enum_constructor_collisions()
+        self._check_duplicate_top_level_functions()
         DatetimeIntrinsicAnalyzer(self.module, self.errors).analyze()
         infer_ledger_effects(self.module)
 
@@ -284,6 +285,24 @@ class ModuleAnalyzer:
                     )
                 else:
                     seen[name] = enum.name
+
+    def _check_duplicate_top_level_functions(self) -> None:
+        """Reject duplicate Python function definitions before Daml emission."""
+        first_by_name: dict[str, vy_ast.FunctionDef] = {}
+        for node in self.module.body:
+            if not isinstance(node, vy_ast.FunctionDef):
+                continue
+            previous = first_by_name.setdefault(node.name, node)
+            if previous is node:
+                continue
+            self.errors.append(
+                DamlForgeException(
+                    f"Function `{node.name}` is defined more than once in this module",
+                    node,
+                    prev_decl=previous,
+                    code=ErrorCodes.DF1232.value,
+                )
+            )
 
     def visit(self, node: vy_ast.TopLevel) -> None:
         visitor = getattr(self, f"visit_{type(node).__name__}", self.visit_top_level)

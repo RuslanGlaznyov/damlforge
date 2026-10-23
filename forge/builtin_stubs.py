@@ -156,13 +156,20 @@ class StubMetadata:
             getattr(self, f.name).update(source)
 
 
-def _root(module: str) -> str:
-    return module.split(".", 1)[0]
+def _root(module: str | None) -> str:
+    # ``from . import ...`` has no module name in the Python AST.  Keep stub
+    # discovery total here; import analysis will report relative imports as a
+    # normal DamlForge diagnostic later.
+    return module.split(".", 1)[0] if module else ""
 
 
 def _stub_imports(module: vy_ast.Module):
     for stmt in module.body:
-        if isinstance(stmt, vy_ast.ImportFrom) and is_stub_root(_root(stmt.module)):
+        if (
+            isinstance(stmt, vy_ast.ImportFrom)
+            and stmt.module is not None
+            and is_stub_root(_root(stmt.module))
+        ):
             yield stmt.module, tuple(sorted(alias.name for alias in stmt.names))
         elif isinstance(stmt, vy_ast.Import):
             yield from ((a.name, None) for a in stmt.names if is_stub_root(_root(a.name)))

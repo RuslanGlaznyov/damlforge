@@ -74,7 +74,8 @@ class ImportsBuilder:
     def _uses_stubs(self, node) -> bool:
         module_strs = self._module_strs_for(node)
         for module_str in module_strs:
-            if self._root_of(module_str) in vendor_roots() and not self.builtin_stub(module_str):
+            root = self._root_of(module_str)
+            if root in vendor_roots() and not self.builtin_stub(module_str):
                 raise DamlForgeException(
                     f"No module named `{module_str}` - no generated stub "
                     f"`{self._module_str_to_relpath(module_str)}.vy` in `{BUILTINS_DIR}`; "
@@ -82,11 +83,19 @@ class ImportsBuilder:
                     node,
                     code=ErrorCodes.DF1213.value,
                 )
+            if isinstance(node, vy_ast.Import) and self.is_builtin_root(root) and not self.builtin_stub(
+                module_str
+            ):
+                raise DamlForgeException(
+                    f"No module named `{module_str}` - no builtin stub is available",
+                    node,
+                    code=ErrorCodes.DF1213.value,
+                )
         return bool(module_strs) and all(self.builtin_stub(m) for m in module_strs)
 
     @staticmethod
-    def _root_of(module_path: str) -> str:
-        return module_path.split(".", 1)[0]
+    def _root_of(module_path: str | None) -> str:
+        return module_path.split(".", 1)[0] if module_path else ""
 
     @staticmethod
     def is_annotation_only_root(root: str) -> bool:
@@ -110,7 +119,21 @@ class ImportsBuilder:
 
     @classmethod
     def check_import_names_resolve(cls, node, errors: ExceptionList) -> None:
-        if not isinstance(node, vy_ast.ImportFrom):
+        if isinstance(node, vy_ast.Import):
+            for alias in node.names:
+                root = cls._root_of(alias.name)
+                if not cls.is_annotation_only_root(root):
+                    continue
+                try:
+                    cls._import_real_module(alias.name)
+                except ModuleNotFoundError:
+                    errors.append(
+                        DamlForgeException(
+                            f"No module named `{alias.name}`", node, code=ErrorCodes.DF1213.value
+                        )
+                    )
+            return
+        if not isinstance(node, vy_ast.ImportFrom) or node.module is None:
             return
 
         try:
@@ -189,6 +212,26 @@ class ImportsBuilder:
                 )
 
     @staticmethod
+    def check_import_aliases(node, errors: ExceptionList) -> None:
+        if not isinstance(node, vy_ast.Import):
+            return
+
+        for alias in node.names:
+            if (
+                alias.asname is not None
+                and not ImportsBuilder.is_annotation_only_root(ImportsBuilder._root_of(alias.name))
+                and not alias.asname[:1].isupper()
+            ):
+                errors.append(
+                    DamlForgeException(
+                        f"Module alias `{alias.asname}` must start with an uppercase letter "
+                        "because Daml module aliases are constructors",
+                        alias,
+                        code=ErrorCodes.DF1213.value,
+                    )
+                )
+
+    @staticmethod
     def _module_str_to_relpath(module_str: str) -> Path:
         return Path(*module_str.split("."))
 
@@ -244,7 +287,18 @@ class ImportsBuilder:
             if not isinstance(node, (vy_ast.Import, vy_ast.ImportFrom)):
                 continue
 
+            if isinstance(node, vy_ast.ImportFrom) and (node.level or node.module is None):
+                errors.append(
+                    DamlForgeException(
+                        "Relative imports are not supported; use an absolute module import",
+                        node,
+                        code=ErrorCodes.DF1213.value,
+                    )
+                )
+                continue
+
             self.check_no_aliased_from_import(node, errors)
+            self.check_import_aliases(node, errors)
             stubbed = self._uses_stubs(node)
             if not stubbed:
                 self.check_import_names_resolve(node, errors)

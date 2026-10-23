@@ -330,6 +330,16 @@ class BidirectionalTypeChecker:
         return None
 
     def _attribute_type(self, expr, env: TypeEnvironment) -> TypeTerm | None:
+        if (
+            isinstance(expr.value, vy_ast.Name)
+            and (primitive_spec(expr.value.id) is not None or generic_spec(expr.value.id) is not None)
+        ):
+            self._error(
+                expr,
+                f"`{expr.value.id}` is a type name, not a value; qualified field access is "
+                "not supported",
+            )
+            return None
         base_type = (
             env.get("self")
             if isinstance(expr.value, vy_ast.Name) and expr.value.id == "self"
@@ -457,6 +467,15 @@ class BidirectionalTypeChecker:
                 qualified = f"{call.func.value.id}.{call.func.attr}"
                 if qualified in self.field_types:
                     self._check_call_arguments(call, env, qualified)
+                    return None
+                if primitive_spec(call.func.value.id) is not None or generic_spec(
+                    call.func.value.id
+                ) is not None:
+                    self._error(
+                        call,
+                        f"`{call.func.value.id}` is a type name, not a value; qualified "
+                        "method access is not supported",
+                    )
                     return None
             receiver = self.check_expr(call.func.value, None, env)
             receiver_name = self._name(receiver)
@@ -703,6 +722,11 @@ class BidirectionalTypeChecker:
             if isinstance(expr.op, vy_ast.Not):
                 self.check_expr(expr.operand, AppliedType("Bool"), env)
                 return self._finish(expr, AppliedType("Bool"), expected_term, call=call)
+            if not isinstance(expr.op, vy_ast.USub):
+                operator = getattr(expr.op, "_pretty", type(expr.op).__name__)
+                self._error(expr, f"operator `{operator}` is not supported", call=False)
+                self.check_expr(expr.operand, None, env)
+                return None
             operand = self.check_expr(expr.operand, expected_term, env)
             return self._finish(expr, operand, expected_term, call=call)
         if isinstance(expr, vy_ast.BinOp):

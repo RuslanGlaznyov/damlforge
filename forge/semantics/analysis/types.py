@@ -301,6 +301,21 @@ def check_enum_value_access(
 ) -> None:
     for attr in node.get_descendants(vy_ast.Attribute):
         if not isinstance(attr.value, vy_ast.Name):
+            parent = getattr(attr, "parent", None)
+            is_called_method = (
+                isinstance(parent, vy_ast.Call)
+                and parent.func is attr
+                and isinstance(attr.value, (vy_ast.Name, vy_ast.Attribute))
+            )
+            if attr.attr[:1].isupper() and not is_called_method:
+                errors.append(
+                    DamlForgeException(
+                        f"Uppercase member `{attr.attr}` cannot be selected from an expression; "
+                        "use an enum or module name",
+                        attr,
+                        code=ErrorCodes.DF1213.value,
+                    )
+                )
             continue
         declaration = declarations.get(attr.value.id)
         if not isinstance(declaration, vy_ast.EnumDef):
@@ -321,7 +336,7 @@ def check_enum_value_access(
 
 _NON_VARIABLE_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.InterfaceDef, vy_ast.TemplateDef)
 
-_LANGUAGE_BUILTIN_NAMES = frozenset({"len", "ceil", "floor", "range"})
+_LANGUAGE_BUILTIN_NAMES = frozenset({"false", "true", "len", "ceil", "floor", "range"})
 
 
 def known_global_names(modules) -> frozenset:
@@ -376,7 +391,51 @@ def check_unresolved_names(
         and isinstance(stmt.target, vy_ast.Name)
     }
     for fn in fns:
-        local_names = _local_bound_names(fn) | enclosing_fields
+        local_names = set(_local_bound_names(fn) | enclosing_fields)
+        if fn.get_ancestor(vy_ast.TemplateDef) is not None:
+            # Template methods may omit ``self`` from their Python signature;
+            # Forge still binds the current contract as ``self`` in Daml.
+            local_names.add("self")
+        annotation_names: set[int] = set()
+        for argument in fn.args.args:
+            if argument.annotation is not None:
+                annotation_names.update(
+                    id(name)
+                    for name in argument.annotation.get_descendants(vy_ast.Name, include_self=True)
+                )
+        if fn.returns is not None:
+            annotation_names.update(
+                id(name) for name in fn.returns.get_descendants(vy_ast.Name, include_self=True)
+            )
+        for declaration in fn.get_descendants(vy_ast.AnnAssign):
+            annotation_names.update(
+                id(name)
+                for name in declaration.annotation.get_descendants(vy_ast.Name, include_self=True)
+            )
+
+        for name_node in fn.get_descendants(vy_ast.Name):
+            if id(name_node) in annotation_names:
+                continue
+            parent = getattr(name_node, "parent", None)
+            if (
+                isinstance(parent, vy_ast.Attribute)
+                and parent.value is name_node
+            ) or (isinstance(parent, vy_ast.Call) and parent.func is name_node):
+                continue
+            if name_node.id in local_names or name_node.id in global_names:
+                continue
+            if isinstance(declarations.get(name_node.id), _CONSTRUCTIBLE_DECLARATION_TYPES):
+                continue
+            errors.append(
+                DamlForgeException(
+                    f"`{name_node.id}` is not defined - no variable, parameter, import, or "
+                    "declaration named "
+                    f"`{name_node.id}` exists in scope here",
+                    name_node,
+                    code=ErrorCodes.DF1219.value,
+                )
+            )
+
         for attr in fn.get_descendants(vy_ast.Attribute):
             if not isinstance(attr.value, vy_ast.Name):
                 continue
@@ -724,10 +783,20 @@ def check_struct_type_annotations(
     node: vy_ast.StructDef, known_names: set, errors: ExceptionList
 ) -> None:
     for stmt in node.body:
-        if isinstance(stmt, vy_ast.AnnAssign):
-            check_type_annotation(
-                stmt.annotation, known_names, f"field `{stmt.target.id}` of `{node.name}`", errors
+        if not isinstance(stmt, vy_ast.AnnAssign):
+            continue
+        if not isinstance(stmt.target, vy_ast.Name):
+            errors.append(
+                DamlForgeException(
+                    f"Struct field target must be a name, got `{type(stmt.target).__name__}`",
+                    stmt.target,
+                    code=ErrorCodes.DF1213.value,
+                )
             )
+        field_name = getattr(stmt.target, "id", "<expression>")
+        check_type_annotation(
+            stmt.annotation, known_names, f"field `{field_name}` of `{node.name}`", errors
+        )
 
 
 def check_template_field_type_annotations(

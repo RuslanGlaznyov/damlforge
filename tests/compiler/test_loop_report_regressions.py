@@ -97,6 +97,42 @@ class Box:
     assert "if total >= 0 then (fetch c).value" not in daml
 
 
+def test_effectful_helper_in_range_iterable_is_bound_before_loop():
+    daml = _compile("""
+def check(v: int) -> int:
+    assert v != 4, "four"
+    return v * 2
+
+def f(xs: list[int]) -> int:
+    t: int = 0
+    for i: int in range(check(len(xs))):
+        t = t + i
+    return t
+""")
+    assert "<- check (length xs)" in daml
+    assert "foldl" in daml
+
+
+def test_effectful_helper_in_template_ensure_is_rejected_as_pure_context():
+    with pytest.raises(
+        DamlForgeException,
+        match=r"Ledger effect `check` cannot be used in the pure value of `Box.ensure`",
+    ):
+        _compile("""
+from forge.models import Party, template
+
+def check(v: int) -> bool:
+    assert v != 4, "four"
+    return True
+
+@template
+class Box:
+    owner: Party
+    ensure: bool = check(1)
+    signatory: list[Party] = [owner]
+""")
+
+
 def test_loop_scoped_values_are_carried_as_optional_fold_state():
     daml = _compile("""
 def f(xs: list[int]) -> int:

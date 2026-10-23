@@ -204,8 +204,18 @@ class LoopAnalysis:
                     orelse=tuple(cls.hoist_nested_effects(s.orelse, namer, known_effect_fns)),
                 )
             elif isinstance(s, IRFor):
+                iterable_lifted: list[tuple[str, IRCall]] = []
+                iterator = cls._lift_effects(
+                    s.iter, iterable_lifted, namer, known_effect_fns
+                )
+                result.extend(
+                    IRAssign(IRName(name), call, src=s.src)
+                    for name, call in iterable_lifted
+                )
                 s = replace(
-                    s, body=tuple(cls.hoist_nested_effects(s.body, namer, known_effect_fns))
+                    s,
+                    iter=iterator,
+                    body=tuple(cls.hoist_nested_effects(s.body, namer, known_effect_fns)),
                 )
             elif (
                 isinstance(s, IRAssign)
@@ -341,6 +351,16 @@ class LoopAnalysis:
 
     @classmethod
     def _lift_effects(cls, expr, lifted, namer, known_effect_fns, top=False):
+        """Hoist nested ledger-effect calls out of an IR expression.
+
+        Daml expressions embedded in pure contexts, such as a loop iterable
+        or an arithmetic expression, cannot directly contain an ``Update``
+        action. Recursively rebuild the expression, replace each nested
+        effect call with a temporary ``IRName``, and append the corresponding
+        ``IRAssign`` payload to ``lifted`` so the emitter can bind it with
+        ``<-``. When ``top`` is true, preserve the outermost effect call for
+        its surrounding statement to handle directly.
+        """
         if isinstance(expr, IRIfExp):
             return replace(expr, test=cls._lift_effects(expr.test, lifted, namer, known_effect_fns))
         if isinstance(expr, IRBoolOp):
@@ -363,6 +383,13 @@ class LoopAnalysis:
 
     @classmethod
     def _lift_field(cls, value, lifted, namer, known_effect_fns):
+        """Apply ``_lift_effects`` to an IR dataclass field or tuple field.
+
+        IR nodes store child expressions in both scalar fields and tuples,
+        such as call arguments and keyword arguments. This helper preserves
+        that container shape while recursively lifting effects from every
+        nested expression.
+        """
         if isinstance(value, tuple):
             return tuple(cls._lift_field(item, lifted, namer, known_effect_fns) for item in value)
         return cls._lift_effects(value, lifted, namer, known_effect_fns)

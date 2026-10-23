@@ -399,6 +399,54 @@ def check_template_reserved_declarations(
             )
 
 
+def check_duplicate_record_fields(
+    container: vy_ast.StructDef | vy_ast.TemplateDef, errors: ExceptionList
+) -> None:
+    """Reject duplicate Daml record fields before code generation."""
+    reserved_names = {"signatory", "observer", "key", "maintainer", "ensure"}
+    first_by_name: dict[str, object] = {}
+    for stmt in container.body:
+        if not isinstance(stmt, vy_ast.AnnAssign) or not isinstance(stmt.target, vy_ast.Name):
+            continue
+        if isinstance(container, vy_ast.TemplateDef) and stmt.target.id in reserved_names:
+            continue
+        previous = first_by_name.setdefault(stmt.target.id, stmt)
+        if previous is not stmt:
+            errors.append(
+                DamlForgeException(
+                    f"{type(container).__name__.removesuffix('Def')} `{container.name}` declares "
+                    f"field `{stmt.target.id}` more than once",
+                    stmt,
+                    prev_decl=previous,
+                    code=ErrorCodes.DF1232.value,
+                )
+            )
+
+
+def check_pure_container_values(
+    container: vy_ast.StructDef | vy_ast.TemplateDef, errors: ExceptionList
+) -> None:
+    """Reject ledger actions in record initializers and template clauses."""
+    known_effects = set(collect_daml_builtins().ledger_effect_fns)
+    known_effects.update(container.module_node._metadata.get("effect_functions", ()))
+    for stmt in container.body:
+        if not isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)) or stmt.value is None:
+            continue
+        for call in stmt.value.get_descendants(vy_ast.Call, include_self=True):
+            effect_name = _ledger_effect_name(call, known_effects)
+            if effect_name is None:
+                continue
+            errors.append(
+                DamlForgeException(
+                    f"Ledger effect `{effect_name}` cannot be used in the pure value of "
+                    f"`{container.name}.{getattr(stmt.target, 'id', '<expression>')}`",
+                    call,
+                    code=ErrorCodes.DF1230.value,
+                )
+            )
+            break
+
+
 def check_template_methods(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
     """Reject template methods that lowering would otherwise silently discard."""
     ledger_effect_fns = collect_daml_builtins().ledger_effect_fns
@@ -600,6 +648,9 @@ def check_container(
 ) -> None:
     if isinstance(node, vy_ast.EnumDef):
         check_enum_member_names(node, errors)
+    elif isinstance(node, vy_ast.StructDef):
+        check_duplicate_record_fields(node, errors)
+        check_pure_container_values(node, errors)
     elif isinstance(node, vy_ast.VariantDef):
         check_unknown_decorators(node, errors)
         for constructor in node.body:
@@ -625,6 +676,8 @@ def check_container(
                         )
                     )
     elif isinstance(node, vy_ast.TemplateDef):
+        check_duplicate_record_fields(node, errors)
+        check_pure_container_values(node, errors)
         check_template_reserved_declarations(node, errors)
         check_template_methods(node, errors)
         check_template_signatory(node, errors)
