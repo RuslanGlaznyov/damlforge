@@ -20,7 +20,7 @@ DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into rea
 ## Before writing any .vy file
 
 1. Every field/type name in the file must resolve to one of: a Python-native type (including `date`, `datetime`, and `timedelta` imported from Python's `datetime` module), a DamlForge builtin type (`Party`, `Decimal`, `Int`, `ContractId[T]`, `GenMap[K,V]`, `TextMap[T]`), or a `struct`/`template`/`interface`/`flag`/`variant` declared/imported in scope. See reference.md § Type System.
-2. Function and method decorators (`@choice`, `@view`, `@variant_record`, `@DamlName`) must be imported from `forge.models` or `forge.builtins`. The `@template` and `@variant` class markers are consumed by the pre-parser and need no import. See reference.md § Decorators.
+2. Function and method decorators (`@choice`, `@view`, `@variant_record`, `@DamlName`) must be imported from `forge.models` or `forge.builtins`. The `@template` and `@variant` class markers must be imported from `forge.models` too. Ledger operations (`create`, `fetch`, `exercise`, `archive`, `lookup`, interface conversions) must be imported from `forge.builtins.daml_lang`. See reference.md § Decorators and § Ledger primitives.
 3. Every `template` needs `signatory`. `key` requires `maintainer` and vice versa. `ensure` (if present) must be a `bool`-typed comparison/boolop/call, never bare arithmetic. See reference.md § Template Fields.
 4. Daml update effects are inferred automatically from calls to `fetch`/`exercise`/`create`/`archive`/`lookup` and from transitive calls to functions containing those operations. Choices are already update contexts. See reference.md § Ledger Effects.
 5. Never put a `def` inside a `struct` - it is silently dropped, no error. Use a free top-level function instead.
@@ -42,7 +42,7 @@ change the generated Daml derivations.
 | Named-field variant constructor | `@variant_record` on a constructor method; emits Daml `Constructor with ...` |
 | Payload-free enum | `flag Status:\n    PENDING\n    PAID` (members MUST be `SCREAMING_CASE`) |
 | Choice | `@choice(controller=..., consuming=True)` |
-| Fetch/exercise/create/archive/lookup | called directly, no import needed |
+| Fetch/exercise/create/archive/lookup | `from forge.builtins.daml_lang import create, fetch, ...` - required, `DF1219` otherwise |
 | Optional field | `Optional[X]` - never write `Some(...)`/`from_some(...)` yourself, the compiler inserts it |
 | Current ledger time | `datetime.now()` from Python's `datetime`; DamlForge infers the enclosing function as an update |
 | Calendar date | `date(year, month, day)` from Python's `datetime`; integer months are `1..12` |
@@ -69,7 +69,8 @@ arithmetic, and Unix timestamp conversion.
 
 | Mistake | Fix |
 |---|---|
-| Using `@choice`/`@view`/`@variant_record` without importing it | Import it from `forge.models`; only the `@template` and `@variant` class markers are import-free |
+| Using `@template`/`@variant`/`@choice`/`@view`/`@variant_record` without importing it | Import it from `forge.models` (`DF1219` otherwise) |
+| Calling `create`/`fetch`/`exercise`/`to_interface_contract_id`/... without importing it | Import it from `forge.builtins.daml_lang` (`DF1219` otherwise); only `len`/`range`/`ceil`/`floor` are import-free |
 | Using `@variant_record` for every constructor | Use it only for Daml named-field (`with`) constructors; omit it for positional constructors |
 | Calling a custom `days(...)` helper | Import `timedelta` from `datetime` and use `timedelta(days=...)`; `years=` is not a Python or Daml fixed-duration unit |
 | Writing `def helper(): ...` inside a `struct` | Move it to a top-level `def`; structs are plain data records |

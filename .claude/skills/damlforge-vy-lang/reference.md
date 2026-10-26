@@ -121,7 +121,7 @@ def f(x: FeaturedAppRightV1.FeaturedAppRight): ...
 
 ## 3. Decorators
 
-Function and method decorators are ordinary Python objects and must be imported before use. An unimported decorator fails like any other unresolved name (`DF1219`, "not defined"). The `@template` and `@variant` class markers are the exception: the pre-parser consumes them, so they need no import.
+Function and method decorators are ordinary Python objects and must be imported before use. An unimported decorator fails like any other unresolved name (`DF1219`, "not defined"). This includes the `@template` and `@variant` class markers, which are imported from `forge.models`.
 
 ```python
 from forge.models import choice, variant_record, view
@@ -134,8 +134,8 @@ from forge.builtins import DamlName
 | `@view` | method inside `interface`, or a `template` that implements one | no args (`DF1206`); banned inside a `template` with no interface bases (`DF1207`) |
 | `@variant_record` | constructor method inside an `@variant` class | bare only; emits a named-field Daml constructor using `with` instead of a positional payload |
 | `@DamlName("RealName")` | any function/choice | exactly one string-literal positional arg (`DF1221`); overrides the auto-derived Daml-side name |
-| `@template` | immediately before `class Foo:`, nothing else | import-free class marker; see §1 |
-| `@variant` | immediately before `class Foo:`, nothing else | import-free class marker; see §1 and §9 |
+| `@template` | immediately before `class Foo:`, nothing else | class marker imported from `forge.models`; see §1 |
+| `@variant` | immediately before `class Foo:`, nothing else | class marker imported from `forge.models`; see §1 and §9 |
 
 ### `controller=`/`observer=` name rules (`DF1224`)
 
@@ -149,14 +149,18 @@ def transfer(self, new_owner: Party) -> bool: ...
 def rename(self, label: str) -> bool: ...                       # arg, not `rename`'s - DF1224
 ```
 
-## 4. Ledger primitives - always available, no import
+## 4. Ledger primitives - must be imported
 
-`fetch`, `exercise`, `create`, `archive`, `lookup`, `view` (interface view extraction, distinct from the `@view` decorator), `from_interface_contract_id`, `to_interface_contract_id`, `to_interface`, `coerce_interface_contract_id` (all `forge/builtins/daml_lang.py`) are treated as core language builtins - like `len`/`range`/`ceil`/`floor` - and resolve with **no import statement required**, even though real, introspectable Python objects back them (for tooling/codegen metadata). Importing them anyway (`from forge.builtins.daml_lang import fetch, create`) is harmless and matches most existing examples' style, but is not enforced.
+`fetch`, `exercise`, `create`, `archive`, `lookup`, `view` (interface view extraction, distinct from the `@view` decorator), `from_interface_contract_id`, `to_interface_contract_id`, `to_interface`, `coerce_interface_contract_id`, `stakeholder`, `error`, `reverse` (every `@DamlName` function in `forge/builtins/daml_lang.py`) must be imported from `forge.builtins.daml_lang`. Calling one without importing it fails with `DF1219` ("not defined"). Only `len`/`range`/`ceil`/`floor` are import-free.
 
 ```python
+from forge.builtins.daml_lang import fetch
+
 def f(cid: ContractId[Asset]) -> Asset:
-    return fetch(cid)          # works with zero imports
+    return fetch(cid)
 ```
+
+Inside an `interface` body, a bare `view` in `controller=`/`observer=` (for example `controller=view.provider`) is the interface's own view value, bound by the compiler like `self`. It needs no import.
 
 ### Ledger-effect inference
 
@@ -272,7 +276,7 @@ preserved. This distinction applies even to a single-field constructor. A
 constructor with no parameters needs no `@variant_record`.
 
 Constructor methods are declarations only and should have `pass` bodies.
-`@variant` itself needs no import; `@variant_record` must be imported from
+`@variant` and `@variant_record` must both be imported from
 `forge.models`.
 
 ## 10. Structs
