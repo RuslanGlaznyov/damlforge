@@ -355,6 +355,24 @@ def check_unsupported_control_flow(container: vy_ast.TopLevel, errors: Exception
             )
 
 
+def check_template_observer(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
+    stmt = _find_reserved_declaration(template, "observer")
+    if stmt is None:
+        return
+
+    if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign)) and isinstance(stmt.value, vy_ast.List):
+        if len(stmt.value.elements) == 0:
+            errors.append(
+                DamlForgeException(
+                    f"Template `{template.name}` declares `observer` with an empty list",
+                    stmt,
+                    code=ErrorCodes.DF1201.value,
+                )
+            )
+
+    return
+
+
 def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
     for stmt in template.body:
         target = None
@@ -362,6 +380,15 @@ def check_template_signatory(template: vy_ast.TemplateDef, errors: ExceptionList
             target = stmt.target
 
         if isinstance(target, vy_ast.Name) and target.id == "signatory":
+            if isinstance(target.parent,vy_ast.AnnAssign) and isinstance(target.parent.value, vy_ast.List):
+                if len(target.parent.value.elements) == 0:
+                    errors.append(
+                        DamlForgeException(
+                            f"Template `{template.name}` declares `signatory` with an empty list",
+                            target.parent,
+                            code=ErrorCodes.DF1201.value,
+                        )
+                    )
             return
 
     errors.append(
@@ -681,6 +708,7 @@ def check_container(
         check_template_reserved_declarations(node, errors)
         check_template_methods(node, errors)
         check_template_signatory(node, errors)
+        check_template_observer(node, errors)
         check_template_key_maintainer(node, errors)
         check_template_ensure(node, errors)
         check_unknown_decorators(node, errors)
