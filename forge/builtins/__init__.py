@@ -425,6 +425,18 @@ def _walk_submodules(package_name: str):
         yield importlib.import_module(info.name)
 
 
+@lru_cache(maxsize=1)
+def known_builtin_function_names() -> frozenset:
+    return frozenset(
+        name
+        for module in _walk_submodules("forge.builtins")
+        for name, obj in vars(module).items()
+        if getattr(obj, "__module__", None) == module.__name__
+        and getattr(obj, "__daml_name__", None) is not None
+        and callable(obj)
+    )
+
+
 def known_decorator_names() -> frozenset:
     from forge.models import decorators as vy_decorators_module
 

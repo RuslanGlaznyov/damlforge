@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from forge.ast.parse import parse_to_ast
+from forge.builtins import known_builtin_function_names
 from forge.exceptions import ExceptionList
 from forge.semantics import analyze_module
 from forge.semantics.analysis.imports import ImportsBuilder
@@ -59,6 +60,8 @@ def _analyze(source):
         _fixture_path("valid/valid_template_via_decorator.vy"),
         _fixture_path("valid/compatible_function_call_argument_types_are_allowed.vy"),
         _fixture_path("valid/template_with_ellipsis.vy"),
+        _fixture_path("valid/imported_ledger_builtins_are_allowed.vy"),
+        _fixture_path("valid/interface_choice_controller_uses_view_is_allowed.vy"),
     ],
     ids=lambda path: path.stem.upper(),
 )
@@ -70,6 +73,8 @@ def test_valid(source_path):
     "source_path,expected_code",
     [
         (_fixture_path("invalid/template_missing_signatory.vy"), ErrorCodes.DF1201.value),
+        (_fixture_path("invalid/template_empty_signatory.vy"), ErrorCodes.DF1201.value),
+        (_fixture_path("invalid/template_empty_observer.vy"), ErrorCodes.DF1201.value),
         (
             _fixture_path("invalid/template_via_decorator_missing_signatory.vy"),
             ErrorCodes.DF1201.value,
@@ -144,6 +149,14 @@ def test_valid(source_path):
         ),
         (_fixture_path("invalid/view_used_without_import_not_allowed.vy"), ErrorCodes.DF1219.value),
         (
+            _fixture_path("invalid/create_used_without_import_not_allowed.vy"),
+            ErrorCodes.DF1219.value,
+        ),
+        (
+            _fixture_path("invalid/to_interface_contract_id_used_without_import_not_allowed.vy"),
+            ErrorCodes.DF1219.value,
+        ),
+        (
             _fixture_path("invalid/multiple_violations.vy"),
             (ErrorCodes.DF1201.value, ErrorCodes.DF1203.value),
         ),
@@ -186,6 +199,39 @@ def test_invalid(source_path, expected_code):
 
     expected_codes = (expected_code,) if isinstance(expected_code, str) else expected_code
     assert all(code in str(exc_info.value) for code in expected_codes)
+
+
+def _builtin_call_source(name: str, imported: bool) -> str:
+    header = f"from forge.builtins.daml_lang import {name}\n\n" if imported else ""
+    return f"{header}def probe(value: int) -> int:\n    {name}(value)\n    return value\n"
+
+
+def _undefined_name_errors(source: str) -> str:
+    module = parse_to_ast(source, module_path="test.vy", resolved_path="test.vy")
+    try:
+        analyze_module(module)
+    except Exception as exc:
+        return str(exc)
+    return ""
+
+
+@pytest.mark.parametrize("name", sorted(known_builtin_function_names()))
+@pytest.mark.parametrize(
+    "imported,expect_undefined", [(False, True), (True, False)], ids=["missing", "imported"]
+)
+def test_builtin_function_requires_import(name, imported, expect_undefined):
+    errors = _undefined_name_errors(_builtin_call_source(name, imported))
+
+    assert (f"`{name}` is not defined" in errors) is expect_undefined
+    assert (ErrorCodes.DF1219.value in errors) is expect_undefined
+
+
+def test_known_builtin_function_names_cover_ledger_operations():
+    names = known_builtin_function_names()
+
+    assert {"create", "fetch", "exercise", "archive", "lookup"} <= names
+    assert {"to_interface_contract_id", "from_interface_contract_id", "to_interface"} <= names
+    assert not {"len", "range", "ceil", "floor"} & names
 
 
 def test_sibling_vy_import_still_resolves_via_load_import(tmp_path):

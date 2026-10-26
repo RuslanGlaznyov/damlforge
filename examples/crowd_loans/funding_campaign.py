@@ -4,7 +4,14 @@ from typing import Optional
 from forge.models import ContractId, Party, choice, template
 from forge.builtins import DamlName
 from enum import Enum, auto
-from forge.builtins.daml_lang import archive, create, exercise, fetch
+from forge.builtins.daml_lang import (
+    archive,
+    create,
+    exercise,
+    fetch,
+    from_interface_contract_id,
+    to_interface_contract_id,
+)
 from loan_terms import LoanRewards, LoanTerms, LoanTracker, PeriodPayment, PeriodPaymentStatus
 from Splice.Amulet import Amulet, LockedAmulet, LockedAmulet_UnlockV2
 from Splice.AmuletRules import (

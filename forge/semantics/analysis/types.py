@@ -340,7 +340,7 @@ _LANGUAGE_BUILTIN_NAMES = frozenset({"false", "true", "len", "ceil", "floor", "r
 
 
 def known_global_names(modules) -> frozenset:
-    from forge.builtins import collect_daml_builtins
+    from forge.builtins import collect_daml_builtins, known_builtin_function_names
 
     names = set(daml_builtin_type_names())
     for module in _scope_modules(modules):
@@ -351,7 +351,7 @@ def known_global_names(modules) -> frozenset:
             elif isinstance(node, vy_ast.VariantDef):
                 names.update(fn.name for fn in node.body if isinstance(fn, vy_ast.FunctionDef))
     names |= _LANGUAGE_BUILTIN_NAMES
-    names |= set(collect_daml_builtins().function_renames.keys())
+    names |= set(collect_daml_builtins().function_renames.keys()) - known_builtin_function_names()
     return frozenset(names)
 
 
@@ -396,6 +396,8 @@ def check_unresolved_names(
             # Template methods may omit ``self`` from their Python signature;
             # Forge still binds the current contract as ``self`` in Daml.
             local_names.add("self")
+        if fn.get_ancestor(vy_ast.InterfaceDef) is not None:
+            local_names.add("view")
         annotation_names: set[int] = set()
         for argument in fn.args.args:
             if argument.annotation is not None:

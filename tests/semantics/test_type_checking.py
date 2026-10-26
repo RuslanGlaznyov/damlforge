@@ -68,7 +68,8 @@ def test_builtin_exercise_argument_count_is_checked():
 
 def test_template_method_arguments_are_type_checked_on_attribute_calls():
     source = (
-        "from forge.models import choice, template\n\n"
+        "from forge.models import choice, template\n"
+        "from forge.builtins.daml_lang import create\n\n"
         "@template\n"
         "class Asset:\n"
         "    owner: Party\n"
@@ -86,7 +87,7 @@ def test_template_method_arguments_are_type_checked_on_attribute_calls():
 def test_contract_id_choice_attribute_call_is_checked_against_payload_type():
     source = (
         "from forge.models import choice, template\n"
-        "from forge.builtins.daml_lang import exercise\n\n"
+        "from forge.builtins.daml_lang import create, exercise\n\n"
         "@template\n"
         "class Asset:\n"
         "    owner: Party\n"

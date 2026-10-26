@@ -72,6 +72,7 @@ class Box:
 
 def test_effectful_lazy_operands_are_lowered_inside_action_branches():
     daml = _compile("""
+from forge.builtins.daml_lang import fetch
 from forge.models import ContractId, Party, choice, template
 
 @template

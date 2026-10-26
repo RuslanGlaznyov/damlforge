@@ -10,6 +10,14 @@ from forge.semantics import analyze_module
 _DECORATOR_PREAMBLE = (
     "from forge.models import choice, template, view\n"
     "from forge.builtins import DamlName\n"
+    "from forge.builtins.daml_lang import (\n"
+    "    coerce_interface_contract_id,\n"
+    "    create,\n"
+    "    exercise,\n"
+    "    fetch,\n"
+    "    from_interface_contract_id,\n"
+    "    to_interface,\n"
+    ")\n"
 )
 
 

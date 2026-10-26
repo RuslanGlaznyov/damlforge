@@ -3,7 +3,7 @@ from datetime import datetime
 
 from forge.models import ContractId, Decimal, Optional, Party, choice, GenMap, template
 from forge.builtins import DamlName
-from forge.builtins.daml_lang import create, fetch
+from forge.builtins.daml_lang import create, fetch, from_interface_contract_id
 from Splice.Amulet import Amulet
 from Splice.AmuletRules import (
     AppTransferContext,

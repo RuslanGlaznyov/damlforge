@@ -43,6 +43,7 @@ def _lower(source):
 _DECORATOR_PREAMBLE = (
     "from forge.models import choice, template, view\n"
     "from forge.builtins import DamlName\n"
+    "from forge.builtins.daml_lang import create, exercise, fetch\n"
 )
 
 

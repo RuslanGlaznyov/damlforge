@@ -1,3 +1,4 @@
+from forge.builtins.daml_lang import archive
 from forge.models import choice, template, view, interface
 from forge.builtins import DamlName
 
