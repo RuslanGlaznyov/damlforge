@@ -14,6 +14,9 @@ def _dar_file():
         raise RuntimeError(
             "Stub generation needs `dazl` to decode Daml-LF: pip install 'forge[stubgen]'"
         ) from e
+    from forge.stubgen.lf2 import install
+
+    install()
     return DarFile
 
 

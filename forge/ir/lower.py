@@ -537,6 +537,19 @@ def _find_ensure(body):
     return None
 
 
+def _clause(body, name: str):
+    return next(
+        (
+            stmt
+            for stmt in body
+            if isinstance(stmt, (vy_ast.AnnAssign, vy_ast.Assign))
+            and getattr(stmt.target, "id", None) == name
+            and stmt.value is not None
+        ),
+        None,
+    )
+
+
 def _type_params(node) -> tuple:
     generic = next(
         (
@@ -692,6 +705,8 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
     signatory = _find_signatory(node.body)
     observer = _find_observer(node.body)
     ensure = _find_ensure(node.body)
+    key = _clause(node.body, "key")
+    maintainer = _clause(node.body, "maintainer")
 
     implemented = _implemented_interfaces(node)
     interface_choice_owner: dict = {}
@@ -745,6 +760,9 @@ def lower_template(node: vy_ast.TemplateDef) -> IRTemplate:
         tuple(own_choices),
         interface_instances,
         checked_fetch,
+        key=lower_expr(key.value) if key else None,
+        key_type=lower_type(key.annotation) if isinstance(key, vy_ast.AnnAssign) else None,
+        maintainer=lower_expr(maintainer.value) if maintainer else None,
         src=_src(node),
     )
 

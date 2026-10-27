@@ -33,3 +33,18 @@ def test_unknown_daml_version_is_conservative():
 )
 def test_serializable_derivation_requires_sdk_and_build_option(version, options, expected):
     assert DamlCodegenSettings(version, options).derive_serializable is expected
+
+
+@pytest.mark.parametrize(
+    "version,options,supported",
+    [
+        (None, (), True),
+        ("3.5.2", ("--target=2.3",), True),
+        ("3.5.2", ("--target=2.dev",), True),
+        ("3.5.2", ("--target=2.2",), False),
+        ("3.5.2", ("--target=latest",), False),
+        ("3.6.0", ("--target=2.3",), False),
+    ],
+)
+def test_contract_keys_require_sdk_and_lf_target(version, options, supported):
+    assert (DamlCodegenSettings(version, options).contract_keys_error() is None) is supported

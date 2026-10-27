@@ -479,6 +479,12 @@ class BidirectionalTypeChecker:
                         "method access is not supported",
                     )
                     return None
+            if isinstance(call.func.value, vy_ast.Name):
+                template_choice = f"{call.func.value.id}.{call.func.attr}"
+                if template_choice in self.choice_names and env.get(call.func.value.id) is None:
+                    self._check_call_arguments(call, env, template_choice)
+                    call._metadata["daml_choice_call"] = self.choice_names[template_choice]
+                    return self._term(self.return_types.get(template_choice))
             receiver = self.check_expr(call.func.value, None, env)
             receiver_name = self._name(receiver)
             if (
@@ -537,6 +543,8 @@ class BidirectionalTypeChecker:
             cid = self.check_expr(call.args[0], None, env)
             if isinstance(cid, AppliedType) and cid.name == "ContractId" and cid.args:
                 return cid.args[0]
+        if function_name == "exercise_by_key" and len(call.args) == 3:
+            return self.check_expr(call.args[2], None, env)
         if function_name == "create" and call.args:
             payload = self.check_expr(call.args[0], None, env)
             if payload is not None:

@@ -21,6 +21,7 @@ from forge.ir.nodes import (
     IRIf,
     IRIfExp,
     IRInterface,
+    IRInterfaceInstance,
     IRImport,
     IRList,
     IRModule,
@@ -506,6 +507,34 @@ def test_generate_daml_interface_with_requires():
     assert "interface Holding requires Base where" in source
     assert "viewtype HoldingView" in source
     assert "nonconsuming choice Get_amount : Decimal" in source
+
+
+@pytest.mark.parametrize(
+    "choice_name,impl_name",
+    [
+        ("Holding_Transfer", "holding_TransferImpl"),
+        ("transfer", "transferImpl"),
+        ("Accept", "acceptImpl"),
+    ],
+)
+def test_interface_instance_uses_interface_impl_name(choice_name, impl_name):
+    choice = IRChoice(
+        name=choice_name,
+        controller=IRName("owner"),
+        consuming=Consuming.CONSUMING,
+        observer=None,
+        args=(),
+        return_type=None,
+        body=(IRPass(),),
+    )
+    interface = IRInterface("Holding", TypeRef("HoldingView"), (), (), (choice,))
+    instance = IRInterfaceInstance("Holding", None, (choice,))
+    fields = (Field("owner", TypeRef("Party")),)
+    template = IRTemplate("Cash", fields, IRName("owner"), None, None, None, (), (instance,))
+    source, _ = generate_daml(IRModule(interfaces=(interface,), templates=(template,)))
+
+    assert source.count(f"{impl_name} ") == 3
+    assert f"{choice_name}Impl" not in source.replace(impl_name, "")
 
 
 @pytest.mark.parametrize(

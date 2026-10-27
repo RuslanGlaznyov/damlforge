@@ -43,6 +43,7 @@ def _analyze(source):
         _fixture_path("valid/choice_string_consuming_on_template_is_allowed.vy"),
         _fixture_path("valid/choice_with_observer_is_allowed.vy"),
         _fixture_path("valid/template_key_with_maintainer_is_allowed.vy"),
+        _fixture_path("valid/contract_key_builtins_are_allowed.vy"),
         _fixture_path("valid/template_without_key_or_maintainer_is_allowed.vy"),
         _fixture_path("valid/template_ensure_compare_is_allowed.vy"),
         _fixture_path("valid/template_ensure_boolop_is_allowed.vy"),
@@ -89,6 +90,22 @@ def test_valid(source_path):
         (_fixture_path("invalid/recursion_single_func.vy"), ErrorCodes.DF1209.value),
         (_fixture_path("invalid/template_key_without_maintainer.vy"), ErrorCodes.DF1210.value),
         (_fixture_path("invalid/template_maintainer_without_key.vy"), ErrorCodes.DF1211.value),
+        (
+            _fixture_path("invalid/template_maintainer_from_field_not_allowed.vy"),
+            ErrorCodes.DF1236.value,
+        ),
+        (
+            _fixture_path("invalid/template_key_without_annotation_not_allowed.vy"),
+            ErrorCodes.DF1213.value,
+        ),
+        (
+            _fixture_path("invalid/exercise_by_key_without_template_not_allowed.vy"),
+            ErrorCodes.DF1235.value,
+        ),
+        (
+            _fixture_path("invalid/visible_by_key_on_template_without_key_not_allowed.vy"),
+            ErrorCodes.DF1235.value,
+        ),
         (_fixture_path("invalid/template_ensure_non_boolean_literal.vy"), ErrorCodes.DF1212.value),
         (
             _fixture_path("invalid/template_ensure_arithmetic_expression.vy"),
@@ -229,7 +246,8 @@ def test_builtin_function_requires_import(name, imported, expect_undefined):
 def test_known_builtin_function_names_cover_ledger_operations():
     names = known_builtin_function_names()
 
-    assert {"create", "fetch", "exercise", "archive", "lookup"} <= names
+    assert {"create", "fetch", "exercise", "archive", "lookup_by_key", "fetch_by_key"} <= names
+    assert "lookup" not in names
     assert {"to_interface_contract_id", "from_interface_contract_id", "to_interface"} <= names
     assert not {"len", "range", "ceil", "floor"} & names
 

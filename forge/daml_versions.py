@@ -13,13 +13,14 @@ class DamlVersionPolicy:
     """Code-generation capabilities for one Daml major/minor line."""
 
     explicit_serializable: bool = False
+    contract_keys: bool = False
 
 
 # Keep this registry explicit. Unknown SDK lines use the conservative default
 # until their compiler capabilities are verified and added here.
 DAML_VERSION_REGISTRY: Mapping[tuple[int, int], DamlVersionPolicy] = {
     (3, 4): DamlVersionPolicy(explicit_serializable=False),
-    (3, 5): DamlVersionPolicy(explicit_serializable=True),
+    (3, 5): DamlVersionPolicy(explicit_serializable=True, contract_keys=True),
 }
 _UNKNOWN_VERSION_POLICY = DamlVersionPolicy()
 _DAML_VERSION_PREFIX = re.compile(r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)")
@@ -37,6 +38,22 @@ class DamlCodegenSettings:
         """Whether generated data types should derive ``Serializable``."""
         return supports_explicit_serializable(self.sdk_version) and _has_option(
             self.build_options, "--explicit-serializable", "yes"
+        )
+
+    def contract_keys_error(self) -> str | None:
+        if not self.sdk_version:
+            return None
+        if not get_daml_version_policy(self.sdk_version).contract_keys:
+            return f"Daml SDK {self.sdk_version} does not support them; use SDK 3.5 or later"
+        prefix = "--target="
+        target = next((o[len(prefix) :] for o in self.build_options if o.startswith(prefix)), "")
+        major, _, minor = target.partition(".")
+        if minor == "dev" or (
+            major.isdigit() and minor.isdigit() and (int(major), int(minor)) >= (2, 3)
+        ):
+            return None
+        return (
+            f"they need `--target=2.3` or later in `build-options`, not {target or 'the default'}"
         )
 
     @classmethod

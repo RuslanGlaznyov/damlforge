@@ -9,4 +9,4 @@ class Asset:
 
     signatory: list[Party] = [owner]
     key: tuple[Party, Text] = (owner, asset_id)
-    maintainer: list[Party] = [owner]
+    maintainer: list[Party] = [key[0]]

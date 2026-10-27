@@ -4,12 +4,13 @@ from typing import Optional
 
 from forge.builtin_stubs import stub_scope
 from forge.builtins import collect_daml_builtins
+from forge.builtins.daml_lang import TEMPLATE_ARGUMENT_FUNCTIONS
 from forge.daml_versions import DamlCodegenSettings
 from forge.codegen.doc import concat, line, nest, render, text
 from forge.codegen.maps import is_map_type, render_map_literal, render_map_type
 from forge.codegen.optional import is_optional_type, render_optional_type
 from forge.codegen.sets import is_set_type, render_set_type
-from forge.exceptions import CompilerPanic
+from forge.exceptions import CompilerPanic, DamlForgeException
 from forge.utils import daml_choice_name
 from forge.ir.lower import FLOOR_DIV_DECIMAL_HELPER, FLOOR_DIV_HELPER, LIST_SET_HELPER
 from forge.ir.nodes import (
@@ -53,6 +54,7 @@ from forge.ir.nodes import (
     TypeRef,
 )
 from forge.models.decorators import Consuming
+from forge.models.error_codes import ErrorCodes
 from forge.ir.normalize import LoopAnalysis, LoopAnalyzer, LoopNamer
 from forge.codegen.self_mutation import SELF, SelfFieldRewriter, SelfMutationInjector
 
@@ -377,6 +379,14 @@ def _render_call(e: IRCall) -> str:
             return f"(case {scrutinee} of {pattern} -> Some {value}; _ -> None)"
 
     func_name = render_expr(e.func)
+    if (
+        isinstance(e.func, IRName)
+        and e.func.id in TEMPLATE_ARGUMENT_FUNCTIONS
+        and e.args
+        and isinstance(e.args[0], (IRName, IRAttribute))
+    ):
+        rest = " ".join(_render_call_arg(a) for a in e.args[1:])
+        return f"{func_name} @{render_expr(e.args[0])} {rest}".rstrip()
     if e.keywords:
         kw_str = ", ".join(f"{k} = {_render_record_field_value(v)}" for k, v in e.keywords)
         return f"{func_name} with {kw_str}"
@@ -920,6 +930,7 @@ class Emitter:
         self.hoisted: list = []
         self.known_effect_fns = known_effect_fns
         self.derive_serializable = settings.derive_serializable
+        self.settings = settings
 
     def line(self, text: str = "") -> None:
         self.lines.append(text)
@@ -1094,7 +1105,7 @@ class Emitter:
     ) -> None:
         start = len(self.lines) + 1
         arg_names = [a.name for a in c.args]
-        header = f"{c.name}Impl _self" + "".join(f" {n}" for n in arg_names)
+        header = f"{self.private_name(c.name + 'Impl')} _self" + "".join(f" {n}" for n in arg_names)
         self.lines_block([f"{'  ' * indent}{header} = do"])
 
         body = SelfFieldRewriter.rewrite_stmts(list(c.body), field_types)
@@ -1163,6 +1174,14 @@ class Emitter:
                     ensure_conditions.append(render_expr(b.test))
         if ensure_conditions:
             where_parts.extend([line(), text("ensure " + " && ".join(ensure_conditions))])
+        if t.key is not None:
+            if (error := self.settings.contract_keys_error()) is not None:
+                message = f"Template `{t.name}` declares a contract key, but {error}"
+                raise DamlForgeException(message, code=ErrorCodes.DF1234.value)
+            key_type = f" : {render_type(t.key_type)}" if t.key_type is not None else ""
+            where_parts.extend([line(), text(f"key {_render_call_arg(t.key)}{key_type}")])
+        if t.maintainer is not None:
+            where_parts.extend([line(), text(f"maintainer {render_expr(t.maintainer)}")])
 
         parts.append(nest(2, concat([line(), text("where"), nest(2, concat(where_parts))])))
         self.lines_block(render(concat(parts)))

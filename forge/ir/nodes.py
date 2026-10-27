@@ -354,6 +354,9 @@ class IRTemplate:
     choices: tuple[IRChoice, ...]
     interface_instances: tuple[IRInterfaceInstance, ...] = ()
     checked_fetch: Optional[IRFunction] = None
+    key: Optional[IRExpr] = None
+    key_type: Optional[TypeRef] = None
+    maintainer: Optional[IRExpr] = None
     src: Optional[SourceSpan] = field(default=None, compare=False)
 
 

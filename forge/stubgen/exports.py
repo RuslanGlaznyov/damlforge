@@ -3,7 +3,7 @@ from typing import Optional
 
 _COMMENT = re.compile(r"\{-.*?-\}|--[^\n]*", re.S)
 _HEADER = re.compile(r"\bmodule\s+[\w.]+\s*\((.*?)\)\s*where\b", re.S)
-_NAME = re.compile(r"^(?:type\s+|pattern\s+)?([A-Za-z_][\w]*)$")
+_NAME = re.compile(r"^(?:type\s+|pattern\s+)?(?:[A-Z]\w*\.)*([A-Za-z_]\w*)$")
 
 
 def _split(body: str) -> list:

@@ -4,6 +4,7 @@ from dazl.damlast.util import module_local_name, module_name
 TPL = "tpl"
 ARG = "arg"
 VIEW = "view"
+KEY = "key"
 
 
 def _strip(expr):
@@ -107,4 +108,6 @@ class PartyRefs:
             body = value.expr
         except Exception:
             return
+        while body is not None and body.ty_abs is not None:
+            body = body.ty_abs.body
         self._walk(body, {}, refs)

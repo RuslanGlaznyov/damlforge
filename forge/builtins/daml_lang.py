@@ -5,6 +5,10 @@ from . import DamlName
 
 _T1 = TypeVar("_T1")
 _T2 = TypeVar("_T2")
+_T3 = TypeVar("_T3")
+
+# TODO: Derive template type-application parameters from builtin signatures instead of this list.
+TEMPLATE_ARGUMENT_FUNCTIONS = frozenset({"exercise_by_key", "visible_by_key"})
 
 
 @DamlName("fetch", is_ledger_effect=True)
@@ -39,10 +43,50 @@ def archive(cid: ContractId[_T1]) -> None:
     )
 
 
-@DamlName("lookup", is_ledger_effect=True)
-def lookup(key: _T1) -> Optional[ContractId[_T2]]:
+@DamlName("lookupByKey", is_ledger_effect=True)
+def lookup_by_key(key: _T2) -> Optional[ContractId[_T1]]:
     raise NotImplementedError(
-        "lookup is a real Daml-language builtin - only meaningful inside "
+        "lookup_by_key is a real Daml-language builtin - only meaningful inside "
+        "compiled .vy source, not callable directly from Python"
+    )
+
+
+@DamlName("fetchByKey", is_ledger_effect=True)
+def fetch_by_key(key: _T2) -> tuple[ContractId[_T1], _T1]:
+    raise NotImplementedError(
+        "fetch_by_key is a real Daml-language builtin - only meaningful inside "
+        "compiled .vy source, not callable directly from Python"
+    )
+
+
+@DamlName("exerciseByKey", is_ledger_effect=True)
+def exercise_by_key(template: type[_T1], key: _T2, choice_args: _T3):
+    raise NotImplementedError(
+        "exercise_by_key is a real Daml-language builtin - only meaningful inside "
+        "compiled .vy source, not callable directly from Python"
+    )
+
+
+@DamlName("visibleByKey", is_ledger_effect=True)
+def visible_by_key(template: type[_T1], key: _T2) -> bool:
+    raise NotImplementedError(
+        "visible_by_key is a real Daml-language builtin - only meaningful inside "
+        "compiled .vy source, not callable directly from Python"
+    )
+
+
+@DamlName("lookupNByKey", module="DA.ContractKeys", is_ledger_effect=True)
+def lookup_n_by_key(limit: int, key: _T2) -> list[tuple[ContractId[_T1], _T1]]:
+    raise NotImplementedError(
+        "lookup_n_by_key is a real Daml-language builtin - only meaningful inside "
+        "compiled .vy source, not callable directly from Python"
+    )
+
+
+@DamlName("lookupAllByKey", module="DA.ContractKeys", is_ledger_effect=True)
+def lookup_all_by_key(key: _T2) -> list[tuple[ContractId[_T1], _T1]]:
+    raise NotImplementedError(
+        "lookup_all_by_key is a real Daml-language builtin - only meaningful inside "
         "compiled .vy source, not callable directly from Python"
     )
 

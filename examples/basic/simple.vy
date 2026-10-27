@@ -1,5 +1,6 @@
 from forge.models import Party, choice, GenMap, view, template
 from forge.builtins import DamlName
+from forge.builtins.daml_lang import exercise_by_key, fetch_by_key, lookup_by_key, visible_by_key
 from typing import Optional
 from Splice.AmuletRules import AppTransferContext
 from models import CrossTemplate
@@ -18,6 +19,8 @@ class SimpleTemplate(SimpleTemplateInterface):
     comment: str
 
     signatory: list[Party] = [platform]
+    key: tuple[Party, str] = (platform, comment)
+    maintainer: Party = key[0]
     mint_receiver: list[Party] = [platform, developer, dso]
     mint_balances: GenMap[Party, Decimal] = {platform: Decimal(0), developer: Decimal(0), dso: Decimal(0)}
 
@@ -85,3 +88,17 @@ class SimpleTemplate(SimpleTemplateInterface):
     @choice(controller=[platform], consuming=False)
     def test(self) -> bool:
         return True
+
+    @choice(controller=[platform], consuming=False)
+    def SimpleTemplate_FindByKey(self, label: str) -> bool:
+        found: Optional[ContractId[SimpleTemplate]] = lookup_by_key((self.platform, label))
+        if found is None:
+            return False
+        pair: tuple[ContractId[SimpleTemplate], SimpleTemplate] = fetch_by_key(
+            (self.platform, label)
+        )
+        if not visible_by_key(SimpleTemplate, (self.platform, label)):
+            return False
+        return pair[1].test_balance > 0 and exercise_by_key(
+            SimpleTemplate, (self.platform, label), SimpleTemplate.test()
+        )

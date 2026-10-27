@@ -10,6 +10,7 @@ from forge.semantics.analysis.typecheck import check_bidirectional_types
 from forge.semantics.analysis.structure import (
     _reachable_modules,
     check_container,
+    check_contract_key_calls,
     check_local_imports,
     check_unsupported_control_flow,
     infer_ledger_effects,
@@ -327,6 +328,7 @@ class ModuleAnalyzer:
             self.errors,
         )
         check_enum_value_access(node, self.scope.declarations, self.errors)
+        check_contract_key_calls(node, self.scope.declarations, self.errors)
         mark_list_subscripts(node, self.scope.list_returning_functions)
         check_unresolved_names(node, self.scope.declarations, self.scope.global_names, self.errors)
         check_call_arity(node, self.scope.function_param_types, self.errors)

@@ -377,6 +377,16 @@ def _local_bound_names(fn: vy_ast.FunctionDef) -> frozenset:
 _CONSTRUCTIBLE_DECLARATION_TYPES = (vy_ast.StructDef, vy_ast.TemplateDef)
 
 
+def _is_template_choice_call(attr: vy_ast.Attribute, declaration) -> bool:
+    parent = getattr(attr, "parent", None)
+    return (
+        isinstance(declaration, vy_ast.TemplateDef)
+        and isinstance(parent, vy_ast.Call)
+        and parent.func is attr
+        and any(getattr(stmt, "name", None) == attr.attr for stmt in declaration.body)
+    )
+
+
 def check_unresolved_names(
     node: vy_ast.TopLevel, declarations: dict, global_names: frozenset, errors: ExceptionList
 ) -> None:
@@ -446,6 +456,8 @@ def check_unresolved_names(
                 continue
             declaration = declarations.get(name)
             if isinstance(declaration, vy_ast.EnumDef):
+                continue
+            if _is_template_choice_call(attr, declaration):
                 continue
             if isinstance(declaration, _NON_VARIABLE_DECLARATION_TYPES):
                 errors.append(

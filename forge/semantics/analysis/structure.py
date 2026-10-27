@@ -3,6 +3,7 @@ from typing import Optional
 
 from forge.ast import nodes as vy_ast
 from forge.builtins import choice, collect_daml_builtins
+from forge.builtins.daml_lang import TEMPLATE_ARGUMENT_FUNCTIONS
 from forge.exceptions import DamlForgeException, ExceptionList
 from forge.models.error_codes import ErrorCodes
 
@@ -582,6 +583,37 @@ def check_template_key_maintainer(template: vy_ast.TemplateDef, errors: Exceptio
                 code=ErrorCodes.DF1211.value,
             )
         )
+    elif has_key:
+        check_template_key_declarations(template, errors)
+
+
+def check_template_key_declarations(template: vy_ast.TemplateDef, errors: ExceptionList) -> None:
+    key = _find_reserved_declaration(template, "key")
+    if not isinstance(key, vy_ast.AnnAssign):
+        message = f"Template `{template.name}` declares `key` without a type annotation"
+        errors.append(DamlForgeException(message, key, code=ErrorCodes.DF1213.value))
+    maintainer = _find_reserved_declaration(template, "maintainer")
+    names = {n.id for n in maintainer.value.get_descendants(vy_ast.Name, include_self=True)}
+    fields = {getattr(getattr(s, "target", None), "id", None) for s in template.body} | {"self"}
+    if "key" not in names or names & (fields - {"key"}):
+        message = f"Template `{template.name}` must compute `maintainer` from `key` only"
+        errors.append(DamlForgeException(message, maintainer, code=ErrorCodes.DF1236.value))
+
+
+def check_contract_key_calls(
+    node: vy_ast.TopLevel, declarations: dict, errors: ExceptionList
+) -> None:
+    for call in node.get_descendants(vy_ast.Call):
+        name = getattr(call.func, "id", None)
+        if name not in TEMPLATE_ARGUMENT_FUNCTIONS:
+            continue
+        template = declarations.get(getattr(call.args[0], "id", None)) if call.args else None
+        has_key = isinstance(template, vy_ast.TemplateDef) and _has_reserved_declaration(
+            template, "key"
+        )
+        if not has_key:
+            message = f"The first argument of `{name}` must be a template with a contract key"
+            errors.append(DamlForgeException(message, call, code=ErrorCodes.DF1235.value))
 
 
 def _target_module_from_import_info(info):

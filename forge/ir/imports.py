@@ -113,7 +113,8 @@ def _scan_expr(
 
 def required_imports(module: IRModule) -> tuple[IRImport, ...]:
     imports = []
-    builtin_import_modules = collect_daml_builtins().function_import_modules
+    builtins = collect_daml_builtins()
+    builtin_import_modules = builtins.function_import_modules
 
     def add(import_: IRImport) -> None:
         if import_ not in imports:
@@ -145,8 +146,8 @@ def required_imports(module: IRModule) -> tuple[IRImport, ...]:
                 add(IRImport("DA.TextMap", alias="TextMap", qualified=False))
             elif value.id.startswith("Set."):
                 add(IRImport("DA.Set", alias="Set", qualified=False))
-            elif value.id in builtin_import_modules:
-                add(IRImport(builtin_import_modules[value.id]))
+            elif (daml_name := builtins.function_renames.get(value.id)) in builtin_import_modules:
+                add(IRImport(builtin_import_modules[daml_name]))
 
     fields = _type_fields(module)
     for fn in module.functions:

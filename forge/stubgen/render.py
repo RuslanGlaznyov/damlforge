@@ -6,7 +6,7 @@ from dazl._gen.com.digitalasset.daml.lf.archive.daml_lf2_pb2 import BuiltinType
 from dazl.damlast.util import module_local_name, module_name
 
 from forge.ast.pre_parser import CUSTOM_STATEMENT_TYPES, VYPER_CLASS_TYPES
-from forge.stubgen.parties import ARG, TPL, VIEW, PartyRefs
+from forge.stubgen.parties import ARG, KEY, TPL, VIEW, PartyRefs
 
 _RESERVED = {"enum", "self", *VYPER_CLASS_TYPES, *CUSTOM_STATEMENT_TYPES}
 _CLAUSES = {"signatory", "observer", "key", "maintainer", "ensure"}
@@ -41,6 +41,7 @@ _SOURCES = {
 _TYPE_WORDS = {*_PRIMS.values(), *_GENERICS.values(), "timedelta", "set", "tuple"}
 _SNAKE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _BINDER = re.compile(r"^[a-z][A-Za-z0-9_]*$")
+_TUPLE_FIELD = re.compile(r"^_([1-9][0-9]*)$")
 
 
 class Unsupported(Exception):
@@ -98,6 +99,20 @@ def _party_expr(refs: list, kind, render, as_list: bool) -> str:
 
 def _tpl_party(ref) -> str:
     return ".".join(snake(p) for p in ref[1])
+
+
+def _key_party(ref) -> str:
+    path = ""
+    for part in ref[1]:
+        index = _TUPLE_FIELD.match(part)
+        path += f"[{int(index[1]) - 1}]" if index else f".{snake(part)}"
+    return f"key{path}"
+
+
+def _strip_types(expr):
+    while expr.ty_app is not None or expr.ty_abs is not None:
+        expr = expr.ty_app.expr if expr.ty_app is not None else expr.ty_abs.body
+    return expr
 
 
 def _iface_party(ref) -> str:
@@ -404,9 +419,60 @@ class ModuleStub:
         if tpl.observers is not None:
             if obs := _party_expr(self.refs.collect(tpl.observers, env), kind, _tpl_party, True):
                 lines.append(f"    observer: list[Party] = {obs}")
+        lines += self._contract_key(tpl)
         for block in self._choices(tpl.choices, tpl.param, roots, _tpl_party, sig):
             lines += ["", *block]
         return lines
+
+    def _contract_key(self, tpl) -> list:
+        if tpl.key is None:
+            return []
+        try:
+            value = self._key_value(tpl.key.complex_key, {tpl.param: ""})
+            maintainer = self._key_function(tpl.key.maintainers)
+            refs = self.refs.collect(maintainer.body, {maintainer.param[0].var: (KEY, ())})
+            parties = _party_expr(refs or [(KEY, ())], lambda _: "one", _key_party, True)
+            lines = [f"    key: {self.type_ref(tpl.key.type)} = {value}"]
+        except (Unsupported, AttributeError):
+            self.skipped.append(f"{self.name}.{tpl.tycon}: contract key has no .vy form")
+            return []
+        return lines + [f"    maintainer: list[Party] = {parties}"]
+
+    def _body(self, expr):
+        expr = _strip_types(expr)
+        while expr.val is not None:
+            value = self.refs.values.get((str(module_name(expr.val)), module_local_name(expr.val)))
+            expr = _strip_types(value.expr)
+        return expr
+
+    def _key_value(self, expr, env: dict) -> str:
+        expr = _strip_types(expr)
+        if expr.var is not None and expr.var in env:
+            return env[expr.var]
+        if expr.rec_proj is not None:
+            base = self._key_value(expr.rec_proj.record, env)
+            return ".".join(filter(None, (base, snake(expr.rec_proj.field))))
+        if expr.let is not None:
+            scope = dict(env)
+            for bind in expr.let.bindings:
+                scope[bind.binder.var] = self._key_value(bind.bound, scope)
+            return self._key_value(expr.let.body, scope)
+        if expr.rec_con is not None:
+            fields = expr.rec_con.fields
+            mod, name = _key(expr.rec_con.tycon.tycon)
+            if name.startswith("Tuple") and mod in ("DA.Types", "GHC.Tuple"):
+                return f"({', '.join(self._key_value(f.expr, env) for f in fields)})"
+            items = (f"{snake(f.field)}={self._key_value(f.expr, env)}" for f in fields)
+            return f"{self._ref(mod, name)}({', '.join(items)})"
+        if expr.app is not None:
+            body = self._body(expr.app.fun)
+            args = [self._key_value(arg, env) for arg in expr.app.args]
+            return self._key_value(body.abs.body, {**env, body.abs.param[0].var: args[0]})
+        raise Unsupported()
+
+    def _key_function(self, expr):
+        body = self._body(expr.app.fun if expr.app is not None else expr)
+        return self._body(body.abs.body).abs
 
     def _definitions(self) -> list:
         own = {str(t.tycon) for t in self.module.templates}

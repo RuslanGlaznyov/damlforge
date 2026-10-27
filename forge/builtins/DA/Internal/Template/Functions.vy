@@ -65,6 +65,31 @@ def maintainer(k: K) -> list[Party]:
     pass
 
 
+@DamlName("lookupNByKey", is_ledger_effect=True)
+def lookup_n_by_key(int_value: int, k: K) -> list[tuple[ContractId[T], T]]:
+    pass
+
+
+@DamlName("lookupAllByKey", is_ledger_effect=True)
+def lookup_all_by_key(k: K) -> list[tuple[ContractId[T], T]]:
+    pass
+
+
+@DamlName("lookupByKey", is_ledger_effect=True)
+def lookup_by_key(k1: K) -> Optional[ContractId[T]]:
+    pass
+
+
+@DamlName("fetchByKey", is_ledger_effect=True)
+def fetch_by_key(k: K) -> tuple[ContractId[T], T]:
+    pass
+
+
+@DamlName("exerciseByKey", is_ledger_effect=True)
+def exercise_by_key(k: K, c: C) -> R:
+    pass
+
+
 @DamlName("createAndExercise", is_ledger_effect=True)
 def create_and_exercise(t1: T, c1: C) -> R:
     pass
@@ -97,4 +122,9 @@ def to_any_choice(c1: C) -> AnyChoice:
 
 @DamlName("fromAnyChoice")
 def from_any_choice(any_choice: AnyChoice) -> Optional[C]:
+    pass
+
+
+@DamlName("visibleByKey", is_ledger_effect=True)
+def visible_by_key(k1: K) -> bool:
     pass
