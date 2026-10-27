@@ -1,7 +1,9 @@
 VERSION ?= 0.0.12
 PYTHON ?= python3
 
-.PHONY: test daml-test-legacy daml-test-example daml-test-all dev dev-deps lint clean clean-pyc clean-build clean-test build release
+LICENSE_MARKER := Licensed under the Apache License, Version 2.0
+
+.PHONY: test daml-test-legacy daml-test-example daml-test-all dev dev-deps lint license-check clean clean-pyc clean-build clean-test build release
 
 init:
 	$(PYTHON) setup.py install
@@ -21,6 +23,15 @@ daml-test-example:
 daml-test-all: daml-test-legacy daml-test-example
 
 lint: mypy black flake8 isort
+
+license-check:
+	@missing=$$(git ls-files --cached --others --exclude-standard -- setup.py 'forge/*.py' 'tests/*.py' \
+		| grep -v '^forge/version.py$$' \
+		| while read -r file; do head -n 20 "$$file" | grep -q "$(LICENSE_MARKER)" || echo "$$file"; done); \
+	if [ -n "$$missing" ]; then \
+		echo "Missing Apache-2.0 license header:"; echo "$$missing"; exit 1; \
+	fi; \
+	echo "All Python files have the Apache-2.0 license header."
 
 mypy:
 	mypy -p forge

@@ -234,3 +234,9 @@ Run the test suite and linters:
 pytest -q      # or: make test
 make lint      # mypy, black, flake8, isort in sequence
 ```
+
+## License
+
+DamlForge is licensed under the [Apache License, Version 2.0](LICENSE).
+
+Copyright 2026 Noders Team. Author: Artem Bogomaz <artembogomaz@gmail.com>.
