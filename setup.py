@@ -58,7 +58,7 @@ except subprocess.CalledProcessError:
 
 
 setup(
-    name="forge",
+    name="damlforge",
     use_scm_version={
         "local_scheme": _local_version,
         "version_scheme": _global_version,
@@ -71,7 +71,7 @@ setup(
     author="Artem Bogomaz",
     author_email="artembogomaz@gmail.com",
     maintainer="Noders Team",
-    url="https://github.com/nodersteam/damlforge",
+    url="https://github.com/noders-team/damlforge",
     license="Apache License 2.0",
     keywords="daml canton smart contract language",
     # The builtins tree contains .vy source files in directories that are

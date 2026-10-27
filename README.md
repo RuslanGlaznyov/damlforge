@@ -22,19 +22,71 @@ passing Daml Script test.
 | 10 | [Building and Packaging](docs/guide/10-building-packaging.md) | `forge dar`, `daml.yaml` settings, multi-package projects, DAR contents |
 | 11 | [Variants](docs/guide/11-variants.md) | Constructor styles, recursive and generic variants, current limitations |
 
-## Installing the wheel
+## Installing
 
-Releases are built by CI on every `v*.*.*` tag and attached to the corresponding [GitHub Release](https://github.com/noders-team/damlforge/releases) as `forge-<version>-py3-none-any.whl`.
-
-Download the wheel for the version you want, then install it into your own virtualenv:
+DamlForge is published on PyPI as `damlforge`. It installs the `forge` command and the `forge` Python package:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate          # .venv\Scripts\activate on Windows
-pip install forge-<version>-py3-none-any.whl
+pip install damlforge
 ```
 
-No source checkout, no dev dependencies, no repo access needed - the wheel is fully self-contained.
+### Using DamlForge in another project
+
+Add DamlForge as a dependency of the project that holds your `.vy` contracts.
+
+With pip, pin it in `requirements.txt`:
+
+```text
+damlforge==<version>
+```
+
+Use `damlforge[stubgen]==<version>` instead if you also run `forge stubs`. Then install and build:
+
+```bash
+pip install -r requirements.txt
+forge dar path/to/daml_project -o out.dar
+```
+
+With Poetry, add it to a dev group, since it's only needed at build time:
+
+```bash
+poetry add --group dev damlforge@<version>
+poetry add --group dev 'damlforge[stubgen]@<version>'   # if you also run forge stubs
+```
+
+This records it in your `pyproject.toml`:
+
+```toml
+[tool.poetry.group.dev.dependencies]
+damlforge = { version = "<version>", extras = ["stubgen"] }
+```
+
+Leave out `extras` if you don't need `forge stubs`. Run the compiler through Poetry's environment:
+
+```bash
+poetry install
+poetry run forge dar path/to/daml_project -o out.dar
+```
+
+The stubs for the Daml standard library (`DA.*`, `GHC.*`), Splice (`Splice.*`), `forge.models`, and `forge.builtins` ship inside the package. Once it's installed, `.vy` files import them directly, with no extra path setup:
+
+```python
+from DA.List import sort
+from forge.builtins.daml_lang import create
+from forge.models import Party, choice, template
+```
+
+Splice stubs also need the matching Splice DAR in `data-dependencies` in `daml.yaml`. See [Development Environment Setup](docs/guide/01-dev-environment.md#as-a-dependency-of-your-own-project) and [Building and Packaging](docs/guide/10-building-packaging.md#using-other-packages-from-vy).
+
+### Installing from GitHub Releases
+
+Releases are also built by CI on every `v*.*.*` tag and attached to the corresponding [GitHub Release](https://github.com/noders-team/damlforge/releases) as `damlforge-<version>-py3-none-any.whl`, which installs with `pip install damlforge-<version>-py3-none-any.whl`.
+
+### Publishing to PyPI
+
+`.github/workflows/publish-pypi.yml` is started by hand from the Actions tab (**Run workflow**) with the version to publish. It builds the sdist and wheel with that version and uploads them through PyPI trusted publishing, so no API token is stored in the repository.
 
 ## Using it
 
@@ -88,7 +140,7 @@ daml test --all
 ## Generating `.vy` stubs
 
 The optional stub generator reconstructs supported Daml-LF declarations from a DAR.
-Install its extra dependency with `pip install 'forge[stubgen]'`. It accepts either a
+Install its extra dependency with `pip install 'damlforge[stubgen]'`. It accepts either a
 DAR file or a Daml project directory (the latter is built with DPM first):
 
 ```bash
@@ -189,14 +241,13 @@ supported forms, the `DA.Date` helpers to use instead of the rest, and ledger ti
 
 ## Upgrading
 
-Uninstall the old wheel first if you installed into a long-lived environment, then install the new one:
+Upgrade in place:
 
 ```bash
-pip uninstall forge
-pip install forge-<new-version>-py3-none-any.whl
+pip install -U damlforge==<new-version>
 ```
 
-Or just point a fresh venv at the new wheel, per above.
+If you installed the old `forge` wheel from GitHub Releases, run `pip uninstall forge` first, since the distribution was renamed to `damlforge`.
 
 ## Building the wheel yourself
 
@@ -207,7 +258,7 @@ pip install build
 python -m build          # or: make build
 ```
 
-produces `dist/forge-<version>-py3-none-any.whl`, versioned from the nearest git tag (see `Makefile`'s `build`/`release` targets and `.github/workflows/build-wheel.yml`).
+produces `dist/damlforge-<version>-py3-none-any.whl`, versioned from the nearest git tag (see `Makefile`'s `build`/`release` targets and `.github/workflows/build-wheel.yml`).
 
 ## Local development
 

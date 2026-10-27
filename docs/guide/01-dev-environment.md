@@ -33,16 +33,63 @@ The SDK marked with `*` is the default. Each project can pin its own SDK with
 
 ## Installing DamlForge
 
-### From a release wheel
+### From PyPI
 
-Every `v*.*.*` tag publishes a wheel named `forge-<version>-py3-none-any.whl` on the
-project's [GitHub Releases](https://github.com/noders-team/damlforge/releases)
-page. Install it into its own virtual environment:
+DamlForge is published on PyPI as `damlforge`. The command it installs is still
+`forge`, and the Python package is still imported as `forge`:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # .venv\Scripts\activate on Windows
-pip install forge-<version>-py3-none-any.whl
+pip install damlforge
+```
+
+### As a dependency of your own project
+
+Pin DamlForge in your project like any other Python tool. With a
+`requirements.txt`:
+
+```text
+damlforge==<version>
+```
+
+With Poetry, add it to a dev group, since it's only needed at build time:
+
+```bash
+poetry add --group dev damlforge@<version>
+```
+
+which records:
+
+```toml
+[tool.poetry.group.dev.dependencies]
+damlforge = "<version>"
+```
+
+The stubs for the Daml standard library (`DA.*`, `GHC.*`), Splice (`Splice.*`),
+and the `forge.models` and `forge.builtins` modules all ship inside the package.
+After installing it, your `.vy` files can import them directly, with no extra
+path setup:
+
+```python
+from DA.List import sort
+from forge.builtins.daml_lang import create
+from forge.models import Party, choice, template
+```
+
+Run the compiler from the same environment, for example `forge dar .` or
+`poetry run forge dar .`. Splice stubs still need the matching Splice DAR in
+`data-dependencies`; see
+[Building and Packaging](10-building-packaging.md#using-other-packages-from-vy).
+
+### From a release wheel
+
+Every `v*.*.*` tag also publishes a wheel named
+`damlforge-<version>-py3-none-any.whl` on the project's
+[GitHub Releases](https://github.com/noders-team/damlforge/releases) page:
+
+```bash
+pip install damlforge-<version>-py3-none-any.whl
 ```
 
 The wheel contains everything `forge` needs. You don't need a source checkout.
@@ -75,7 +122,7 @@ can import types from packages written in plain Daml. It needs one extra
 dependency:
 
 ```bash
-pip install 'forge[stubgen]'
+pip install 'damlforge[stubgen]'
 ```
 
 ## Verifying the installation

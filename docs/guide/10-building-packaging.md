@@ -165,7 +165,7 @@ that depend on it.
 forge stubs main/.daml/dist/guide-main-0.0.1.dar -o stubs --module Coin
 ```
 
-It needs the `stubgen` extra (`pip install 'forge[stubgen]'`), and reads DARs for
+It needs the `stubgen` extra (`pip install 'damlforge[stubgen]'`), and reads DARs for
 LF 2.1 to 2.3.
 
 ## Deciding what goes in a package

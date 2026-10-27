@@ -29,7 +29,7 @@ else:
 
 __version__: str
 try:
-    __version__ = _version(__name__)
+    __version__ = _version("damlforge")
 except PackageNotFoundError:
     from forge.version import version
 
