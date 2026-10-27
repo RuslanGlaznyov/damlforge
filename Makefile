@@ -1,4 +1,4 @@
-VERSION ?= 0.0.12
+VERSION ?= 0.0.13
 PYTHON ?= python3
 
 LICENSE_MARKER := Licensed under the Apache License, Version 2.0
