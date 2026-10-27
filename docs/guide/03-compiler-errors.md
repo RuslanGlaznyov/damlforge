@@ -74,6 +74,9 @@ traceback when you think the error is a compiler bug.
 | [DF1231](#df1231) | Enums | Enum member has an explicit value or is duplicated |
 | [DF1232](#df1232) | Declarations | Something is declared twice |
 | [DF1233](#df1233) | Templates | Template method that isn't a choice |
+| [DF1234](#df1234) | Contract keys | Key declared, but the SDK or LF target can't compile keys |
+| [DF1235](#df1235) | Contract keys | `exercise_by_key` or `visible_by_key` not given a template with a key |
+| [DF1236](#df1236) | Contract keys | `maintainer` computed from template fields instead of `key` |
 
 ## Templates
 
@@ -110,8 +113,9 @@ class Asset:
     key: tuple[Party, str] = (owner, tag)
 ```
 
-**Fix:** a contract key needs maintainers, the parties who guarantee the key is
-unique. Add `maintainer: list[Party] = [owner]`.
+**Fix:** a contract key needs maintainers, the parties who are responsible for
+the key. Compute them from `key`: `maintainer: Party = key[0]`. See
+[DF1236](#df1236).
 
 ### DF1211
 
@@ -166,6 +170,80 @@ A Daml template body holds only fields, clauses, and choices.
 
 **Fix:** if parties should exercise it, make it a `@choice`. Otherwise, move it
 to a top-level function that takes what it needs as parameters.
+
+A `key` declared without a type annotation (`key = (owner, tag)`) is reported as
+`DF1213`: ``Template `Asset` declares `key` without a type annotation``. Daml needs
+the key type, so write `key: tuple[Party, str] = (owner, tag)`.
+
+## Contract keys
+
+These errors apply to the features described in
+[Contract Keys](08-contract-keys.md).
+
+### DF1234
+
+**Message:** ``Template `Account` declares a contract key, but they need
+`--target=2.3` or later in `build-options`, not the default``
+
+Contract keys compile only with Daml SDK 3.5 or later and Daml-LF target 2.3 or
+later. DamlForge reads both from `daml.yaml`. A project on SDK 3.4 gets
+``Daml SDK 3.4.11 does not support them; use SDK 3.5 or later`` at the end of the
+message instead.
+
+**Fix:** use SDK 3.5 and set the target in `daml.yaml`:
+
+```yaml
+sdk-version: 3.5.2
+build-options:
+  - --target=2.3
+```
+
+`forge daml` on a single file outside a project has no `daml.yaml` to read, so it
+doesn't check this.
+
+### DF1235
+
+**Message:** ``The first argument of `exercise_by_key` must be a template with a
+contract key``
+
+```py
+def owner_of(bank: Party, number: str) -> Party:
+    return exercise_by_key((bank, number), Account.GetBank())
+```
+
+`exercise_by_key` and `visible_by_key` take the template as their first argument,
+because Daml can't work out the template from their result. The template must
+declare `key` and `maintainer`.
+
+**Fix:** pass the template, then the key:
+
+```py
+    return exercise_by_key(Account, (bank, number), Account.GetBank())
+```
+
+### DF1236
+
+**Message:** ``Template `Account` must compute `maintainer` from `key` only``
+
+```py
+@template
+class Account:
+    bank: Party
+    number: str
+
+    signatory: Party = bank
+    key: tuple[Party, str] = (bank, number)
+    maintainer: Party = bank
+```
+
+Daml evaluates maintainers from the key alone, without the contract, so the
+expression can't read template fields.
+
+**Fix:** take the parties out of `key`:
+
+```py
+    maintainer: Party = key[0]
+```
 
 ## Choices
 
@@ -450,7 +528,7 @@ This appears when you write `Asset.owner` inside a choice of `Asset`.
 |---|---|
 | `template`, `variant`, `choice`, `view`, `variant_record` | `forge.models` |
 | `DamlName`, `no_derive` | `forge.builtins` |
-| `create`, `fetch`, `exercise`, `archive`, `lookup`, `to_interface_contract_id`, `from_interface_contract_id`, `to_interface`, `coerce_interface_contract_id` | `forge.builtins.daml_lang` |
+| `create`, `fetch`, `exercise`, `archive`, `lookup_by_key`, `fetch_by_key`, `exercise_by_key`, `visible_by_key`, `lookup_n_by_key`, `lookup_all_by_key`, `to_interface_contract_id`, `from_interface_contract_id`, `to_interface`, `coerce_interface_contract_id` | `forge.builtins.daml_lang` |
 | `date`, `datetime`, `time`, `timedelta`, `timezone` | `datetime` |
 | `Enum`, `auto` | `enum` |
 

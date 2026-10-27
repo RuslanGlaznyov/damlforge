@@ -173,9 +173,9 @@ Assertion messages aren't carried into Daml, which has no message on `ensure`.
 
 ## Contract keys
 
-`key` and `maintainer` are accepted and checked as a pair (`DF1210`,
-`DF1211`), but DamlForge doesn't emit them in the generated Daml. Don't rely on
-contract keys. Refer to contracts by their contract ID.
+A template can also declare a `key` and `maintainer`, so choices can find its
+contracts by value instead of by contract ID. Keys need Daml SDK 3.5 and the LF 2.3
+target. They're covered in [Contract Keys](08-contract-keys.md).
 
 ## Testing templates with Daml Script
 

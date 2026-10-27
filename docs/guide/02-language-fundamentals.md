@@ -44,7 +44,7 @@ Import rules:
   decorator fails with `DF1219`.
 - Dates and times use Python's own `datetime` module.
 - Enums use Python's `enum` module.
-- Ledger operations (`create`, `fetch`, `exercise`, `archive`, `lookup`) come
+- Ledger operations (`create`, `fetch`, `exercise`, `archive`, `fetch_by_key`) come
   from `forge.builtins.daml_lang`. Import each one you use.
 - `len`, `range`, `ceil`, and `floor` are built in and need no import.
 - Aliased from-imports (`from X import Y as Z`) and wildcard imports are rejected
@@ -255,6 +255,8 @@ data Location
 Constructors are positional by default, so parameter names don't appear in Daml.
 When the Daml API needs named fields (`Constructor with field : T`), mark the
 constructor with `@variant_record`, imported from `forge.models`.
+[Variants](11-variants.md) covers constructing, comparing, and testing variant
+values, and what isn't supported yet.
 
 ### Optional values
 
@@ -442,6 +444,10 @@ stamp = do
 - Subtracting two `datetime` values gives a `timedelta` (`subTime`).
 - `datetime.now()` reads ledger time, so `stamp` returns `Update Time`. The next
   section explains why.
+- Only these constructs are translated, not the whole `datetime` module.
+  Attributes and methods such as `.date()` or `.weekday()` aren't available yet;
+  [Working with Time](07-working-with-time.md#time-types) lists what works and the
+  `DA.Date` helpers to use instead.
 
 ## Templates and contracts
 
@@ -581,7 +587,7 @@ That creates a second copy of the contract.
 
 Reading or writing the ledger is an *update* in Daml, and a function that does
 this must return `Update T`. DamlForge infers this for you. Any function that
-calls `create`, `fetch`, `exercise`, `archive`, `lookup`, or `datetime.now()`,
+calls `create`, `fetch`, `exercise`, `archive`, a by-key lookup, or `datetime.now()`,
 directly or through another function that does, is emitted as an update:
 
 ```python

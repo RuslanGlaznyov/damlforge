@@ -436,3 +436,6 @@ daml/TokenTest.daml:token_test: ok, 1 active contracts, 6 transactions.
 You can now store data, transform it with choices, and delegate rights to other
 parties. When the compiler rejects a choice, look up its code in
 [Compiler Errors](03-compiler-errors.md).
+
+Continue to [Design Patterns](06-design-patterns.md) to combine choices into
+multi-party workflows.

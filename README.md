@@ -2,6 +2,26 @@
 
 DamlForge compiles `.vy` files (Python syntax, Vyper-flavored keywords) into real Daml/Canton `.daml` source. See [`.claude/skills/damlforge-vy-lang/`](.claude/skills/damlforge-vy-lang/SKILL.md) for the full language reference.
 
+## User guide
+
+The guide in [`docs/guide/`](docs/guide) walks through DamlForge from setup to
+packaging. Every example in it compiles with `forge dar` and is covered by a
+passing Daml Script test.
+
+| # | Page | Covers |
+|---|---|---|
+| 1 | [Development Environment Setup](docs/guide/01-dev-environment.md) | Installing DPM and DamlForge, creating a project, editor setup, day-to-day commands |
+| 2 | [Language Fundamentals](docs/guide/02-language-fundamentals.md) | Types, structs, enums, variants, `Optional`, functions, control flow, dates, imports |
+| 3 | [Compiler Errors](docs/guide/03-compiler-errors.md) | Every `DF` error code, with the message, cause, and fix |
+| 4 | [Contract Templates](docs/guide/04-contract-templates.md) | Templates, signatories, observers, `ensure`, testing with Daml Script |
+| 5 | [Choices](docs/guide/05-choices.md) | Choices as methods and as delegation, updating a contract in place, consuming and non-consuming choices, a simple cash model |
+| 6 | [Design Patterns](docs/guide/06-design-patterns.md) | Propose-accept, delegation, authorization, locking, multi-party agreements |
+| 7 | [Working with Time](docs/guide/07-working-with-time.md) | `datetime` support, ledger time, deadlines and time windows, `setTime`/`passTime` |
+| 8 | [Contract Keys](docs/guide/08-contract-keys.md) | `key` and `maintainer`, by-key lookups, Daml 3.5 requirements |
+| 9 | [Interfaces](docs/guide/09-interfaces.md) | Declaring and implementing interfaces, views, converting contract IDs |
+| 10 | [Building and Packaging](docs/guide/10-building-packaging.md) | `forge dar`, `daml.yaml` settings, multi-package projects, DAR contents |
+| 11 | [Variants](docs/guide/11-variants.md) | Constructor styles, recursive and generic variants, current limitations |
+
 ## Installing the wheel
 
 Releases are built by CI on every `v*.*.*` tag and attached to the corresponding [GitHub Release](https://github.com/noders-team/damlforge/releases) as `forge-<version>-py3-none-any.whl`.
@@ -120,6 +140,9 @@ parameter names are not part of the generated Daml API.
 Generated derivations follow `daml.yaml`: Daml 3.4 uses inferred serializability;
 Daml 3.5 adds `Serializable` only when `--explicit-serializable=yes` is enabled.
 
+See [Variants](docs/guide/11-variants.md) for constructing and comparing values,
+recursive and generic variants, and what isn't supported yet.
+
 ## Enums
 
 Use Python's `Enum` syntax. Members must be bare names or use `auto()`; explicit
@@ -159,6 +182,10 @@ def from_seconds(seconds: int) -> datetime:
 `date`, `datetime`, and `timedelta` compile to Daml `Date`, `Time`, and
 `RelTime`. `datetime.now()` compiles to the Daml update operation `getTime`; DamlForge
 infers the enclosing function's `Update` return type automatically.
+
+Only these constructs are translated, not the whole `datetime` module. See
+[Working with Time](docs/guide/07-working-with-time.md) for the full list of
+supported forms, the `DA.Date` helpers to use instead of the rest, and ledger time.
 
 ## Upgrading
 

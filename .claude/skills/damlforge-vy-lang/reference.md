@@ -151,7 +151,7 @@ def rename(self, label: str) -> bool: ...                       # arg, not `rena
 
 ## 4. Ledger primitives - must be imported
 
-`fetch`, `exercise`, `create`, `archive`, `lookup`, `view` (interface view extraction, distinct from the `@view` decorator), `from_interface_contract_id`, `to_interface_contract_id`, `to_interface`, `coerce_interface_contract_id`, `stakeholder`, `error`, `reverse` (every `@DamlName` function in `forge/builtins/daml_lang.py`) must be imported from `forge.builtins.daml_lang`. Calling one without importing it fails with `DF1219` ("not defined"). Only `len`/`range`/`ceil`/`floor` are import-free.
+`fetch`, `exercise`, `create`, `archive`, `lookup_by_key`, `fetch_by_key`, `exercise_by_key`, `visible_by_key`, `lookup_n_by_key`, `lookup_all_by_key`, `view` (interface view extraction, distinct from the `@view` decorator), `from_interface_contract_id`, `to_interface_contract_id`, `to_interface`, `coerce_interface_contract_id`, `stakeholder`, `error`, `reverse` (every `@DamlName` function in `forge/builtins/daml_lang.py`) must be imported from `forge.builtins.daml_lang`. Calling one without importing it fails with `DF1219` ("not defined"). Only `len`/`range`/`ceil`/`floor` are import-free.
 
 ```python
 from forge.builtins.daml_lang import fetch
@@ -166,7 +166,7 @@ Inside an `interface` body, a bare `view` in `controller=`/`observer=` (for exam
 
 DamlForge automatically infers a plain function as an update when its body
 calls an update operation such as `fetch`, `exercise`, `create`, `archive`, or
-`lookup`. The inference is transitive, so a function that calls another
+`fetch_by_key`. The inference is transitive, so a function that calls another
 inferred update function is also emitted with an update return type:
 
 ```python
