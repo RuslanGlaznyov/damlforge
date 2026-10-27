@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://pypi.org/project/damlforge/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-[User guide](docs/guide) · [Examples](examples) · [Releases](https://github.com/noders-team/damlforge/releases)
+[User guide](https://docs.damlforge.noders.services) · [Examples](examples) · [Releases](https://github.com/noders-team/damlforge/releases)
 
 </div>
 
@@ -82,23 +82,23 @@ template Asset
 
 ## Documentation
 
-The guide in [`docs/guide/`](docs/guide) walks through DamlForge from setup to
-packaging. Every example in it compiles with `forge dar` and is covered by a
-passing Daml Script test.
+The guide at [docs.damlforge.noders.services](https://docs.damlforge.noders.services)
+walks through DamlForge from setup to packaging. Every example in it compiles
+with `forge dar` and is covered by a passing Daml Script test.
 
 | # | Page | Covers |
 |---|---|---|
-| 1 | [Development Environment Setup](docs/guide/01-dev-environment.md) | Installing DPM and DamlForge, creating a project, editor setup, day-to-day commands |
-| 2 | [Language Fundamentals](docs/guide/02-language-fundamentals.md) | Types, structs, enums, variants, `Optional`, functions, control flow, dates, imports |
-| 3 | [Compiler Errors](docs/guide/03-compiler-errors.md) | Every `DF` error code, with the message, cause, and fix |
-| 4 | [Contract Templates](docs/guide/04-contract-templates.md) | Templates, signatories, observers, `ensure`, testing with Daml Script |
-| 5 | [Choices](docs/guide/05-choices.md) | Choices as methods and as delegation, updating a contract in place, consuming and non-consuming choices, a simple cash model |
-| 6 | [Design Patterns](docs/guide/06-design-patterns.md) | Propose-accept, delegation, authorization, locking, multi-party agreements |
-| 7 | [Working with Time](docs/guide/07-working-with-time.md) | `datetime` support, ledger time, deadlines and time windows, `setTime`/`passTime` |
-| 8 | [Contract Keys](docs/guide/08-contract-keys.md) | `key` and `maintainer`, by-key lookups, Daml 3.5 requirements |
-| 9 | [Interfaces](docs/guide/09-interfaces.md) | Declaring and implementing interfaces, views, converting contract IDs |
-| 10 | [Building and Packaging](docs/guide/10-building-packaging.md) | `forge dar`, `daml.yaml` settings, multi-package projects, DAR contents |
-| 11 | [Variants](docs/guide/11-variants.md) | Constructor styles, recursive and generic variants, current limitations |
+| 1 | [Development Environment Setup](https://docs.damlforge.noders.services/guide/dev-environment/) | Installing DPM and DamlForge, creating a project, editor setup, day-to-day commands |
+| 2 | [Language Fundamentals](https://docs.damlforge.noders.services/guide/language-fundamentals/) | Types, structs, enums, variants, `Optional`, functions, control flow, dates, imports |
+| 3 | [Compiler Errors](https://docs.damlforge.noders.services/guide/compiler-errors/) | Every `DF` error code, with the message, cause, and fix |
+| 4 | [Contract Templates](https://docs.damlforge.noders.services/guide/contract-templates/) | Templates, signatories, observers, `ensure`, testing with Daml Script |
+| 5 | [Choices](https://docs.damlforge.noders.services/guide/choices/) | Choices as methods and as delegation, updating a contract in place, consuming and non-consuming choices, a simple cash model |
+| 6 | [Design Patterns](https://docs.damlforge.noders.services/guide/design-patterns/) | Propose-accept, delegation, authorization, locking, multi-party agreements |
+| 7 | [Working with Time](https://docs.damlforge.noders.services/guide/working-with-time/) | `datetime` support, ledger time, deadlines and time windows, `setTime`/`passTime` |
+| 8 | [Contract Keys](https://docs.damlforge.noders.services/guide/contract-keys/) | `key` and `maintainer`, by-key lookups, Daml 3.5 requirements |
+| 9 | [Interfaces](https://docs.damlforge.noders.services/guide/interfaces/) | Declaring and implementing interfaces, views, converting contract IDs |
+| 10 | [Building and Packaging](https://docs.damlforge.noders.services/guide/building-packaging/) | `forge dar`, `daml.yaml` settings, multi-package projects, DAR contents |
+| 11 | [Variants](https://docs.damlforge.noders.services/guide/variants/) | Constructor styles, recursive and generic variants, current limitations |
 
 ## Claude Code skill
 
@@ -164,7 +164,7 @@ from forge.builtins.daml_lang import create
 from forge.models import Party, choice, template
 ```
 
-Splice stubs also need the matching Splice DAR in `data-dependencies` in `daml.yaml`. See [Development Environment Setup](docs/guide/01-dev-environment.md#as-a-dependency-of-your-own-project) and [Building and Packaging](docs/guide/10-building-packaging.md#using-other-packages-from-vy).
+Splice stubs also need the matching Splice DAR in `data-dependencies` in `daml.yaml`. See [Development Environment Setup](https://docs.damlforge.noders.services/guide/dev-environment/#as-a-dependency-of-your-own-project) and [Building and Packaging](https://docs.damlforge.noders.services/guide/building-packaging/#using-other-packages-from-vy).
 
 </details>
 
@@ -213,7 +213,7 @@ forge stubs input.dar -o generated/         # .dar -> generated .vy stubs
 `forge <path> [options]` (no subcommand) is shorthand for `forge daml <path> [options]`.
 `forge stubs` needs `pip install 'damlforge[stubgen]'`.
 
-See [Building and Packaging](docs/guide/10-building-packaging.md) for `daml.yaml`
+See [Building and Packaging](https://docs.damlforge.noders.services/guide/building-packaging/) for `daml.yaml`
 requirements, DPM options, and stub generation.
 
 ## Examples
