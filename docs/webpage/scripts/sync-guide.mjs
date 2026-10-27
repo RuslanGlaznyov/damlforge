@@ -17,8 +17,10 @@ function rewriteLink(target) {
 	return target;
 }
 
-await rm(outDir, { recursive: true, force: true });
+// Write only changed files and remove only stale ones: deleting the folder while `astro dev`
+// runs drops the guide pages from its content store until a restart.
 await mkdir(outDir, { recursive: true });
+const written = new Set();
 
 for (const file of files) {
 	const [h1, ...rest] = (await readFile(new URL(file, guideDir), 'utf8')).split('\n');
@@ -36,6 +38,10 @@ for (const file of files) {
 		`  order: ${parseInt(file, 10)}`,
 		'---',
 	];
-	await writeFile(new URL(`${slugOf(file)}.md`, outDir), [...frontmatter, ...body].join('\n'));
+	const target = new URL(`${slugOf(file)}.md`, outDir);
+	const text = [...frontmatter, ...body].join('\n');
+	if ((await readFile(target, 'utf8').catch(() => null)) !== text) await writeFile(target, text);
+	written.add(`${slugOf(file)}.md`);
 }
+for (const stale of (await readdir(outDir)).filter((f) => !written.has(f))) await rm(new URL(stale, outDir));
 console.log(`synced ${files.length} guide pages`);
