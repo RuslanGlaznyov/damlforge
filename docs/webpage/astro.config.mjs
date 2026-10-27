@@ -13,6 +13,7 @@ export default defineConfig({
 			description: 'Write Daml smart contracts for Canton in Python syntax.',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/noders-team/damlforge' }],
 			sidebar: [{ label: 'User guide', items: [{ autogenerate: { directory: 'guide' } }] }],
+			customCss: ['./src/styles/custom.css'],
 			plugins: [
 				starlightLinksValidator(),
 				// rawContent builds llms-full.txt from the Markdown source; the rendered HTML adds
